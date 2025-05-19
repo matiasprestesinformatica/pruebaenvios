@@ -3,8 +3,32 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlusCircle } from "lucide-react";
+import { Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EnviosTable } from "@/components/envios-table"; 
+import { getEnviosAction } from "./actions";
 
-export default function EnviosPage() {
+interface EnviosPageProps {
+  searchParams?: {
+    page?: string;
+    search?: string;
+  };
+}
+
+async function EnviosData({ currentPage, searchTerm }: { currentPage: number; searchTerm?: string }) {
+  const { data: envios, count, error } = await getEnviosAction(currentPage, 10, searchTerm);
+
+  if (error) {
+    return <p className="text-destructive">Error al cargar envíos: {error}</p>;
+  }
+
+  return <EnviosTable initialEnvios={envios} initialTotalCount={count} initialPage={currentPage} />;
+}
+
+export default async function EnviosPage({ searchParams }: EnviosPageProps) {
+  const currentPage = Number(searchParams?.page) || 1;
+  const searchTerm = searchParams?.search || undefined;
+
   return (
     <>
       <PageHeader
@@ -19,39 +43,28 @@ export default function EnviosPage() {
           </Button>
         }
       />
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] border-2 border-dashed border-muted-foreground/30 rounded-lg bg-card shadow">
-        <PackageSearchIcon className="w-24 h-24 text-muted-foreground/50 mb-4" />
-        <h2 className="text-xl font-semibold text-muted-foreground mb-2">No hay envíos registrados</h2>
-        <p className="text-muted-foreground text-center max-w-md">
-          Comience creando un nuevo envío para sus clientes. Podrá optimizar rutas y ver sugerencias de entrega.
-        </p>
-      </div>
+      <Suspense fallback={<EnviosTableSkeleton />}>
+        <EnviosData currentPage={currentPage} searchTerm={searchTerm} />
+      </Suspense>
     </>
   );
 }
 
-function PackageSearchIcon(props: React.SVGProps<SVGSVGElement>) {
-    return (
-      <svg
-        {...props}
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M21 10V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4" />
-        <path d="M21 10v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <path d="M14 10h4" />
-        <path d="M14 14h4" />
-        <path d="M5 10h4" />
-        <path d="M5 14h4" />
-        <path d="M12 4v16" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    )
-  }
+function EnviosTableSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-10 w-24" />
+      </div>
+      <Skeleton className="h-96 w-full rounded-md" />
+      <div className="flex items-center justify-between pt-4">
+        <Skeleton className="h-10 w-32" />
+        <Skeleton className="h-6 w-24" />
+        <Skeleton className="h-10 w-32" />
+      </div>
+    </div>
+  );
+}
+
+export const dynamic = 'force-dynamic';
