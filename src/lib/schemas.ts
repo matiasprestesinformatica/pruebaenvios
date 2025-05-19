@@ -14,12 +14,8 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 
 
 export const shipmentSchema = z.object({
-  // Option 1: Select existing client
   cliente_id: z.string().optional(), 
-  // Option 2: New client details (if cliente_id is not provided)
-  // We can make this conditional later if needed, for now, assume one or the other or both potentially for temp storage.
   nombre_cliente_temporal: z.string().optional(),
-
   client_location: z.string().min(1, "La ubicación del cliente es obligatoria."),
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
@@ -28,3 +24,10 @@ export const shipmentSchema = z.object({
 });
 
 export type ShipmentFormData = z.infer<typeof shipmentSchema>;
+
+export const repartidorSchema = z.object({
+  nombre: z.string().min(1, "El nombre es obligatorio."),
+  estado: z.boolean().default(true),
+});
+
+export type RepartidorFormData = z.infer<typeof repartidorSchema>;

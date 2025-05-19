@@ -1,132 +1,81 @@
 
--- Drop tables in reverse order of creation due to foreign keys
-DROP TABLE IF EXISTS public.envios;
-DROP TABLE IF EXISTS public.clientes;
+-- Drop existing tables if they exist to prevent errors on re-seed
+DROP TABLE IF EXISTS envios;
+DROP TABLE IF EXISTS clientes;
+DROP TABLE IF EXISTS repartidores;
 
--- Create clientes table
-CREATE TABLE public.clientes (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at timestamptz DEFAULT now() NOT NULL,
-  nombre text NOT NULL,
-  apellido text NOT NULL,
-  direccion text NOT NULL,
-  telefono text NOT NULL,
-  email text NOT NULL UNIQUE,
-  notas text
+-- Create Clientes table
+CREATE TABLE clientes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  nombre TEXT NOT NULL,
+  apellido TEXT NOT NULL,
+  direccion TEXT NOT NULL,
+  telefono TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  notas TEXT
 );
 
--- Create envios table
-CREATE TABLE public.envios (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at timestamptz DEFAULT now() NOT NULL,
-  cliente_id uuid REFERENCES public.clientes(id) ON DELETE SET NULL, -- Allow setting to NULL if client is deleted
-  nombre_cliente_temporal text,
-  client_location text NOT NULL,
-  package_size text NOT NULL, -- e.g., 'small', 'medium', 'large'
-  package_weight numeric NOT NULL, -- e.g., 2.5 (for 2.5kg)
-  status text DEFAULT 'pending' NOT NULL, -- e.g., 'pending', 'suggested', 'confirmed', 'in_transit', 'delivered'
-  suggested_options jsonb,
-  reasoning text
+-- Create Envios table
+CREATE TABLE envios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  cliente_id UUID REFERENCES clientes(id) ON DELETE SET NULL, -- Allow null if client is deleted or temporary
+  nombre_cliente_temporal TEXT,
+  client_location TEXT NOT NULL,
+  package_size TEXT NOT NULL, -- e.g., 'small', 'medium', 'large'
+  package_weight NUMERIC(10, 2) NOT NULL, -- e.g., 1.5 kg
+  status TEXT DEFAULT 'pending' NOT NULL, -- e.g., 'pending', 'suggested', 'confirmed', 'in_transit', 'delivered'
+  suggested_options JSONB,
+  reasoning TEXT
 );
 
--- Enable Row Level Security (RLS) for the tables if you plan to use it
--- For development, you might start with a permissive policy or disable RLS initially.
--- Example: alter table public.clientes enable row level security;
--- Example: alter table public.envios enable row level security;
+-- Create Repartidores table
+CREATE TABLE repartidores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  nombre TEXT NOT NULL,
+  estado BOOLEAN DEFAULT TRUE NOT NULL -- true for active, false for inactive
+);
 
--- Create policies (example: allow all for authenticated users, adjust as needed for production)
--- This is a very permissive policy, suitable for local development.
--- Make sure to define appropriate RLS policies for production.
-/*
-CREATE POLICY "Allow all access for authenticated users on clientes"
-ON public.clientes
-FOR ALL
-TO authenticated
-USING (true)
-WITH CHECK (true);
+-- Enable RLS for all tables (important for security)
+ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE envios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repartidores ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow all access for authenticated users on envios"
-ON public.envios
-FOR ALL
-TO authenticated
-USING (true)
-WITH CHECK (true);
+-- Create basic RLS policies that allow all authenticated users to perform all operations.
+-- WARNING: In a production environment, you should define more granular RLS policies.
+CREATE POLICY "Allow all for authenticated users on clientes" ON clientes
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
 
--- If you want to allow public read access (e.g., for anon key)
-CREATE POLICY "Allow public read access on clientes"
-ON public.clientes
-FOR SELECT
-TO anon, authenticated
-USING (true);
+CREATE POLICY "Allow all for authenticated users on envios" ON envios
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
 
-CREATE POLICY "Allow public read access on envios"
-ON public.envios
-FOR SELECT
-TO anon, authenticated
-USING (true);
-*/
+CREATE POLICY "Allow all for authenticated users on repartidores" ON repartidores
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
 
 
--- Seed data for clientes table
-INSERT INTO
-  public.clientes (
-    nombre,
-    apellido,
-    direccion,
-    telefono,
-    email,
-    notas
-  )
-VALUES
-  (
-    'Juan',
-    'Pérez',
-    'Av. Siempreviva 742, Springfield',
-    '+54 9 11 1234-5678',
-    'juan.perez@example.com',
-    'Cliente frecuente, prefiere entregas por la mañana.'
-  ),
-  (
-    'María',
-    'García',
-    'Calle Falsa 123, Buenos Aires',
-    '+54 9 11 8765-4321',
-    'maria.garcia@example.com',
-    'Nuevo cliente, contactar antes de entregar.'
-  );
+-- Sample data for Clientes
+INSERT INTO clientes (nombre, apellido, direccion, telefono, email, notas) VALUES
+('Juan', 'Pérez', 'Av. Siempreviva 742, Springfield', '+54 9 11 12345678', 'juan.perez@example.com', 'Cliente frecuente, prefiere entregas por la mañana.'),
+('Ana', 'García', 'Calle Falsa 123, Ciudad Gótica', '+54 9 351 8765432', 'ana.garcia@example.com', 'Nuevo cliente, verificar dirección antes de enviar.');
 
--- Seed data for envios table
--- Ensure this runs after clientes data is inserted if referencing by subquery
-INSERT INTO
-  public.envios (
-    cliente_id,
-    nombre_cliente_temporal,
-    client_location,
-    package_size,
-    package_weight,
-    status,
-    suggested_options,
-    reasoning
-  )
-VALUES
-  (
-    (SELECT id from public.clientes WHERE email = 'juan.perez@example.com'),
-    NULL,
-    'Av. Siempreviva 742, Springfield',
-    'medium',
-    2.5,
-    'pending',
-    NULL,
-    NULL
-  ),
-  (
-    NULL,
-    'Laura Gómez',
-    'Otra Calle 456, Córdoba',
-    'small',
-    0.8,
-    'suggested',
-    '["Envío Económico", "Envío Rápido Local"]'::jsonb,
-    'Cliente nuevo en Córdoba, opciones estándar sugeridas.'
-  );
+-- Sample data for Envios
+INSERT INTO envios (cliente_id, client_location, package_size, package_weight, status) VALUES
+((SELECT id from clientes WHERE email = 'juan.perez@example.com'), 'Av. Siempreviva 742, Springfield', 'medium', 2.5, 'pending'),
+((SELECT id from clientes WHERE email = 'ana.garcia@example.com'), 'Calle Falsa 123, Ciudad Gótica', 'small', 0.8, 'suggested');
 
+-- Sample data for Repartidores
+INSERT INTO repartidores (nombre, estado) VALUES
+('Carlos Rodriguez', TRUE),
+('Lucia Fernandez', TRUE),
+('Miguel Torres', FALSE);

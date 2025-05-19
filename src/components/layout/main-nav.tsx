@@ -3,13 +3,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, PackageSearch } from "lucide-react";
+import { Users, PackageSearch, Bike } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/envios", label: "Envíos", icon: PackageSearch },
+  { href: "/repartidores", label: "Repartidores", icon: Bike },
 ];
 
 interface MainNavProps extends React.HTMLAttributes<HTMLElement> {
