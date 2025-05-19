@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Cliente } from "@/types/supabase"; // Assuming Empresa is also in types/supabase
+import type { ClienteWithEmpresa } from "@/types/supabase";
 import {
   Table,
   TableBody,
@@ -21,10 +21,6 @@ import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Extend Cliente type if 'empresa' field is not directly on it from Supabase join
-interface ClienteWithEmpresa extends Cliente {
-  empresa: { id: string; nombre: string } | null;
-}
 
 interface ClientsTableProps {
   initialClients: ClienteWithEmpresa[];

@@ -194,8 +194,8 @@ export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
 
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
-  repartidores: Pick<Repartidor, 'id' | 'nombre'> | null; // Changed from 'repartidor' to 'repartidores' to match Supabase join syntax
-  empresas: Pick<Empresa, 'id' | 'nombre'> | null; // Changed from 'empresa' to 'empresas'
+  repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
+  empresas: Pick<Empresa, 'id' | 'nombre'> | null;
 };
 
 export type EnvioConCliente = Envio & {
@@ -204,4 +204,8 @@ export type EnvioConCliente = Envio & {
 
 export type RepartoCompleto = RepartoConDetalles & {
   envios_asignados: EnvioConCliente[];
+};
+
+export type ClienteWithEmpresa = Cliente & {
+  empresa: Pick<Empresa, 'id' | 'nombre'> | null;
 };
