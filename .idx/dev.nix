@@ -9,6 +9,7 @@
     pkgs.zulu
     pkgs.pnpm_10
     pkgs.supabase-cli
+    pkgs.daemontools
   ];
   # Sets environment variables in the workspace
   env = {};

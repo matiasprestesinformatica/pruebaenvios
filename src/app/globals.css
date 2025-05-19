@@ -3,9 +3,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Removed:
 body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
+*/
 
 @layer base {
   :root {
