@@ -15,14 +15,35 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Edit3, Trash2 } from "lucide-react";
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface ClientsTableProps {
   initialClients: Cliente[];
   initialTotalCount: number;
   initialPage: number;
   pageSize?: number;
+}
+
+function ClientSideFormattedDate({ dateString }: { dateString: string }) {
+  const [formattedDate, setFormattedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const dateObject = parseISO(dateString);
+      setFormattedDate(format(dateObject, "dd MMM yyyy, HH:mm", { locale: es }));
+    } catch (e) {
+      console.error("Error parsing date string:", dateString, e);
+      setFormattedDate("Fecha inválida");
+    }
+  }, [dateString]);
+
+  if (!formattedDate) {
+    return <Skeleton className="h-4 w-28" />;
+  }
+  return <>{formattedDate}</>;
 }
 
 export function ClientsTable({
@@ -125,7 +146,7 @@ export function ClientsTable({
                     <TableCell className="hidden md:table-cell">{client.email}</TableCell>
                     <TableCell className="hidden sm:table-cell">{client.telefono}</TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {format(new Date(client.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
+                      <ClientSideFormattedDate dateString={client.created_at} />
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -169,6 +190,3 @@ export function ClientsTable({
     </div>
   );
 }
-
-// Need to add Card component for proper styling as used in example
-import { Card, CardContent } from "@/components/ui/card";
