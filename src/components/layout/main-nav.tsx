@@ -3,43 +3,53 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, PackageSearch, Home } from "lucide-react";
+import { Users, PackageSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-} from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/envios", label: "Envíos", icon: PackageSearch },
 ];
 
-export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
+interface MainNavProps extends React.HTMLAttributes<HTMLElement> {
+  onItemClick?: () => void;
+  direction?: "horizontal" | "vertical";
+}
+
+export function MainNav({ className, onItemClick, direction = "horizontal", ...props }: MainNavProps) {
   const pathname = usePathname();
 
   return (
     <nav
-      className={cn("flex flex-col gap-2", className)}
+      className={cn(
+        "flex",
+        direction === "horizontal" ? "flex-row items-center space-x-1 lg:space-x-2" : "flex-col space-y-1",
+        className
+      )}
       {...props}
     >
-      <SidebarMenu>
-        {navItems.map((item) => (
-          <SidebarMenuItem key={item.href}>
-            <SidebarMenuButton
-              asChild
-              isActive={pathname.startsWith(item.href)}
-              tooltip={{ children: item.label, side: 'right', align: 'center' }}
-            >
-              <Link href={item.href}>
-                <item.icon className="h-5 w-5" />
-                <span>{item.label}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))}
-      </SidebarMenu>
+      {navItems.map((item) => (
+        <Button
+          key={item.href}
+          asChild
+          variant="ghost"
+          size={direction === "horizontal" ? "sm" : "default"}
+          className={cn(
+            "justify-start text-base font-medium",
+            pathname.startsWith(item.href)
+              ? "bg-accent text-accent-foreground hover:bg-accent/90"
+              : "hover:bg-accent/80 hover:text-accent-foreground",
+            direction === "horizontal" ? "px-3 py-2" : "w-full px-3 py-2 text-left"
+          )}
+          onClick={onItemClick}
+        >
+          <Link href={item.href} className="flex items-center gap-2">
+            <item.icon className="h-5 w-5" />
+            <span>{item.label}</span>
+          </Link>
+        </Button>
+      ))}
     </nav>
   );
 }
