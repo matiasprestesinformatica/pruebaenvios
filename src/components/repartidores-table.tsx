@@ -19,7 +19,6 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Edit3, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { updateRepartidorEstadoAction } from "@/app/repartidores/actions";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface RepartidoresTableProps {

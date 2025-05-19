@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Eye, Route, Building2, Truck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, Route, Building2 } from "lucide-react";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";

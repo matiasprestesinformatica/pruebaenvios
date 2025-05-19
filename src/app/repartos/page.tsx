@@ -2,7 +2,7 @@
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { PlusCircle, Route } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RepartosListTable } from "@/components/repartos-list-table";

@@ -24,18 +24,17 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { Loader2, CalendarIcon, Search, Package } from "lucide-react";
-import type { Repartidor, Empresa, Envio, Cliente } from "@/types/supabase";
+import { Loader2, CalendarIcon, Search } from "lucide-react";
+import type { Repartidor, Empresa, Envio, Cliente, Reparto } from "@/types/supabase";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { es } from 'date-fns/locale';
 
 interface RepartoCreateFormProps {
@@ -44,7 +43,7 @@ interface RepartoCreateFormProps {
   initialEnviosPendientes: (Envio & { clientes: Pick<Cliente, 'nombre' | 'apellido'> | null })[];
   getEnviosPendientesAction: (searchTerm?: string) => Promise<(Envio & { clientes: Pick<Cliente, 'nombre' | 'apellido'> | null })[]>;
   getEnviosPendientesPorEmpresaAction: (empresaId: string) => Promise<(Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null })[]>;
-  createRepartoAction: (data: RepartoCreationFormData) => Promise<{ success: boolean; error?: string | null; data?: any }>;
+  createRepartoAction: (data: RepartoCreationFormData) => Promise<{ success: boolean; error?: string | null; data?: Reparto | null }>;
 }
 
 type EnvioConCliente = Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null };

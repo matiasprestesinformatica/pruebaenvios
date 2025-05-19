@@ -6,7 +6,7 @@ import type { ShipmentFormData } from "@/lib/schemas";
 import { shipmentSchema } from "@/lib/schemas";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { suggestDeliveryOptions, type SuggestDeliveryOptionsOutput } from "@/ai/flows/suggest-delivery-options";
-import type { NuevoEnvio } from "@/types/supabase";
+import type { NuevoEnvio, Envio } from "@/types/supabase";
 
 export async function suggestDeliveryOptionsAction(
   data: ShipmentFormData
@@ -36,7 +36,7 @@ export async function suggestDeliveryOptionsAction(
 export async function createShipmentAction(
   formData: ShipmentFormData,
   aiSuggestions?: SuggestDeliveryOptionsOutput
-): Promise<{ success: boolean; error?: string | null; data?: any }> {
+): Promise<{ success: boolean; error?: string | null; data?: Envio | null }> {
   const supabase = createSupabaseServerClient();
 
   const validatedFields = shipmentSchema.safeParse(formData);

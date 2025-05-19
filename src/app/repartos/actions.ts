@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RepartoCreationFormData } from "@/lib/schemas";
 import { repartoCreationSchema } from "@/lib/schemas";
-import type { Database } from "@/types/supabase";
+import type { Database, Reparto } from "@/types/supabase";
 
 type Repartidores = Database['public']['Tables']['repartidores']['Row'];
 type Empresas = Database['public']['Tables']['empresas']['Row'];
@@ -100,7 +100,7 @@ export async function getEnviosPendientesPorEmpresaAction(empresaId: string): Pr
 
 export async function createRepartoAction(
   formData: RepartoCreationFormData
-): Promise<{ success: boolean; error?: string | null; data?: any }> {
+): Promise<{ success: boolean; error?: string | null; data?: Reparto | null }> {
   const supabase = createSupabaseServerClient();
 
   const validatedFields = repartoCreationSchema.safeParse(formData);

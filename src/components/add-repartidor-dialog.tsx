@@ -16,7 +16,7 @@ import {
 import { RepartidorForm } from "./repartidor-form";
 import type { RepartidorFormData } from "@/lib/schemas";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, Bike } from "lucide-react";
+import { Bike } from "lucide-react";
 
 interface AddRepartidorDialogProps {
   addRepartidorAction: (data: RepartidorFormData) => Promise<{ success: boolean; error?: string | null }>;

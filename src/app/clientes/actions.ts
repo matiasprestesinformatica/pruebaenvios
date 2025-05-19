@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import type { ClientFormData } from "@/lib/schemas";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { clientSchema } from "@/lib/schemas";
+import type { Cliente } from "@/types/supabase";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 export async function addClientAction(
   data: ClientFormData
-): Promise<{ success: boolean; error?: string | null; data?: any }> {
+): Promise<{ success: boolean; error?: string | null; data?: Cliente | null }> {
   const supabase = createSupabaseServerClient();
 
   const validatedFields = clientSchema.safeParse(data);
@@ -26,24 +28,23 @@ export async function addClientAction(
     .single();
 
   if (error) {
-    console.error("Supabase error object while inserting client:", JSON.stringify(error, null, 2));
+    const pgError = error as PostgrestError;
+    console.error("Supabase error object while inserting client:", JSON.stringify(pgError, null, 2));
     
     let errorMessage = "No se pudo guardar el cliente.";
-    if (typeof error === 'object' && error !== null && (error as any).code === '23505') {
+    if (pgError.code === '23505') {
         // Check if it's the email unique constraint
-        if ((error as any).constraint === 'clientes_email_key') {
+        if (pgError.constraint === 'clientes_email_key') {
             return { success: false, error: "Ya existe un cliente con este email." };
         }
     }
 
-    if (typeof error === 'object' && error !== null) {
-      if ((error as any).message) {
-        errorMessage = (error as any).message;
-      } else if (Object.keys(error).length === 0) {
-        errorMessage = "Error de conexión o configuración con Supabase al guardar. Por favor, verifique las variables de entorno (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) y las políticas RLS.";
-      } else {
-        errorMessage = `Error inesperado al guardar: ${JSON.stringify(error)}`;
-      }
+    if (pgError.message) {
+      errorMessage = pgError.message;
+    } else if (Object.keys(pgError).length === 0) {
+      errorMessage = "Error de conexión o configuración con Supabase al guardar. Por favor, verifique las variables de entorno (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) y las políticas RLS.";
+    } else {
+      errorMessage = `Error inesperado al guardar: ${JSON.stringify(pgError)}`;
     }
     return { success: false, error: errorMessage };
   }
@@ -59,7 +60,7 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
 
   let query = supabase
     .from("clientes")
-    .select("*, empresa:empresas (id, nombre)", { count: "exact" }) // Example of fetching related company name
+    .select("*, empresa:empresas (id, nombre)", { count: "exact" }) 
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -70,17 +71,16 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
   const { data, error, count } = await query;
 
   if (error) {
-    console.error("Supabase error object while fetching clients:", JSON.stringify(error, null, 2));
+    const pgError = error as PostgrestError;
+    console.error("Supabase error object while fetching clients:", JSON.stringify(pgError, null, 2));
     
     let errorMessage = "Ocurrió un error al cargar los clientes.";
-    if (typeof error === 'object' && error !== null) {
-      if ((error as any).message) {
-        errorMessage = (error as any).message;
-      } else if (Object.keys(error).length === 0) {
-        errorMessage = "Error de conexión o configuración con Supabase. Por favor, verifique las variables de entorno (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) y las políticas RLS si están activadas.";
-      } else {
-        errorMessage = `Error inesperado: ${JSON.stringify(error)}`;
-      }
+    if (pgError.message) {
+      errorMessage = pgError.message;
+    } else if (Object.keys(pgError).length === 0) {
+      errorMessage = "Error de conexión o configuración con Supabase. Por favor, verifique las variables de entorno (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) y las políticas RLS si están activadas.";
+    } else {
+      errorMessage = `Error inesperado: ${JSON.stringify(pgError)}`;
     }
     return { data: [], count: 0, error: errorMessage };
   }
