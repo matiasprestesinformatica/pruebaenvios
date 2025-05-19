@@ -58,3 +58,6 @@ export const repartoCreationSchema = z.object({
   envio_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un envío."),
 });
 export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
+
+export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
+export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;

@@ -2,7 +2,11 @@
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Package, AlertTriangle } from "lucide-react";
+import { getRepartoDetailsAction, updateRepartoEstadoAction } from "../actions";
+import { RepartoDetailView } from "@/components/reparto-detail-view";
+import { Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface RepartoDetailPageProps {
   params: {
@@ -10,15 +14,42 @@ interface RepartoDetailPageProps {
   };
 }
 
+async function RepartoDetailContent({ repartoId }: { repartoId: string }) {
+  const { data: repartoCompleto, error } = await getRepartoDetailsAction(repartoId);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-250px)] border-2 border-dashed border-destructive/30 rounded-lg bg-card shadow p-8">
+        <AlertTriangle className="w-24 h-24 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold text-destructive mb-2">Error al Cargar Reparto</h2>
+        <p className="text-destructive/80 text-center max-w-md">
+          {error}
+        </p>
+      </div>
+    );
+  }
+
+  if (!repartoCompleto) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-250px)] border-2 border-dashed border-muted-foreground/30 rounded-lg bg-card shadow p-8">
+        <Package className="w-24 h-24 text-muted-foreground/50 mb-4" />
+        <h2 className="text-xl font-semibold text-muted-foreground mb-2">Reparto no Encontrado</h2>
+        <p className="text-muted-foreground text-center max-w-md">
+          No se pudo encontrar el reparto con el ID proporcionado.
+        </p>
+      </div>
+    );
+  }
+  return <RepartoDetailView initialReparto={repartoCompleto} updateRepartoStatusAction={updateRepartoEstadoAction} />;
+}
+
 export default async function RepartoDetailPage({ params }: RepartoDetailPageProps) {
-  // TODO: Fetch reparto details using params.id with getRepartoDetailsAction
-  // For now, just a placeholder
   const repartoId = params.id;
 
   return (
     <>
       <PageHeader
-        title={`Detalle del Reparto #${repartoId.substring(0,8)}...`}
+        title={`Detalle del Reparto`}
         description="Vea y administre los detalles y el estado de este reparto."
         actions={
           <Button asChild variant="outline">
@@ -29,38 +60,25 @@ export default async function RepartoDetailPage({ params }: RepartoDetailPagePro
           </Button>
         }
       />
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-250px)] border-2 border-dashed border-muted-foreground/30 rounded-lg bg-card shadow p-8">
-        <Package className="w-24 h-24 text-muted-foreground/50 mb-4" />
-        <h2 className="text-xl font-semibold text-muted-foreground mb-2">Detalles del Reparto</h2>
-        <p className="text-muted-foreground text-center max-w-md">
-          Esta sección mostrará la información completa del reparto, incluyendo los envíos asignados y permitirá actualizar su estado.
-        </p>
-        <p className="text-sm text-muted-foreground mt-2">(Funcionalidad en desarrollo)</p>
-      </div>
+      <Suspense fallback={<RepartoDetailSkeleton />}>
+        <RepartoDetailContent repartoId={repartoId} />
+      </Suspense>
     </>
   );
 }
 
-function Package(props: React.SVGProps<SVGSVGElement>) {
-    return (
-      <svg
-        {...props}
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="m7.5 4.27 9 5.15" />
-        <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-        <path d="m3.3 7 8.7 5 8.7-5" />
-        <path d="M12 22V12" />
-      </svg>
-    )
-  }
+function RepartoDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+      </div>
+      <Skeleton className="h-10 w-48 rounded-md" />
+      <Skeleton className="h-64 w-full rounded-lg" />
+    </div>
+  );
+}
 
 export const dynamic = 'force-dynamic';

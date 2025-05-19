@@ -98,10 +98,10 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string // DATE
+          fecha_reparto: string 
           repartidor_id: string | null
-          estado: string // 'asignado', 'en_curso', 'completado'
-          tipo_reparto: string // 'individual', 'viaje_empresa'
+          estado: string 
+          tipo_reparto: string 
           empresa_id: string | null
         }
         Insert: {
@@ -194,10 +194,14 @@ export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
 
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
-  repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre'> | null;
+  repartidores: Pick<Repartidor, 'id' | 'nombre'> | null; // Changed from 'repartidor' to 'repartidores' to match Supabase join syntax
+  empresas: Pick<Empresa, 'id' | 'nombre'> | null; // Changed from 'empresa' to 'empresas'
 };
 
 export type EnvioConCliente = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
+};
+
+export type RepartoCompleto = RepartoConDetalles & {
+  envios_asignados: EnvioConCliente[];
 };

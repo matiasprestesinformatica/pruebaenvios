@@ -174,7 +174,7 @@ export function RepartosListTable({
                     <TableCell>
                         <ClientSideFormattedDate dateString={reparto.fecha_reparto} />
                     </TableCell>
-                    <TableCell>{reparto.repartidor?.nombre || <span className="text-muted-foreground">N/A</span>}</TableCell>
+                    <TableCell>{reparto.repartidores?.nombre || <span className="text-muted-foreground">N/A</span>}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <Badge variant={reparto.tipo_reparto === 'individual' ? 'secondary' : 'outline'} className="capitalize flex items-center w-fit gap-1">
                         {reparto.tipo_reparto === 'individual' ? <Route className="h-3 w-3"/> : <Building2 className="h-3 w-3"/>}
@@ -182,9 +182,9 @@ export function RepartosListTable({
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                        {reparto.tipo_reparto === 'viaje_empresa' && reparto.empresa?.nombre ? (
+                        {reparto.tipo_reparto === 'viaje_empresa' && reparto.empresas?.nombre ? (
                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                                <Building2 className="h-3 w-3" /> {reparto.empresa.nombre}
+                                <Building2 className="h-3 w-3" /> {reparto.empresas.nombre}
                              </Badge>
                         ) : <span className="text-muted-foreground/70">-</span>}
                     </TableCell>

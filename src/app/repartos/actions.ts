@@ -3,9 +3,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { RepartoCreationFormData } from "@/lib/schemas";
-import { repartoCreationSchema } from "@/lib/schemas";
-import type { Database, Reparto } from "@/types/supabase";
+import type { RepartoCreationFormData, EstadoReparto } from "@/lib/schemas";
+import { repartoCreationSchema, estadoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
+import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto } from "@/types/supabase";
+import type { PostgrestError } from "@supabase/supabase-js";
+
 
 type Repartidores = Database['public']['Tables']['repartidores']['Row'];
 type Empresas = Database['public']['Tables']['empresas']['Row'];
@@ -41,13 +43,13 @@ export async function getEmpresasForRepartoAction(): Promise<Pick<Empresas, 'id'
   return data || [];
 }
 
-export async function getEnviosPendientesAction(searchTerm?: string): Promise<(Envios & { clientes: Pick<Clientes, 'nombre' | 'apellido'> | null })[]> {
+export async function getEnviosPendientesAction(searchTerm?: string): Promise<EnvioConCliente[]> {
   const supabase = createSupabaseServerClient();
   let query = supabase
     .from("envios")
-    .select("*, clientes (nombre, apellido)")
-    .is("reparto_id", null) // Only envios not yet assigned to a reparto
-    .eq("status", "pending"); // Only envios with status 'pending'
+    .select("*, clientes (id, nombre, apellido, direccion, email)")
+    .is("reparto_id", null) 
+    .eq("status", estadoEnvioEnum.Values.pending); 
 
   if (searchTerm) {
     query = query.or(`client_location.ilike.%${searchTerm}%,nombre_cliente_temporal.ilike.%${searchTerm}%,clientes.nombre.ilike.%${searchTerm}%,clientes.apellido.ilike.%${searchTerm}%`);
@@ -61,13 +63,12 @@ export async function getEnviosPendientesAction(searchTerm?: string): Promise<(E
     console.error("Error fetching pending envios:", error);
     return [];
   }
-  return data || [];
+  return data as EnvioConCliente[] || [];
 }
 
-export async function getEnviosPendientesPorEmpresaAction(empresaId: string): Promise<(Envios & { clientes: Pick<Clientes, 'id' | 'nombre' | 'apellido'> | null })[]> {
+export async function getEnviosPendientesPorEmpresaAction(empresaId: string): Promise<EnvioConCliente[]> {
   const supabase = createSupabaseServerClient();
 
-  // Step 1: Get client_ids for the given empresa_id
   const { data: clientesData, error: clientesError } = await supabase
     .from("clientes")
     .select("id")
@@ -78,24 +79,23 @@ export async function getEnviosPendientesPorEmpresaAction(empresaId: string): Pr
     return [];
   }
   if (!clientesData || clientesData.length === 0) {
-    return []; // No clients for this company
+    return []; 
   }
   const clientIds = clientesData.map(c => c.id);
 
-  // Step 2: Get pending envios for these client_ids
   const { data: enviosData, error: enviosError } = await supabase
     .from("envios")
-    .select("*, clientes (id, nombre, apellido)")
+    .select("*, clientes (id, nombre, apellido, direccion, email)")
     .in("cliente_id", clientIds)
     .is("reparto_id", null)
-    .eq("status", "pending")
+    .eq("status", estadoEnvioEnum.Values.pending)
     .order("created_at", { ascending: true });
   
   if (enviosError) {
     console.error("Error fetching pending envios for empresa's clients:", enviosError);
     return [];
   }
-  return enviosData || [];
+  return enviosData as EnvioConCliente[] || [];
 }
 
 export async function createRepartoAction(
@@ -113,7 +113,6 @@ export async function createRepartoAction(
   
   const { fecha_reparto, repartidor_id, tipo_reparto, empresa_id, envio_ids } = validatedFields.data;
 
-  // Convert date to YYYY-MM-DD string for Supabase date type
   const fechaRepartoString = fecha_reparto.toISOString().split('T')[0];
 
   const repartoToInsert = {
@@ -121,7 +120,7 @@ export async function createRepartoAction(
     repartidor_id,
     tipo_reparto,
     empresa_id: tipo_reparto === 'viaje_empresa' ? empresa_id : null,
-    estado: 'asignado', // Default status
+    estado: estadoRepartoEnum.Values.asignado, 
   };
 
   const { data: nuevoReparto, error: repartoError } = await supabase
@@ -139,21 +138,19 @@ export async function createRepartoAction(
     return { success: false, error: "No se pudo crear el reparto, no se obtuvo respuesta." };
   }
 
-  // Update selected envios
   const { error: enviosError } = await supabase
     .from("envios")
-    .update({ reparto_id: nuevoReparto.id, status: 'asignado_a_reparto' }) // Update status as well
+    .update({ reparto_id: nuevoReparto.id, status: estadoEnvioEnum.Values.asignado_a_reparto })
     .in("id", envio_ids);
 
   if (enviosError) {
-    // Note: Ideally, you'd roll back the reparto insertion here or use a transaction/RPC
     console.error("Error updating envios for reparto:", enviosError);
     return { success: false, error: `Reparto creado, pero falló la asignación de envíos: ${enviosError.message}. Considere usar una función RPC para atomicidad.` };
   }
 
   revalidatePath("/repartos");
   revalidatePath("/repartos/nuevo");
-  revalidatePath("/envios"); // Envios list might change status
+  revalidatePath("/envios"); 
   return { success: true, data: nuevoReparto };
 }
 
@@ -164,16 +161,13 @@ export async function getRepartosListAction(page = 1, pageSize = 10, searchTerm?
 
   let query = supabase
     .from("repartos")
-    .select("*, repartidor:repartidores (id, nombre), empresa:empresas (id, nombre)", { count: "exact" })
+    .select("*, repartidores (id, nombre), empresas (id, nombre)", { count: "exact" }) // Adjusted alias
     .order("fecha_reparto", { ascending: false })
     .order("created_at", { ascending: false })
     .range(from, to);
   
-  // Add search logic if searchTerm is provided
-  // For now, simple search by repartidor name or empresa name if type is viaje_empresa
   if (searchTerm) {
-    // This search is very basic. For complex search, consider full-text search or more specific filters
-    query = query.or(`repartidores.nombre.ilike.%${searchTerm}%,empresas.nombre.ilike.%${searchTerm}%`);
+    query = query.or(`repartidores.nombre.ilike.%${searchTerm}%,empresas.nombre.ilike.%${searchTerm}%,estado.ilike.%${searchTerm}%`);
   }
 
   const { data, error, count } = await query;
@@ -182,19 +176,78 @@ export async function getRepartosListAction(page = 1, pageSize = 10, searchTerm?
     console.error("Error fetching repartos list:", error);
     return { data: [], count: 0, error: error.message };
   }
-  return { data: data || [], count: count || 0, error: null };
+  return { data: data as RepartoConDetalles[] || [], count: count || 0, error: null };
 }
 
-// Placeholder for getRepartoDetailsAction and updateRepartoStatusAction
-// These would be needed for the /repartos/[id] page
-export async function getRepartoDetailsAction(repartoId: string) {
-  // TODO: Implement fetching reparto details and its associated envios
-  console.warn(`getRepartoDetailsAction for ${repartoId} is not yet implemented.`);
-  return { data: null, error: "Not implemented" };
+export async function getRepartoDetailsAction(repartoId: string): Promise<{ data: RepartoCompleto | null; error: string | null }> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: repartoData, error: repartoError } = await supabase
+    .from("repartos")
+    .select("*, repartidores (id, nombre), empresas (id, nombre)")
+    .eq("id", repartoId)
+    .single();
+
+  if (repartoError || !repartoData) {
+    console.error(`Error fetching reparto details for ID ${repartoId}:`, repartoError);
+    return { data: null, error: repartoError?.message || "Reparto no encontrado." };
+  }
+
+  const { data: enviosData, error: enviosError } = await supabase
+    .from("envios")
+    .select("*, clientes (id, nombre, apellido, direccion, email)")
+    .eq("reparto_id", repartoId)
+    .order("created_at", { ascending: true });
+
+  if (enviosError) {
+    console.error(`Error fetching envios for reparto ID ${repartoId}:`, enviosError);
+    return { data: null, error: `Error al cargar envíos: ${enviosError.message}` };
+  }
+  
+  const repartoCompleto: RepartoCompleto = {
+    ...(repartoData as RepartoConDetalles),
+    envios_asignados: enviosData as EnvioConCliente[] || [],
+  };
+
+  return { data: repartoCompleto, error: null };
 }
 
-export async function updateRepartoStatusAction(repartoId: string, nuevoEstado: string) {
-  // TODO: Implement updating reparto status
-  console.warn(`updateRepartoStatusAction for ${repartoId} to ${nuevoEstado} is not yet implemented.`);
-  return { success: false, error: "Not implemented" };
+export async function updateRepartoEstadoAction(
+  repartoId: string, 
+  nuevoEstado: EstadoReparto,
+  envioIds: string[]
+): Promise<{ success: boolean; error?: string | null }> {
+  const supabase = createSupabaseServerClient();
+  
+  const validatedEstado = estadoRepartoEnum.safeParse(nuevoEstado);
+  if(!validatedEstado.success){
+    return { success: false, error: "Estado de reparto inválido." };
+  }
+
+  const { error } = await supabase
+    .from("repartos")
+    .update({ estado: validatedEstado.data })
+    .eq("id", repartoId);
+
+  if (error) {
+    console.error("Error updating reparto estado:", error);
+    return { success: false, error: error.message };
+  }
+
+  if (validatedEstado.data === estadoRepartoEnum.Values.completado && envioIds.length > 0) {
+    const { error: enviosError } = await supabase
+      .from("envios")
+      .update({ status: estadoEnvioEnum.Values.entregado })
+      .in("id", envioIds);
+
+    if (enviosError) {
+      console.error("Error updating envios status to 'entregado':", enviosError);
+      // Reparto status updated, but envios failed. Client should be informed.
+      return { success: true, error: `Estado del reparto actualizado, pero falló la actualización de los envíos: ${enviosError.message}` };
+    }
+  }
+
+  revalidatePath(`/repartos/${repartoId}`);
+  revalidatePath("/repartos");
+  return { success: true, error: null };
 }
