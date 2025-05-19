@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, PackageSearch, Bike, Building2 } from "lucide-react";
+import { Users, PackageSearch, Bike, Building2, Route } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: "/empresas", label: "Empresas", icon: Building2 },
   { href: "/envios", label: "Envíos", icon: PackageSearch },
   { href: "/repartidores", label: "Repartidores", icon: Bike },
+  { href: "/repartos", label: "Repartos", icon: Route },
 ];
 
 interface MainNavProps extends React.HTMLAttributes<HTMLElement> {

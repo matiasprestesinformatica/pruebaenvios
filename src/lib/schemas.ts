@@ -39,5 +39,22 @@ export const repartidorSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
   estado: z.boolean().default(true),
 });
-
 export type RepartidorFormData = z.infer<typeof repartidorSchema>;
+
+export const estadoRepartoEnum = z.enum(['asignado', 'en_curso', 'completado']);
+export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
+
+export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa']);
+export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
+
+export const repartoCreationSchema = z.object({
+  fecha_reparto: z.date({
+    required_error: "La fecha de reparto es obligatoria.",
+    invalid_type_error: "Formato de fecha inválido.",
+  }),
+  repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
+  tipo_reparto: tipoRepartoEnum,
+  empresa_id: z.string().uuid("Debe seleccionar una empresa para este tipo de reparto.").optional().nullable(),
+  envio_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un envío."),
+});
+export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;

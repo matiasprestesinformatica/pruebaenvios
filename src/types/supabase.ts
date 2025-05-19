@@ -74,44 +74,6 @@ export interface Database {
           empresa_id?: string | null
         }
       }
-      envios: {
-        Row: {
-          id: string
-          created_at: string
-          cliente_id: string | null 
-          nombre_cliente_temporal: string | null 
-          client_location: string
-          package_size: string 
-          package_weight: number 
-          status: string 
-          suggested_options: Json | null
-          reasoning: string | null
-        }
-        Insert: {
-          id?: string
-          created_at?: string
-          cliente_id?: string | null
-          nombre_cliente_temporal?: string | null
-          client_location: string
-          package_size: string
-          package_weight: number
-          status?: string
-          suggested_options?: Json | null
-          reasoning?: string | null
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          cliente_id?: string | null
-          nombre_cliente_temporal?: string | null
-          client_location?: string
-          package_size?: string
-          package_weight?: number
-          status?: string
-          suggested_options?: Json | null
-          reasoning?: string | null
-        }
-      }
       repartidores: {
         Row: {
           id: string
@@ -130,6 +92,76 @@ export interface Database {
           created_at?: string
           nombre?: string
           estado?: boolean
+        }
+      }
+      repartos: {
+        Row: {
+          id: string
+          created_at: string
+          fecha_reparto: string // DATE
+          repartidor_id: string | null
+          estado: string // 'asignado', 'en_curso', 'completado'
+          tipo_reparto: string // 'individual', 'viaje_empresa'
+          empresa_id: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          fecha_reparto: string
+          repartidor_id: string | null
+          estado?: string
+          tipo_reparto: string
+          empresa_id?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          fecha_reparto?: string
+          repartidor_id?: string | null
+          estado?: string
+          tipo_reparto?: string
+          empresa_id?: string | null
+        }
+      }
+      envios: {
+        Row: {
+          id: string
+          created_at: string
+          cliente_id: string | null 
+          nombre_cliente_temporal: string | null 
+          client_location: string
+          package_size: string 
+          package_weight: number 
+          status: string 
+          suggested_options: Json | null
+          reasoning: string | null
+          reparto_id: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          cliente_id?: string | null
+          nombre_cliente_temporal?: string | null
+          client_location: string
+          package_size: string
+          package_weight: number
+          status?: string
+          suggested_options?: Json | null
+          reasoning?: string | null
+          reparto_id?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          cliente_id?: string | null
+          nombre_cliente_temporal?: string | null
+          client_location?: string
+          package_size?: string
+          package_weight?: number
+          status?: string
+          suggested_options?: Json | null
+          reasoning?: string | null
+          reparto_id?: string | null
         }
       }
     }
@@ -153,7 +185,19 @@ export type Empresa = Database['public']['Tables']['empresas']['Row'];
 export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
 export type Cliente = Database['public']['Tables']['clientes']['Row'];
 export type NuevoCliente = Database['public']['Tables']['clientes']['Insert'];
-export type Envio = Database['public']['Tables']['envios']['Row'];
-export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
 export type Repartidor = Database['public']['Tables']['repartidores']['Row'];
 export type NuevoRepartidor = Database['public']['Tables']['repartidores']['Insert'];
+export type Reparto = Database['public']['Tables']['repartos']['Row'];
+export type NuevoReparto = Database['public']['Tables']['repartos']['Insert'];
+export type Envio = Database['public']['Tables']['envios']['Row'];
+export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
+
+// Extended types for relations
+export type RepartoConDetalles = Reparto & {
+  repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
+  empresas: Pick<Empresa, 'id' | 'nombre'> | null;
+};
+
+export type EnvioConCliente = Envio & {
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
+};
