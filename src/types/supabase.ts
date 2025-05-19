@@ -10,6 +10,35 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      empresas: {
+        Row: {
+          id: string
+          created_at: string
+          nombre: string
+          direccion: string | null
+          telefono: string | null
+          email: string | null
+          notas: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          nombre: string
+          direccion?: string | null
+          telefono?: string | null
+          email?: string | null
+          notas?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          nombre?: string
+          direccion?: string | null
+          telefono?: string | null
+          email?: string | null
+          notas?: string | null
+        }
+      }
       clientes: {
         Row: {
           id: string
@@ -20,6 +49,7 @@ export interface Database {
           telefono: string
           email: string
           notas: string | null
+          empresa_id: string | null
         }
         Insert: {
           id?: string
@@ -30,6 +60,7 @@ export interface Database {
           telefono: string
           email: string
           notas?: string | null
+          empresa_id?: string | null
         }
         Update: {
           id?: string
@@ -40,6 +71,7 @@ export interface Database {
           telefono?: string
           email?: string
           notas?: string | null
+          empresa_id?: string | null
         }
       }
       envios: {
@@ -117,6 +149,8 @@ export interface Database {
 }
 
 // Helper types
+export type Empresa = Database['public']['Tables']['empresas']['Row'];
+export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
 export type Cliente = Database['public']['Tables']['clientes']['Row'];
 export type NuevoCliente = Database['public']['Tables']['clientes']['Insert'];
 export type Envio = Database['public']['Tables']['envios']['Row'];

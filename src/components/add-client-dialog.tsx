@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +17,10 @@ import { ClientForm } from "./client-form";
 import type { ClientFormData } from "@/lib/schemas";
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle } from "lucide-react";
+import type { Empresa } from "@/types/supabase";
+import { getEmpresasForClientFormAction } from "@/app/clientes/actions"; // Assuming the action is here
+import { Skeleton } from "@/components/ui/skeleton";
+
 
 interface AddClientDialogProps {
   addClientAction: (data: ClientFormData) => Promise<{ success: boolean; error?: string | null }>;
@@ -25,7 +29,31 @@ interface AddClientDialogProps {
 export function AddClientDialog({ addClientAction }: AddClientDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [empresas, setEmpresas] = useState<Pick<Empresa, 'id' | 'nombre'>[]>([]);
+  const [isLoadingEmpresas, setIsLoadingEmpresas] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      const fetchEmpresas = async () => {
+        setIsLoadingEmpresas(true);
+        try {
+          const empresasData = await getEmpresasForClientFormAction();
+          setEmpresas(empresasData);
+        } catch (error) {
+          console.error("Failed to fetch empresas for client form", error);
+          toast({
+            title: "Error al cargar empresas",
+            description: "No se pudieron cargar las empresas para el formulario.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoadingEmpresas(false);
+        }
+      };
+      fetchEmpresas();
+    }
+  }, [open, toast]);
 
   const handleSubmit = async (data: ClientFormData) => {
     setIsSubmitting(true);
@@ -36,7 +64,7 @@ export function AddClientDialog({ addClientAction }: AddClientDialogProps) {
           title: "Cliente Agregado",
           description: "El nuevo cliente ha sido guardado exitosamente.",
         });
-        setOpen(false); // Close dialog
+        setOpen(false);
       } else {
         toast({
           title: "Error",
@@ -71,7 +99,16 @@ export function AddClientDialog({ addClientAction }: AddClientDialogProps) {
             Complete los campos a continuación para registrar un nuevo cliente.
           </DialogDescription>
         </DialogHeader>
-        <ClientForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+        {isLoadingEmpresas ? (
+            <div className="space-y-4 py-4">
+                <Skeleton className="h-8 w-1/3" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+            </div>
+        ) : (
+            <ClientForm onSubmit={handleSubmit} isSubmitting={isSubmitting} empresas={empresas} />
+        )}
         <DialogFooter className="sm:justify-start mt-4">
             <DialogClose asChild>
                 <Button type="button" variant="outline">

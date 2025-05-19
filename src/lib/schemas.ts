@@ -1,13 +1,23 @@
 
 import { z } from 'zod';
 
+export const empresaSchema = z.object({
+  nombre: z.string().min(1, "El nombre de la empresa es obligatorio."),
+  direccion: z.string().optional().nullable(),
+  telefono: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
+  email: z.string().email("Formato de email inválido.").optional().nullable().or(z.literal('')),
+  notas: z.string().optional().nullable(),
+});
+export type EmpresaFormData = z.infer<typeof empresaSchema>;
+
 export const clientSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
   apellido: z.string().min(1, "El apellido es obligatorio."),
   direccion: z.string().min(1, "La dirección es obligatoria."),
   telefono: z.string().min(1, "El teléfono es obligatorio.").regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido."),
   email: z.string().min(1, "El email es obligatorio.").email("Formato de email inválido."),
-  notas: z.string().optional(),
+  notas: z.string().optional().nullable(),
+  empresa_id: z.string().uuid("ID de empresa inválido.").optional().nullable(),
 });
 
 export type ClientFormData = z.infer<typeof clientSchema>;

@@ -3,12 +3,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, PackageSearch, Bike } from "lucide-react";
+import { Users, PackageSearch, Bike, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/clientes", label: "Clientes", icon: Users },
+  { href: "/empresas", label: "Empresas", icon: Building2 },
   { href: "/envios", label: "Envíos", icon: PackageSearch },
   { href: "/repartidores", label: "Repartidores", icon: Bike },
 ];

@@ -29,9 +29,11 @@ export async function addClientAction(
     console.error("Supabase error object while inserting client:", JSON.stringify(error, null, 2));
     
     let errorMessage = "No se pudo guardar el cliente.";
-    // Check for unique constraint violation (e.g., email)
     if (typeof error === 'object' && error !== null && (error as any).code === '23505') {
-        return { success: false, error: "Ya existe un cliente con este email." };
+        // Check if it's the email unique constraint
+        if ((error as any).constraint === 'clientes_email_key') {
+            return { success: false, error: "Ya existe un cliente con este email." };
+        }
     }
 
     if (typeof error === 'object' && error !== null) {
@@ -46,7 +48,7 @@ export async function addClientAction(
     return { success: false, error: errorMessage };
   }
 
-  revalidatePath("/clientes"); // Revalidate the clients page to show the new client
+  revalidatePath("/clientes"); 
   return { success: true, data: client };
 }
 
@@ -57,7 +59,7 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
 
   let query = supabase
     .from("clientes")
-    .select("*", { count: "exact" })
+    .select("*, empresa:empresas (id, nombre)", { count: "exact" }) // Example of fetching related company name
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -68,7 +70,6 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
   const { data, error, count } = await query;
 
   if (error) {
-    // Log the full error object for better server-side debugging
     console.error("Supabase error object while fetching clients:", JSON.stringify(error, null, 2));
     
     let errorMessage = "Ocurrió un error al cargar los clientes.";
@@ -76,14 +77,26 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
       if ((error as any).message) {
         errorMessage = (error as any).message;
       } else if (Object.keys(error).length === 0) {
-        // This specifically handles the case where error is {}
         errorMessage = "Error de conexión o configuración con Supabase. Por favor, verifique las variables de entorno (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) y las políticas RLS si están activadas.";
       } else {
-        // Fallback for other types of error objects
         errorMessage = `Error inesperado: ${JSON.stringify(error)}`;
       }
     }
     return { data: [], count: 0, error: errorMessage };
   }
   return { data: data || [], count: count || 0, error: null };
+}
+
+export async function getEmpresasForClientFormAction() {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("empresas")
+    .select("id, nombre")
+    .order("nombre", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching empresas for client form:", error);
+    return [];
+  }
+  return data || [];
 }

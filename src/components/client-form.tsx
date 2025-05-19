@@ -16,13 +16,22 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
+import type { Empresa } from "@/types/supabase";
 
 interface ClientFormProps {
   onSubmit: (data: ClientFormData) => Promise<void>;
   initialData?: Partial<ClientFormData>;
   isSubmitting?: boolean;
   submitButtonText?: string;
+  empresas: Pick<Empresa, 'id' | 'nombre'>[];
 }
 
 export function ClientForm({
@@ -30,6 +39,7 @@ export function ClientForm({
   initialData,
   isSubmitting = false,
   submitButtonText = "Guardar Cliente",
+  empresas = [],
 }: ClientFormProps) {
   const form = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
@@ -40,13 +50,16 @@ export function ClientForm({
       telefono: "",
       email: "",
       notas: "",
+      empresa_id: null,
     },
   });
 
   const handleFormSubmit = async (data: ClientFormData) => {
-    await onSubmit(data);
-    // Optionally reset form if needed, handled by parent component after successful submission.
-    // if (!initialData) form.reset(); 
+    const submittedData = {
+        ...data,
+        empresa_id: data.empresa_id === "" ? null : data.empresa_id, // Ensure empty string is sent as null
+    };
+    await onSubmit(submittedData);
   };
 
   return (
@@ -80,6 +93,31 @@ export function ClientForm({
             )}
           />
         </div>
+        <FormField
+          control={form.control}
+          name="empresa_id"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Empresa (Opcional)</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar una empresa" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="">Ninguna</SelectItem>
+                  {empresas.map((empresa) => (
+                    <SelectItem key={empresa.id} value={empresa.id}>
+                      {empresa.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name="direccion"
@@ -132,6 +170,7 @@ export function ClientForm({
                   placeholder="Información adicional sobre el cliente..."
                   className="resize-none"
                   {...field}
+                  value={field.value ?? ""}
                 />
               </FormControl>
               <FormMessage />
