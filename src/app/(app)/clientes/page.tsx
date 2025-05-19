@@ -27,21 +27,12 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
   const currentPage = Number(searchParams?.page) || 1;
   const searchTerm = searchParams?.search || undefined;
 
-  // Callback for AddClientDialog to revalidate/refresh data
-  // This is tricky with server components. Revalidation is handled by server action.
-  // For immediate UI update, client-side state management or optimistic updates would be needed,
-  // but revalidatePath in action should suffice for now.
-  const handleClientAdded = async () => {
-    // Revalidation is done by the server action.
-    // This function could be used for client-side optimistic updates if needed.
-  };
-
   return (
     <>
       <PageHeader
         title="Gestión de Clientes"
         description="Agregue, vea y administre los datos de sus clientes."
-        actions={<AddClientDialog onClientAdded={handleClientAdded} addClientAction={addClientAction} />}
+        actions={<AddClientDialog addClientAction={addClientAction} />}
       />
       <Suspense fallback={<ClientsTableSkeleton />}>
         <ClientsData currentPage={currentPage} searchTerm={searchTerm} />

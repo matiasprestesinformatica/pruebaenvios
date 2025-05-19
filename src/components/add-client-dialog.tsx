@@ -19,11 +19,10 @@ import { useToast } from "@/hooks/use-toast";
 import { PlusCircle } from "lucide-react";
 
 interface AddClientDialogProps {
-  onClientAdded: () => void; // Callback to refresh client list
   addClientAction: (data: ClientFormData) => Promise<{ success: boolean; error?: string | null }>;
 }
 
-export function AddClientDialog({ onClientAdded, addClientAction }: AddClientDialogProps) {
+export function AddClientDialog({ addClientAction }: AddClientDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -37,7 +36,6 @@ export function AddClientDialog({ onClientAdded, addClientAction }: AddClientDia
           title: "Cliente Agregado",
           description: "El nuevo cliente ha sido guardado exitosamente.",
         });
-        onClientAdded(); // Refresh client list
         setOpen(false); // Close dialog
       } else {
         toast({
