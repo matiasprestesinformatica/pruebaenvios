@@ -8,8 +8,8 @@
     pkgs.nodejs_20
     pkgs.zulu
     pkgs.pnpm_10
-    pkgs.supabase-cli
     pkgs.daemontools
+    pkgs.supabase-cli
   ];
   # Sets environment variables in the workspace
   env = {};
