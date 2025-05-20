@@ -164,6 +164,29 @@ export interface Database {
           reparto_id?: string | null
         }
       }
+      paradas_reparto: { // Nueva tabla
+        Row: {
+          id: string
+          reparto_id: string
+          envio_id: string
+          orden: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          reparto_id: string
+          envio_id: string
+          orden: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          reparto_id?: string
+          envio_id?: string
+          orden?: number
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -191,19 +214,26 @@ export type Reparto = Database['public']['Tables']['repartos']['Row'];
 export type NuevoReparto = Database['public']['Tables']['repartos']['Insert'];
 export type Envio = Database['public']['Tables']['envios']['Row'];
 export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
+export type ParadaReparto = Database['public']['Tables']['paradas_reparto']['Row'];
+export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']['Insert'];
+
 
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null; // Added 'direccion'
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null;
 };
 
 export type EnvioConCliente = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
 };
 
+export type ParadaConEnvioYCliente = ParadaReparto & {
+  envio: EnvioConCliente; // Asumimos que una parada siempre tendrá un envío válido.
+};
+
 export type RepartoCompleto = RepartoConDetalles & {
-  envios_asignados: EnvioConCliente[];
+  paradas: ParadaConEnvioYCliente[];
 };
 
 export type ClienteWithEmpresa = Cliente & {

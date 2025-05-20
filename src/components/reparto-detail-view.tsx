@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { RepartoCompleto } from "@/types/supabase";
+import type { RepartoCompleto, ParadaConEnvioYCliente } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
 import { estadoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, MapPin } from "lucide-react"; // Added MapPin
+import { User, CalendarDays, Truck, Building, Loader2, MapPin as IconMapPin } from "lucide-react"; // Renamed MapPin to IconMapPin
 
 interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
@@ -52,7 +52,7 @@ function getEstadoRepartoBadgeVariant(estado?: string | null) {
   switch (estado) {
     case estadoRepartoEnum.Values.asignado: return 'default';
     case estadoRepartoEnum.Values.en_curso: return 'secondary';
-    case estadoRepartoEnum.Values.completado: return 'outline'; // Consider a success variant
+    case estadoRepartoEnum.Values.completado: return 'outline';
     default: return 'outline';
   }
 }
@@ -96,26 +96,30 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
 
   const handleStatusChange = async () => {
     startUpdatingTransition(async () => {
-        const envioIds = reparto.envios_asignados.map(envio => envio.id);
+        const envioIds = reparto.paradas.map(p => p.envio_id).filter(Boolean) as string[];
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
+        
         if (result.success) {
-            const updatedReparto = { ...reparto, estado: selectedStatus };
+            // Optimistic update for reparto state
+            const updatedRepartoState = { ...reparto, estado: selectedStatus };
             
+            // Optimistic update for envio states based on new reparto state
             let newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto; 
             if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
                 newEnvioStatus = estadoEnvioEnum.Values.en_transito;
             } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
                 newEnvioStatus = estadoEnvioEnum.Values.entregado;
-            } else if (selectedStatus === estadoRepartoEnum.Values.asignado) {
-                newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto;
             }
-
-            updatedReparto.envios_asignados = updatedReparto.envios_asignados.map(e => ({
-                ...e,
-                status: newEnvioStatus
+            
+            updatedRepartoState.paradas = updatedRepartoState.paradas.map(parada => ({
+                ...parada,
+                envio: {
+                    ...parada.envio,
+                    status: newEnvioStatus
+                }
             }));
 
-            setReparto(updatedReparto);
+            setReparto(updatedRepartoState);
             toast({ title: "Estado Actualizado", description: "El estado del reparto y envíos asociados ha sido actualizado." });
         } else {
             toast({ title: "Error", description: result.error || "No se pudo actualizar el estado.", variant: "destructive" });
@@ -166,7 +170,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
           )}
           {isViajeEmpresa && reparto.empresas?.direccion && (
              <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-2 lg:col-span-1">
-                <MapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+                <IconMapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
                 <div>
                 <p className="text-sm text-muted-foreground">Dirección de Retiro Inicial</p>
                 <p className="font-medium">{reparto.empresas.direccion}</p>
@@ -182,7 +186,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <Badge variant={getEstadoRepartoBadgeVariant(reparto.estado)} className={`${getEstadoRepartoBadgeColor(reparto.estado)} text-lg px-4 py-1.5`}>
-            {reparto.estado?.replace(/_/g, ' ').toUpperCase() || 'DESCONOCIDO'}
+            {(reparto.estado || 'Desconocido').replace(/_/g, ' ').toUpperCase()}
           </Badge>
           <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as EstadoReparto)} disabled={isUpdating}>
             <SelectTrigger className="w-[200px]">
@@ -190,7 +194,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
             </SelectTrigger>
             <SelectContent>
               {estadoRepartoEnum.options.map(estadoOpt => (
-                <SelectItem key={estadoOpt} value={estadoOpt}>{estadoOpt.replace(/_/g, ' ').toUpperCase()}</SelectItem>
+                <SelectItem key={estadoOpt} value={estadoOpt}>{(estadoOpt || 'Desconocido').replace(/_/g, ' ').toUpperCase()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -203,14 +207,16 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
 
       <Card>
         <CardHeader>
-          <CardTitle>Envíos Asignados ({reparto.envios_asignados.length})</CardTitle>
+          <CardTitle>Envíos/Paradas Asignadas ({reparto.paradas.length})</CardTitle>
+           <CardDescription>Esta es la secuencia de entrega planificada. La funcionalidad para reordenar las paradas se implementará en una futura actualización.</CardDescription>
         </CardHeader>
         <CardContent>
-          {reparto.envios_asignados.length > 0 ? (
+          {reparto.paradas.length > 0 ? (
             <div className="overflow-x-auto">
                 <Table>
                     <TableHeader>
                     <TableRow>
+                        <TableHead className="w-12">Orden</TableHead>
                         <TableHead>Cliente/Destino</TableHead>
                         <TableHead>Ubicación</TableHead>
                         <TableHead>Paquete</TableHead>
@@ -218,19 +224,20 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
                     </TableRow>
                     </TableHeader>
                     <TableBody>
-                    {reparto.envios_asignados.map((envio) => (
-                        <TableRow key={envio.id}>
+                    {reparto.paradas.map((parada) => (
+                        <TableRow key={parada.id}>
+                        <TableCell className="font-medium">{parada.orden + 1}</TableCell> {/* Display 1-based order */}
                         <TableCell>
                             <div className="font-medium">
-                            {envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.nombre_cliente_temporal || "N/A"}
+                            {parada.envio.clientes ? `${parada.envio.clientes.nombre} ${parada.envio.clientes.apellido}` : parada.envio.nombre_cliente_temporal || "N/A"}
                             </div>
-                            {envio.clientes?.email && <div className="text-xs text-muted-foreground">{envio.clientes.email}</div>}
+                            {parada.envio.clientes?.email && <div className="text-xs text-muted-foreground">{parada.envio.clientes.email}</div>}
                         </TableCell>
-                        <TableCell>{envio.client_location}</TableCell>
-                        <TableCell>{envio.package_size}, {envio.package_weight}kg</TableCell>
+                        <TableCell>{parada.envio.client_location}</TableCell>
+                        <TableCell>{parada.envio.package_size}, {parada.envio.package_weight}kg</TableCell>
                         <TableCell>
-                            <Badge className={`${getEstadoEnvioBadgeColor(envio.status)} capitalize`}>
-                                {envio.status?.replace(/_/g, ' ') || 'desconocido'}
+                            <Badge className={`${getEstadoEnvioBadgeColor(parada.envio.status)} capitalize`}>
+                                {(parada.envio.status || 'desconocido').replace(/_/g, ' ')}
                             </Badge>
                         </TableCell>
                         </TableRow>

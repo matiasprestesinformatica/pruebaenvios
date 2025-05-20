@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RepartoCreationFormData, RepartoLoteCreationFormData, EstadoReparto } from "@/lib/schemas";
 import { repartoCreationSchema, repartoLoteCreationSchema, estadoRepartoEnum, tipoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
-import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto, Cliente, NuevoEnvio } from "@/types/supabase";
+import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto, Cliente, NuevoEnvio, ParadaConEnvioYCliente, NuevaParadaReparto } from "@/types/supabase";
 
 type Repartidores = Database['public']['Tables']['repartidores']['Row'];
 type Empresas = Database['public']['Tables']['empresas']['Row'];
@@ -159,6 +159,7 @@ export async function createRepartoAction(
     return { success: false, error: "No se pudo crear el reparto, no se obtuvo respuesta.", data: null };
   }
 
+  // Update envios and create paradas_reparto
   const { error: enviosError } = await supabase
     .from("envios")
     .update({ reparto_id: nuevoReparto.id, status: estadoEnvioEnum.Values.asignado_a_reparto })
@@ -166,7 +167,22 @@ export async function createRepartoAction(
 
   if (enviosError) {
     console.error("Error updating envios for reparto:", enviosError);
-    return { success: true, error: `Reparto creado, pero falló la asignación de envíos: ${enviosError.message}. Considere usar una función RPC para atomicidad.`, data: nuevoReparto };
+    // Consider rolling back reparto creation or logging, for now, we return partial success
+    return { success: true, error: `Reparto creado, pero falló la asignación de envíos: ${enviosError.message}.`, data: nuevoReparto };
+  }
+
+  const paradasToInsert: NuevaParadaReparto[] = envio_ids.map((envioId, index) => ({
+    reparto_id: nuevoReparto.id,
+    envio_id: envioId,
+    orden: index, // Simple sequential order
+  }));
+
+  if (paradasToInsert.length > 0) {
+    const { error: paradasError } = await supabase.from("paradas_reparto").insert(paradasToInsert);
+    if (paradasError) {
+      console.error("Error creating paradas_reparto:", paradasError);
+      return { success: true, error: `Reparto y envíos actualizados, pero falló la creación de paradas: ${paradasError.message}.`, data: nuevoReparto };
+    }
   }
 
   revalidatePath("/repartos");
@@ -212,7 +228,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
 
     const { data: repartoData, error: repartoError } = await supabase
       .from("repartos")
-      .select("*, repartidores (id, nombre), empresas (id, nombre, direccion)") // Ensure direccion is selected
+      .select("*, repartidores (id, nombre), empresas (id, nombre, direccion)")
       .eq("id", repartoId)
       .single();
 
@@ -221,20 +237,25 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
       return { data: null, error: repartoError?.message || "Reparto no encontrado." };
     }
 
-    const { data: enviosData, error: enviosError } = await supabase
-      .from("envios")
-      .select("*, clientes (id, nombre, apellido, direccion, email)")
+    const { data: paradasData, error: paradasError } = await supabase
+      .from("paradas_reparto")
+      .select("*, envio:envios (*, clientes (*))") // Fetch paradas and join envios with their clientes
       .eq("reparto_id", repartoId)
-      .order("created_at", { ascending: true });
+      .order("orden", { ascending: true });
 
-    if (enviosError) {
-      console.error(`Error fetching envios for reparto ID ${repartoId}:`, enviosError);
-      return { data: null, error: `Error al cargar envíos: ${enviosError.message}` };
+    if (paradasError) {
+      console.error(`Error fetching paradas for reparto ID ${repartoId}:`, paradasError);
+      return { data: null, error: `Error al cargar paradas del reparto: ${paradasError.message}` };
     }
+    
+    const paradasConEnvioYCliente: ParadaConEnvioYCliente[] = (paradasData || []).map(p => ({
+      ...p,
+      envio: p.envio as EnvioConCliente // Cast nested envio to EnvioConCliente
+    }));
     
     const repartoCompleto: RepartoCompleto = {
       ...(repartoData as RepartoConDetalles),
-      envios_asignados: enviosData as EnvioConCliente[] || [],
+      paradas: paradasConEnvioYCliente,
     };
 
     return { data: repartoCompleto, error: null };
@@ -245,10 +266,11 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
   }
 }
 
+
 export async function updateRepartoEstadoAction(
   repartoId: string, 
   nuevoEstado: EstadoReparto,
-  envioIds: string[]
+  envioIds: string[] // Mantener envíoIds para la lógica de actualización, se obtendrán de las paradas en el componente
 ): Promise<{ success: boolean; error?: string | null }> {
   const supabase = createSupabaseServerClient();
   
@@ -399,33 +421,46 @@ export async function createRepartoLoteAction(
       return { success: true, error: `Reparto por lote creado, pero falló la obtención de detalles de clientes: ${clientesError.message}.`, data: nuevoReparto };
     }
 
-    const nuevosEnvios: NuevoEnvio[] = [];
+    const nuevosEnviosParaInsertar: NuevoEnvio[] = [];
     for (const cliente of clientesData || []) {
       if (!cliente.direccion) {
         console.warn(`Cliente ${cliente.id} no tiene dirección. No se generará envío automático para este cliente.`);
         continue; 
       }
-      nuevosEnvios.push({
+      nuevosEnviosParaInsertar.push({
         cliente_id: cliente.id,
         client_location: cliente.direccion,
         package_size: 'medium', // Default size
         package_weight: 1, // Default weight
-        status: estadoEnvioEnum.Values.asignado_a_reparto,
-        reparto_id: nuevoReparto.id,
-        nombre_cliente_temporal: null,
-        suggested_options: null,
-        reasoning: null,
+        status: estadoEnvioEnum.Values.asignado_a_reparto, // Initial status for auto-generated
+        reparto_id: nuevoReparto.id, // Link to the new reparto
       });
     }
 
-    if (nuevosEnvios.length > 0) {
-      const { error: enviosInsertError } = await supabase
+    if (nuevosEnviosParaInsertar.length > 0) {
+      const { data: insertedEnvios, error: enviosInsertError } = await supabase
         .from("envios")
-        .insert(nuevosEnvios);
+        .insert(nuevosEnviosParaInsertar)
+        .select("id"); // Select IDs of newly inserted shipments
 
       if (enviosInsertError) {
         console.error("Error auto-generating shipments for reparto lote:", enviosInsertError);
         return { success: true, error: `Reparto por lote creado, pero falló la generación automática de envíos: ${enviosInsertError.message}.`, data: nuevoReparto };
+      }
+      
+      // Create paradas_reparto for the newly created envios
+      if (insertedEnvios && insertedEnvios.length > 0) {
+        const paradasToInsert: NuevaParadaReparto[] = insertedEnvios.map((envio, index) => ({
+          reparto_id: nuevoReparto.id,
+          envio_id: envio.id,
+          orden: index,
+        }));
+
+        const { error: paradasError } = await supabase.from("paradas_reparto").insert(paradasToInsert);
+        if (paradasError) {
+          console.error("Error creating paradas_reparto for auto-generated shipments:", paradasError);
+          // Non-critical for the success of reparto creation itself, but good to log
+        }
       }
     }
   }
