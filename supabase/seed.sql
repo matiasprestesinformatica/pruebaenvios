@@ -1,153 +1,210 @@
+-- Drop tables in reverse order of dependency due to foreign keys
+DROP TABLE IF EXISTS "public"."paradas_reparto";
+DROP TABLE IF EXISTS "public"."envios";
+DROP TABLE IF EXISTS "public"."repartos";
+DROP TABLE IF EXISTS "public"."clientes";
+DROP TABLE IF EXISTS "public"."empresas";
+DROP TABLE IF EXISTS "public"."repartidores";
 
--- Eliminar tablas existentes en orden inverso de dependencia para evitar errores de FK
-DROP TABLE IF EXISTS public.paradas_reparto CASCADE;
-DROP TABLE IF EXISTS public.envios CASCADE;
-DROP TABLE IF EXISTS public.repartos CASCADE;
-DROP TABLE IF EXISTS public.clientes CASCADE;
-DROP TABLE IF EXISTS public.empresas CASCADE;
-DROP TABLE IF EXISTS public.repartidores CASCADE;
-
--- Crear tabla para Empresas
-CREATE TABLE public.empresas (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    nombre TEXT NOT NULL UNIQUE,
-    direccion TEXT NULL,
-    telefono TEXT NULL,
-    email TEXT NULL UNIQUE,
-    notas TEXT NULL
-);
-COMMENT ON TABLE "public"."empresas" IS 'Stores company information.';
-
--- Crear tabla para Clientes
-CREATE TABLE public.clientes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    nombre TEXT NOT NULL,
-    apellido TEXT NOT NULL,
-    direccion TEXT NOT NULL,
-    latitud NUMERIC NULL, -- Nueva columna para latitud
-    longitud NUMERIC NULL, -- Nueva columna para longitud
-    telefono TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    notas TEXT NULL,
-    empresa_id UUID NULL REFERENCES empresas(id) ON DELETE SET NULL
-);
-COMMENT ON TABLE "public"."clientes" IS 'Stores client information.';
-COMMENT ON COLUMN "public"."clientes"."latitud" IS 'Latitude of the client address.';
-COMMENT ON COLUMN "public"."clientes"."longitud" IS 'Longitude of the client address.';
+-- Drop enums if they exist (handle with care in production)
+DROP TYPE IF EXISTS "public"."estadorepartoenum";
+DROP TYPE IF EXISTS "public"."tiporepartoenum";
+DROP TYPE IF EXISTS "public"."estadoenvioenum";
+DROP TYPE IF EXISTS "public"."packagesizeenum";
 
 
--- Crear tabla para Repartidores
-CREATE TABLE public.repartidores (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    nombre TEXT NOT NULL,
-    estado BOOLEAN NOT NULL DEFAULT TRUE -- TRUE para activo, FALSE para inactivo
-);
-COMMENT ON TABLE "public"."repartidores" IS 'Stores delivery personnel information.';
-
--- Crear tipo ENUM para estado_reparto si no existe
+-- Create ENUM types if they don't exist
+-- For Repartos
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'estadorepartoenum') THEN
-        CREATE TYPE estadoRepartoEnum AS ENUM ('asignado', 'en_curso', 'completado');
+        CREATE TYPE "public"."estadorepartoenum" AS ENUM ('asignado', 'en_curso', 'completado');
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tiporepartoenum') THEN
-        CREATE TYPE tipoRepartoEnum AS ENUM ('individual', 'viaje_empresa', 'viaje_empresa_lote');
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'estadoenvioenum') THEN
-        CREATE TYPE estadoEnvioEnum AS ENUM ('pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega');
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'packagesizeenum') THEN
-         CREATE TYPE packageSizeEnum AS ENUM ('small', 'medium', 'large');
-    END IF;
-END
-$$;
+END$$;
 
--- Crear tabla para Repartos
-CREATE TABLE public.repartos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    fecha_reparto DATE NOT NULL,
-    repartidor_id UUID REFERENCES repartidores(id) ON DELETE SET NULL,
-    estado TEXT NOT NULL DEFAULT 'asignado', -- Usar TEXT y validar en la app, o usar estadoRepartoEnum
-    tipo_reparto TEXT NOT NULL, -- Usar TEXT y validar en la app, o usar tipoRepartoEnum
-    empresa_id UUID NULL REFERENCES empresas(id) ON DELETE SET NULL
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tiporepartoenum') THEN
+        CREATE TYPE "public"."tiporepartoenum" AS ENUM ('individual', 'viaje_empresa', 'viaje_empresa_lote');
+    END IF;
+END$$;
+
+-- For Envios
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'estadoenvioenum') THEN
+        CREATE TYPE "public"."estadoenvioenum" AS ENUM ('pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega');
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'packagesizeenum') THEN
+        CREATE TYPE "public"."packagesizeenum" AS ENUM ('small', 'medium', 'large');
+    END IF;
+END$$;
+
+
+-- Create Table for Empresas
+CREATE TABLE "public"."empresas" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "direccion" TEXT NULL,
+    "telefono" TEXT NULL,
+    "email" TEXT NULL,
+    "notas" TEXT NULL
+);
+COMMENT ON TABLE "public"."empresas" IS 'Stores company information.';
+ALTER TABLE "public"."empresas" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON "public"."empresas" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
+
+-- Create Table for Clientes
+CREATE TABLE "public"."clientes" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "apellido" TEXT NOT NULL,
+    "direccion" TEXT NOT NULL,
+    "latitud" NUMERIC NULL,
+    "longitud" NUMERIC NULL,
+    "telefono" TEXT NOT NULL,
+    "email" TEXT NOT NULL UNIQUE,
+    "notas" TEXT NULL,
+    "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL,
+    "estado" BOOLEAN NOT NULL DEFAULT TRUE -- Nuevo campo para estado del cliente
+);
+COMMENT ON TABLE "public"."clientes" IS 'Stores client information and their link to a company.';
+ALTER TABLE "public"."clientes" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON "public"."clientes" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
+
+-- Create Table for Repartidores
+CREATE TABLE "public"."repartidores" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "estado" BOOLEAN NOT NULL DEFAULT TRUE
+);
+COMMENT ON TABLE "public"."repartidores" IS 'Stores delivery personnel information.';
+ALTER TABLE "public"."repartidores" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON "public"."repartidores" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
+
+-- Create Table for Repartos
+CREATE TABLE "public"."repartos" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    "fecha_reparto" DATE NOT NULL,
+    "repartidor_id" UUID NULL REFERENCES "public"."repartidores"("id") ON DELETE SET NULL,
+    "estado" TEXT NOT NULL DEFAULT 'asignado', -- Uses Zod enum for validation ('asignado', 'en_curso', 'completado')
+    "tipo_reparto" TEXT NOT NULL, -- Uses Zod enum ('individual', 'viaje_empresa', 'viaje_empresa_lote')
+    "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL
 );
 COMMENT ON TABLE "public"."repartos" IS 'Stores delivery route information.';
+ALTER TABLE "public"."repartos" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON "public"."repartos" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
--- Crear tabla para Envíos
-CREATE TABLE public.envios (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    cliente_id UUID NULL REFERENCES clientes(id) ON DELETE SET NULL,
-    nombre_cliente_temporal TEXT NULL,
-    client_location TEXT NOT NULL,
-    latitud NUMERIC NULL,
-    longitud NUMERIC NULL,
-    package_size TEXT NOT NULL, -- Usar TEXT y validar en la app, o usar packageSizeEnum
-    package_weight REAL NOT NULL DEFAULT 0.1,
-    status TEXT NOT NULL DEFAULT 'pending', -- Usar TEXT y validar en la app, o usar estadoEnvioEnum
-    suggested_options JSONB NULL,
-    reasoning TEXT NULL,
-    reparto_id UUID NULL REFERENCES repartos(id) ON DELETE SET NULL
+-- Create Table for Envios
+CREATE TABLE "public"."envios" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    "cliente_id" UUID NULL REFERENCES "public"."clientes"("id") ON DELETE SET NULL,
+    "nombre_cliente_temporal" TEXT NULL,
+    "client_location" TEXT NOT NULL,
+    "latitud" NUMERIC NULL, -- For geocoding the client_location of the shipment
+    "longitud" NUMERIC NULL, -- For geocoding the client_location of the shipment
+    "package_size" TEXT NOT NULL, -- Uses Zod enum ('small', 'medium', 'large')
+    "package_weight" NUMERIC NOT NULL DEFAULT 0.1,
+    "status" TEXT NOT NULL DEFAULT 'pending', -- Uses Zod enum ('pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega')
+    "suggested_options" JSON NULL,
+    "reasoning" TEXT NULL,
+    "reparto_id" UUID NULL REFERENCES "public"."repartos"("id") ON DELETE SET NULL
 );
-COMMENT ON TABLE "public"."envios" IS 'Stores shipment information.';
+COMMENT ON TABLE "public"."envios" IS 'Stores individual shipment details.';
+COMMENT ON COLUMN "public"."envios"."reparto_id" IS 'Foreign key to the assigned reparto.';
 COMMENT ON COLUMN "public"."envios"."latitud" IS 'Latitude of the client_location for mapping.';
 COMMENT ON COLUMN "public"."envios"."longitud" IS 'Longitude of the client_location for mapping.';
+ALTER TABLE "public"."envios" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON "public"."envios" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
--- Crear tabla para Paradas de Reparto (tabla de unión entre repartos y envios con orden)
-CREATE TABLE public.paradas_reparto (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    reparto_id UUID NOT NULL REFERENCES repartos(id) ON DELETE CASCADE,
-    envio_id UUID NOT NULL REFERENCES envios(id) ON DELETE CASCADE,
-    orden INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+-- Create Table for Paradas_Reparto (Junction table for Repartos and Envios)
+CREATE TABLE "public"."paradas_reparto" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "reparto_id" UUID NOT NULL REFERENCES "public"."repartos"("id") ON DELETE CASCADE,
+    "envio_id" UUID NOT NULL REFERENCES "public"."envios"("id") ON DELETE CASCADE,
+    "orden" INTEGER NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     CONSTRAINT uq_reparto_envio UNIQUE (reparto_id, envio_id)
-    -- CONSTRAINT uq_reparto_orden UNIQUE (reparto_id, orden) -- Eliminada para facilitar reordenamiento simple
+    -- Removed: CONSTRAINT uq_reparto_orden UNIQUE (reparto_id, orden) 
 );
-COMMENT ON TABLE "public"."paradas_reparto" IS 'Junction table for shipments in a delivery route, defining order.';
+COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence of shipments (stops) within a delivery route.';
+ALTER TABLE "public"."paradas_reparto" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for authenticated users" ON "public"."paradas_reparto" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
 
--- Insertar datos de ejemplo
-INSERT INTO public.empresas (nombre, direccion, telefono, email, notas) VALUES
-('Tech Solutions SRL', 'Av. Independencia 1234, Mar del Plata', '+542234567890', 'contacto@techsolutions.com', 'Cliente VIP de tecnología'),
-('Nutrisabor', 'San Juan 567, Mar del Plata', '+542236543210', 'pedidos@nutrisabor.com', 'Productos frescos y orgánicos'),
-('Libros del Puerto', '12 de Octubre 3210, Mar del Plata', '+542231234567', 'info@librosdelpuerto.com', NULL);
+-- Sample Data
+INSERT INTO "public"."empresas" ("id", "nombre", "direccion", "email", "telefono") VALUES
+('a1b2c3d4-e5f6-7890-1234-567890abcdef', 'Tech Solutions SRL', 'San Martin 123, Mar del Plata', 'contacto@techsrl.com', '+542235550100'),
+('b2c3d4e5-f6a7-8901-2345-678901bcdef0', 'Nutrisabor', 'Av. Independencia 456, Mar del Plata', 'ventas@nutrisabor.com', '+542235550200');
 
-INSERT INTO public.clientes (nombre, apellido, direccion, latitud, longitud, telefono, email, notas, empresa_id) VALUES
-('Juan', 'Perez', 'Av. Colón 2345, Mar del Plata', -38.0005, -57.5559, '+542235550101', 'juan.perez@example.com', 'Prefiere entregas por la mañana', (SELECT id from empresas WHERE nombre = 'Tech Solutions SRL')),
-('Maria', 'Garcia', 'Alberti 876, Mar del Plata', -38.0022, -57.5488, '+542235550102', 'maria.garcia@example.com', 'Llamar antes de entregar', (SELECT id from empresas WHERE nombre = 'Nutrisabor')),
-('Carlos', 'Lopez', 'Hipólito Yrigoyen 1500, Mar del Plata', -37.9952, -57.5531, '+542235550103', 'carlos.lopez@example.com', NULL, NULL),
-('Ana', 'Martinez', 'Paso 3000, Mar del Plata', -38.0115, -57.5697, '+542235550104', 'ana.martinez@example.com', 'Cuidado con el perro', (SELECT id from empresas WHERE nombre = 'Tech Solutions SRL'));
+INSERT INTO "public"."clientes" ("id", "nombre", "apellido", "direccion", "telefono", "email", "empresa_id", "latitud", "longitud", "estado") VALUES
+('0f1ab15c-b943-43cd-9ed3-b3f6bf1f8d1a', 'Juan', 'Perez', 'Av. Colón 1234, Mar del Plata', '+542235550101', 'juan.perez@example.com', (SELECT id from empresas WHERE nombre = 'Tech Solutions SRL'), -38.0005, -57.5560, TRUE),
+('d9b577b8-2118-4c19-9c6d-a39399e55082', 'Maria', 'Garcia', 'Belgrano 5678, Mar del Plata', '+542235550102', 'maria.garcia@example.com', (SELECT id from empresas WHERE nombre = 'Nutrisabor'), -38.0025, -57.5490, TRUE),
+('7a6280f8-c761-41ce-98f3-ce7e23bfa93d', 'Carlos', 'Lopez', 'Moreno 9101, Mar del Plata', '+542235550103', 'carlos.lopez@example.com', (SELECT id from empresas WHERE nombre = 'Nutrisabor'), -37.9910, -57.5830, FALSE),
+('7ee95baf-df9a-458b-bab3-28ef838fc360', 'Ana', 'Martinez', 'Luro 3210, Mar del Plata', '+542235550104', 'ana.martinez@example.com', (SELECT id from empresas WHERE nombre = 'Tech Solutions SRL'), -38.0048, -57.5430, TRUE),
+('89dcdd25-3cdd-4adf-b92f-b638c6efd656', 'Andrea', 'dentone', '25 de Mayo 3334, B7600 Mar del Plata, Provincia de Buenos Aires, Argentina', '+542235550105', 'a.dentone@topservice.net', (SELECT id from empresas WHERE nombre = 'Nutrisabor'), -38.0022, -57.5450, TRUE),
+('5e4a4569-b258-4bef-bdde-d119e9faf93c', 'Andrea', 'Almejun', 'F. Sanchez 2034, B7600 Mar del Plata, Provincia de Buenos Aires, Argentina', '+542235550106', 'a_almejun@unique-mail.com', (SELECT id from empresas WHERE nombre = 'Nutrisabor'), -38.0150, -57.5500, TRUE),
+('eab01d86-e550-4ae4-8783-2a179d99f40a', 'Andapez', 'Andapez', 'Av. Vertiz 3250, B7603GGT Mar del Plata, Provincia de Buenos Aires, Argentina ', '+542235550107', 'andapez.contact@anotherdomain.co', (SELECT id from empresas WHERE nombre = 'Nutrisabor'), -38.0380, -57.5690, TRUE);
 
-INSERT INTO public.repartidores (nombre, estado) VALUES
-('Juan Perez', TRUE),
-('Maria Rodriguez', TRUE),
-('Carlos Gomez', FALSE),
-('Matias', TRUE);
 
--- Sample envios (some with lat/lng for Mar del Plata)
-INSERT INTO public.envios (cliente_id, client_location, latitud, longitud, package_size, package_weight, status) VALUES
-((SELECT id from clientes WHERE email = 'juan.perez@example.com'), 'Av. Colón 2345, Mar del Plata', -38.0005, -57.5559, 'medium', 1.5, 'pending'),
-((SELECT id from clientes WHERE email = 'maria.garcia@example.com'), 'Alberti 876, Mar del Plata', -38.0022, -57.5488, 'small', 0.5, 'pending'),
-((SELECT id from clientes WHERE email = 'carlos.lopez@example.com'), 'Hipólito Yrigoyen 1500, Mar del Plata', -37.9952, -57.5531, 'large', 5.0, 'pending'),
-((SELECT id from clientes WHERE email = 'ana.martinez@example.com'), 'Paso 3000, Mar del Plata', -38.0115, -57.5697, 'medium', 2.2, 'en_transito');
+INSERT INTO "public"."repartidores" ("id", "nombre", "estado") VALUES
+('0596f87a-a4a8-4f3d-9086-f003eab75af9', 'Matias', TRUE),
+('471c54f9-5680-455c-9b41-50a261c58523', 'Juan Perez', TRUE),
+('a9a64e0a-70e8-43c7-9d0f-768b09f69118', 'Maria Rodriguez', FALSE);
 
--- Activar RLS (Row Level Security) para todas las tablas
-ALTER TABLE public.empresas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.repartidores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.repartos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.envios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.paradas_reparto ENABLE ROW LEVEL SECURITY;
+INSERT INTO "public"."envios" ("id", "cliente_id", "client_location", "package_size", "package_weight", "status", "latitud", "longitud") VALUES
+('31326385-0208-4c49-90ac-12a76d61c899', (SELECT id from clientes WHERE email = 'juan.perez@example.com'), 'Av. Colón 1234, Mar del Plata', 'medium', 1.5, 'pending', -38.0005, -57.5560),
+('48379f7b-11a4-4476-8025-4f3c21b9e19d', (SELECT id from clientes WHERE email = 'maria.garcia@example.com'), 'Belgrano 5678, Mar del Plata', 'small', 0.5, 'pending', -38.0025, -57.5490),
+('2e47d785-9105-4759-b4b3-f6728b55796f', (SELECT id from clientes WHERE email = 'carlos.lopez@example.com'), 'Moreno 9101, Mar del Plata', 'large', 5, 'entregado', -37.9910, -57.5830),
+('609f63bb-10a3-47be-ae08-066b5e0768f8', (SELECT id from clientes WHERE email = 'ana.martinez@example.com'), 'Luro 3210, Mar del Plata', 'medium', 2.2, 'en_transito', -38.0048, -57.5430);
 
--- Políticas RLS permisivas para desarrollo (solo para usuarios autenticados)
--- Ajustar estas políticas para producción según los roles y permisos necesarios.
-CREATE POLICY "Allow all for authenticated users on empresas" ON public.empresas FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
-CREATE POLICY "Allow all for authenticated users on clientes" ON public.clientes FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
-CREATE POLICY "Allow all for authenticated users on repartidores" ON public.repartidores FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
-CREATE POLICY "Allow all for authenticated users on repartos" ON public.repartos FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
-CREATE POLICY "Allow all for authenticated users on envios" ON public.envios FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
-CREATE POLICY "Allow all for authenticated users on paradas_reparto" ON public.paradas_reparto FOR ALL TO authenticated USING (TRUE) WITH CHECK (TRUE);
+-- Sample repartos, one per type
+INSERT INTO "public"."repartos" ("id", "fecha_reparto", "repartidor_id", "estado", "tipo_reparto", "empresa_id") VALUES
+('df1e184e-71e6-4f00-a78d-b6e93034cd35', '2025-05-20', (SELECT id from repartidores WHERE nombre = 'Matias'), 'asignado', 'viaje_empresa', (SELECT id from empresas WHERE nombre = 'Tech Solutions SRL')),
+('caad29f1-cf73-42d4-b3d2-658a7814f1c4', '2025-05-21', (SELECT id from repartidores WHERE nombre = 'Juan Perez'), 'en_curso', 'individual', NULL),
+('a7a9309f-6bbf-4029-9f61-4d0a3724b908', '2025-05-22', (SELECT id from repartidores WHERE nombre = 'Maria Rodriguez'), 'completado', 'viaje_empresa_lote', (SELECT id from empresas WHERE nombre = 'Nutrisabor'));
+
+-- Update some envios to be part of repartos and create paradas
+-- Reparto 1 (Tech Solutions)
+UPDATE envios SET reparto_id = 'df1e184e-71e6-4f00-a78d-b6e93034cd35', status = 'asignado_a_reparto' WHERE id = '31326385-0208-4c49-90ac-12a76d61c899';
+UPDATE envios SET reparto_id = 'df1e184e-71e6-4f00-a78d-b6e93034cd35', status = 'asignado_a_reparto' WHERE id = '609f63bb-10a3-47be-ae08-066b5e0768f8';
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden") VALUES
+('df1e184e-71e6-4f00-a78d-b6e93034cd35', '31326385-0208-4c49-90ac-12a76d61c899', 0),
+('df1e184e-71e6-4f00-a78d-b6e93034cd35', '609f63bb-10a3-47be-ae08-066b5e0768f8', 1);
+
+-- Reparto 2 (Individual)
+UPDATE envios SET reparto_id = 'caad29f1-cf73-42d4-b3d2-658a7814f1c4', status = 'en_transito' WHERE id = '48379f7b-11a4-4476-8025-4f3c21b9e19d';
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden") VALUES
+('caad29f1-cf73-42d4-b3d2-658a7814f1c4', '48379f7b-11a4-4476-8025-4f3c21b9e19d', 0);
+
+-- Reparto 3 (Nutrisabor Lote)
+UPDATE envios SET reparto_id = 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', status = 'entregado' WHERE id = '2e47d785-9105-4759-b4b3-f6728b55796f';
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden") VALUES
+('a7a9309f-6bbf-4029-9f61-4d0a3724b908', '2e47d785-9105-4759-b4b3-f6728b55796f', 0);
+
+-- Sample envios from previous context (ensure they exist or adjust as needed)
+INSERT INTO "public"."envios" ("id", "created_at", "cliente_id", "client_location", "package_size", "package_weight", "status", "reparto_id", "latitud", "longitud") VALUES 
+('4068601d-34dc-4983-9834-68c630af1b31', '2025-05-19 23:01:30.937323+00', (SELECT id from clientes WHERE email = 'carlos.lopez@example.com'), 'Defensa 567, San Telmo', 'medium', '2.5', 'asignado_a_reparto', 'df1e184e-71e6-4f00-a78d-b6e93034cd35', -34.6175, -58.3703), -- Buenos Aires, not Mar del Plata
+('46990e54-0a24-4756-a6b8-96f7229246c5', '2025-05-19 23:01:30.937323+00', (SELECT id from clientes WHERE email = 'juan.perez@example.com'), 'Honduras 4800, Palermo', 'small', '0.8', 'asignado_a_reparto', 'df1e184e-71e6-4f00-a78d-b6e93034cd35', -34.5833, -58.4294), -- Buenos Aires
+('62ceba09-7a0f-43dc-bef0-b5340f6f83d4', '2025-05-19 23:54:52.452463+00', (SELECT id from clientes WHERE email = 'maria.garcia@example.com'), 'Colon 1234, Mar del Plata', 'medium', '0.1', 'asignado_a_reparto', 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', -38.0005, -57.5560),
+('6a9dd307-1f2e-4eca-9f8b-f887697c4841', '2025-05-19 23:01:30.937323+00', (SELECT id from clientes WHERE email = 'ana.martinez@example.com'), 'Av. Rivadavia 7000, Flores', 'large', '10.2', 'pending', NULL, -34.6265, -58.4656), -- Buenos Aires
+('ee0a5dbe-4542-4b52-89ec-a339e1482f0b', '2025-05-19 23:01:30.937323+00', (SELECT id from clientes WHERE email = 'carlos.lopez@example.com'), 'Defensa 567, San Telmo (Oficina)', 'small', '0.5', 'asignado_a_reparto', 'caad29f1-cf73-42d4-b3d2-658a7814f1c4', -34.6175, -58.3703); -- Buenos Aires
+
+-- Ensure paradas_reparto for these last envios if they are assigned to a reparto
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden")
+SELECT 'df1e184e-71e6-4f00-a78d-b6e93034cd35', id, 2 FROM envios WHERE id = '4068601d-34dc-4983-9834-68c630af1b31' AND reparto_id IS NOT NULL ON CONFLICT DO NOTHING;
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden")
+SELECT 'df1e184e-71e6-4f00-a78d-b6e93034cd35', id, 3 FROM envios WHERE id = '46990e54-0a24-4756-a6b8-96f7229246c5' AND reparto_id IS NOT NULL ON CONFLICT DO NOTHING;
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden")
+SELECT 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', id, 1 FROM envios WHERE id = '62ceba09-7a0f-43dc-bef0-b5340f6f83d4' AND reparto_id IS NOT NULL ON CONFLICT DO NOTHING;
+INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "orden")
+SELECT 'caad29f1-cf73-42d4-b3d2-658a7814f1c4', id, 1 FROM envios WHERE id = 'ee0a5dbe-4542-4b52-89ec-a339e1482f0b' AND reparto_id IS NOT NULL ON CONFLICT DO NOTHING;

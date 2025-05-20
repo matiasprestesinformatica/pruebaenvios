@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -23,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch"; // Import Switch
 import { Loader2 } from "lucide-react";
 import type { Empresa } from "@/types/supabase";
 
@@ -53,11 +55,11 @@ export function ClientForm({
       email: "",
       notas: "",
       empresa_id: null,
+      estado: true, // Default estado to true
     },
   });
 
   const handleFormSubmit = async (data: ClientFormData) => {
-    // No longer need to transform empresa_id here, as onValueChange handles it
     await onSubmit(data);
   };
 
@@ -180,6 +182,26 @@ export function ClientForm({
               <FormMessage />
             </FormItem>
           )}
+        />
+        <FormField
+            control={form.control}
+            name="estado"
+            render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm bg-card">
+                <div className="space-y-0.5">
+                <FormLabel>Estado</FormLabel>
+                <FormDescription>
+                    Indica si el cliente está activo o inactivo.
+                </FormDescription>
+                </div>
+                <FormControl>
+                <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                />
+                </FormControl>
+            </FormItem>
+            )}
         />
         <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
           {isSubmitting ? (

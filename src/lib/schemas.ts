@@ -18,6 +18,7 @@ export const clientSchema = z.object({
   email: z.string().min(1, "El email es obligatorio.").email("Formato de email inválido."),
   notas: z.string().optional().nullable(),
   empresa_id: z.string().uuid("ID de empresa inválido.").optional().nullable(),
+  estado: z.boolean().default(true), // Added estado for client
 });
 
 export type ClientFormData = z.infer<typeof clientSchema>;
@@ -26,7 +27,7 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(), // Made optional here, refined below
+  client_location: z.string().optional().nullable(),
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
@@ -103,7 +104,6 @@ export const repartoLoteCreationSchema = z.object({
   repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
   empresa_id: z.string().uuid("Debe seleccionar una empresa."),
   cliente_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un cliente de la empresa."),
-  // envio_ids is removed as new shipments will be auto-generated
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
 

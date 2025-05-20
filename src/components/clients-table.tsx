@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Edit3, Trash2, Building2 } from "lucide-react";
@@ -20,6 +21,8 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { updateClientEstadoAction } from "@/app/clientes/actions";
 
 
 interface ClientsTableProps {
@@ -57,12 +60,15 @@ export function ClientsTable({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   const [clients, setClients] = useState<ClienteWithEmpresa[]>(initialClients);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || "");
   const [isPending, startTransition] = useTransition();
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
 
   useEffect(() => {
     setClients(initialClients);
@@ -100,6 +106,27 @@ export function ClientsTable({
     updateQueryParams(newPage, searchTerm);
   };
 
+  const handleEstadoChange = async (clientId: string, newEstado: boolean) => {
+    setUpdatingStatusId(clientId);
+    const result = await updateClientEstadoAction(clientId, newEstado);
+    setUpdatingStatusId(null);
+    if (result.success) {
+      toast({
+        title: "Estado Actualizado",
+        description: `El estado del cliente ha sido ${newEstado ? 'activado' : 'desactivado'}.`,
+      });
+      setClients(prev => 
+        prev.map(c => c.id === clientId ? {...c, estado: newEstado} : c)
+      );
+    } else {
+      toast({
+        title: "Error",
+        description: result.error || "No se pudo actualizar el estado.",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   return (
     <div className="space-y-4">
@@ -135,6 +162,7 @@ export function ClientsTable({
                   <TableHead className="hidden md:table-cell">Email</TableHead>
                   <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
                   <TableHead className="hidden lg:table-cell">Empresa</TableHead>
+                  <TableHead className="text-center">Estado</TableHead> 
                   <TableHead className="hidden lg:table-cell">Registrado</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -161,6 +189,20 @@ export function ClientsTable({
                       ) : (
                         <span className="text-muted-foreground/70">-</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Switch
+                          id={`estado-${client.id}`}
+                          checked={client.estado}
+                          onCheckedChange={(newEstado) => handleEstadoChange(client.id, newEstado)}
+                          disabled={updatingStatusId === client.id}
+                          aria-label={`Estado de ${client.nombre} ${client.apellido}`}
+                        />
+                         <Badge variant={client.estado ? "default" : "secondary"} className={client.estado ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600"}>
+                          {client.estado ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <ClientSideFormattedDate dateString={client.created_at} />

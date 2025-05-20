@@ -52,6 +52,7 @@ export interface Database {
           email: string
           notas: string | null
           empresa_id: string | null
+          estado: boolean // Added estado
         }
         Insert: {
           id?: string
@@ -65,6 +66,7 @@ export interface Database {
           email: string
           notas?: string | null
           empresa_id?: string | null
+          estado?: boolean // Added estado
         }
         Update: {
           id?: string
@@ -78,6 +80,7 @@ export interface Database {
           email?: string
           notas?: string | null
           empresa_id?: string | null
+          estado?: boolean // Added estado
         }
       }
       repartidores: {
@@ -207,7 +210,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-       [_ in never]: never
+       [_ in never]: never // Using TEXT columns with Zod for enum-like behavior
     }
     CompositeTypes: {
       [_ in never]: never
@@ -233,15 +236,15 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null;
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null; 
 };
 
 export type EnvioConCliente = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'estado'> | null;
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente;
+  envio: EnvioConCliente; 
 };
 
 export type RepartoCompleto = RepartoConDetalles & {

@@ -25,17 +25,15 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
     const data = await response.json();
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
-      const location = data.results[0].geometry.location; // { lat, lng }
+      const location = data.results[0].geometry.location; 
       const addressComponents = data.results[0].address_components;
 
-      // Basic check: Is it in Mar del Plata and Buenos Aires Province?
       const isMarDelPlata = addressComponents.some(
         (component: any) => 
           (component.types.includes('locality') && component.long_name.toLowerCase().includes('mar del plata')) ||
           (component.types.includes('administrative_area_level_1') && component.long_name.toLowerCase().includes('buenos aires')) 
       );
       
-      // More precise bounding box check (approximate for Mar del Plata)
       const MDP_BOUNDS = {
         minLat: -38.15, maxLat: -37.90,
         minLng: -57.70, maxLng: -57.45,
@@ -67,13 +65,13 @@ export async function addClientAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    const processedData: Partial<NuevoCliente> = { // Use Partial<NuevoCliente> to build up the object
+    const processedData: Partial<NuevoCliente> = { 
       ...data,
       notas: data.notas === "" || data.notas === null ? null : data.notas,
       empresa_id: data.empresa_id === "" || data.empresa_id === null ? null : data.empresa_id,
+      estado: data.estado === undefined ? true : data.estado, // Ensure estado is set
     };
     
-    // Geocode address if provided
     if (data.direccion) {
       const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
       if (coordinates) {
@@ -87,7 +85,6 @@ export async function addClientAction(
       }
     }
 
-
     const validatedFields = clientSchema.safeParse(processedData);
     if (!validatedFields.success) {
       return {
@@ -100,7 +97,7 @@ export async function addClientAction(
     
     const { data: client, error: dbError } = await supabase
       .from("clientes")
-      .insert(validatedFields.data as NuevoCliente) // Cast to NuevoCliente after validation
+      .insert(validatedFields.data as NuevoCliente)
       .select()
       .single();
 
@@ -197,12 +194,42 @@ export async function getEmpresasForClientFormAction(): Promise<Pick<Empresa, 'i
     if (error) {
       const pgError = error as PostgrestError;
       console.error("Error fetching empresas for client form:", JSON.stringify(pgError, null, 2));
-      return []; // Return empty array on error, dialog will show toast
+      return []; 
     }
     return data || [];
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Unexpected error in getEmpresasForClientFormAction:", err.message);
     throw err; 
+  }
+}
+
+export async function updateClientEstadoAction(
+  clientId: string,
+  nuevoEstado: boolean
+): Promise<{ success: boolean; error?: string | null }> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { error } = await supabase
+      .from("clientes")
+      .update({ estado: nuevoEstado })
+      .eq("id", clientId);
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error("Error updating client estado:", JSON.stringify(pgError, null, 2));
+      let errorMessage = "No se pudo actualizar el estado del cliente.";
+      if (pgError.message) {
+        errorMessage = pgError.message;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    revalidatePath("/clientes");
+    return { success: true };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in updateClientEstadoAction:", err.message);
+    return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
