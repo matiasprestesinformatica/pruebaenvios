@@ -47,23 +47,30 @@ function ClientSideFormattedDate({ dateString, formatString = "PPP" }: { dateStr
   return <>{formattedDate || "Cargando..."}</>;
 }
 
-function getEstadoRepartoBadgeVariant(estado: string) {
+function getEstadoRepartoBadgeVariant(estado?: string | null) {
+  if (!estado) return 'outline';
   switch (estado) {
     case estadoRepartoEnum.Values.asignado: return 'default';
     case estadoRepartoEnum.Values.en_curso: return 'secondary';
-    case estadoRepartoEnum.Values.completado: return 'outline';
+    case estadoRepartoEnum.Values.completado: return 'outline'; // Consider a success variant
     default: return 'outline';
   }
 }
-function getEstadoRepartoBadgeColor(estado: string) {
+function getEstadoRepartoBadgeColor(estado?: string | null) {
+    if(!estado) return 'bg-gray-400 text-white';
     switch (estado) {
-      case estadoRepartoEnum.Values.asignado: return 'bg-blue-500 hover:bg-blue-600 text-white';
-      case estadoRepartoEnum.Values.en_curso: return 'bg-yellow-500 hover:bg-yellow-600 text-black';
-      case estadoRepartoEnum.Values.completado: return 'bg-green-500 hover:bg-green-600 text-white';
-      default: return 'bg-gray-500 hover:bg-gray-600 text-white';
+      case estadoRepartoEnum.Values.asignado:
+        return 'bg-blue-500 hover:bg-blue-600 text-white';
+      case estadoRepartoEnum.Values.en_curso:
+        return 'bg-yellow-500 hover:bg-yellow-600 text-black';
+      case estadoRepartoEnum.Values.completado:
+        return 'bg-green-500 hover:bg-green-600 text-white';
+      default:
+        return 'bg-gray-500 hover:bg-gray-600 text-white';
     }
-}
-function getEstadoEnvioBadgeColor(estado: string) {
+  }
+function getEstadoEnvioBadgeColor(estado?: string | null) {
+  if (!estado) return 'bg-slate-300 text-slate-800';
   switch (estado) {
     case estadoEnvioEnum.Values.pending: return 'bg-gray-500 text-white';
     case estadoEnvioEnum.Values.suggested: return 'bg-purple-500 text-white';
@@ -82,20 +89,36 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
   const [isUpdating, startUpdatingTransition] = useTransition();
   const { toast } = useToast();
 
+  useEffect(() => {
+    setReparto(initialReparto);
+    setSelectedStatus(initialReparto.estado as EstadoReparto);
+  }, [initialReparto]);
+
   const handleStatusChange = async () => {
     startUpdatingTransition(async () => {
         const envioIds = reparto.envios_asignados.map(envio => envio.id);
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
         if (result.success) {
-            setReparto(prev => ({ ...prev, estado: selectedStatus }));
-            if(selectedStatus === estadoRepartoEnum.Values.completado) {
-                // Refresh envios status locally if parent status becomes 'completado'
-                setReparto(prev => ({
-                    ...prev,
-                    envios_asignados: prev.envios_asignados.map(e => ({...e, status: estadoEnvioEnum.Values.entregado}))
-                }));
+            // Optimistically update reparto status
+            const updatedReparto = { ...reparto, estado: selectedStatus };
+            
+            // Optimistically update associated envios status
+            let newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto; // Default
+            if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
+                newEnvioStatus = estadoEnvioEnum.Values.en_transito;
+            } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
+                newEnvioStatus = estadoEnvioEnum.Values.entregado;
+            } else if (selectedStatus === estadoRepartoEnum.Values.asignado) {
+                newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto;
             }
-            toast({ title: "Estado Actualizado", description: "El estado del reparto ha sido actualizado." });
+
+            updatedReparto.envios_asignados = updatedReparto.envios_asignados.map(e => ({
+                ...e,
+                status: newEnvioStatus
+            }));
+
+            setReparto(updatedReparto);
+            toast({ title: "Estado Actualizado", description: "El estado del reparto y envíos asociados ha sido actualizado." });
         } else {
             toast({ title: "Error", description: result.error || "No se pudo actualizar el estado.", variant: "destructive" });
             setSelectedStatus(reparto.estado as EstadoReparto); // Revert select on error
@@ -129,10 +152,10 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
             <Truck className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Tipo de Reparto</p>
-              <p className="font-medium capitalize">{reparto.tipo_reparto.replace('_', ' ')}</p>
+              <p className="font-medium capitalize">{reparto.tipo_reparto?.replace('_', ' ') || 'Desconocido'}</p>
             </div>
           </div>
-          {reparto.tipo_reparto === 'viaje_empresa' && reparto.empresas && (
+          {(reparto.tipo_reparto === 'viaje_empresa' || reparto.tipo_reparto === 'viaje_empresa_lote') && reparto.empresas && (
              <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30 md:col-span-2 lg:col-span-1">
                 <Building className="h-5 w-5 text-muted-foreground" />
                 <div>
@@ -150,15 +173,15 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <Badge variant={getEstadoRepartoBadgeVariant(reparto.estado)} className={`${getEstadoRepartoBadgeColor(reparto.estado)} text-lg px-4 py-1.5`}>
-            {reparto.estado.replace('_', ' ').toUpperCase()}
+            {reparto.estado?.replace('_', ' ').toUpperCase() || 'DESCONOCIDO'}
           </Badge>
           <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as EstadoReparto)} disabled={isUpdating}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Cambiar estado..." />
             </SelectTrigger>
             <SelectContent>
-              {estadoRepartoEnum.options.map(estado => (
-                <SelectItem key={estado} value={estado}>{estado.replace('_', ' ').toUpperCase()}</SelectItem>
+              {estadoRepartoEnum.options.map(estadoOpt => (
+                <SelectItem key={estadoOpt} value={estadoOpt}>{estadoOpt.replace('_', ' ').toUpperCase()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -198,7 +221,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
                         <TableCell>{envio.package_size}, {envio.package_weight}kg</TableCell>
                         <TableCell>
                             <Badge className={`${getEstadoEnvioBadgeColor(envio.status)} capitalize`}>
-                                {envio.status.replace('_', ' ')}
+                                {envio.status?.replace('_', ' ') || 'desconocido'}
                             </Badge>
                         </TableCell>
                         </TableRow>
@@ -214,4 +237,3 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
     </div>
   );
 }
-
