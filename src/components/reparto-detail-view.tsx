@@ -27,7 +27,7 @@ interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
   updateRepartoStatusAction: (repartoId: string, nuevoEstado: EstadoReparto, envioIds: string[]) => Promise<{ success: boolean; error?: string | null }>;
   reorderParadasAction: (repartoId: string, paradaId: string, direccion: 'up' | 'down') => Promise<{ success: boolean; error?: string | null }>;
-  optimizeRouteAction: (paradasInput: OptimizeRouteInput) => Promise<OptimizeRouteOutput | null>;
+  optimizeRouteAction: (paradasInput: OptimizeRouteInput) => Promise<{ success: boolean; data?: OptimizeRouteOutput | null; error?: string | null }>;
 }
 
 interface ParadaMapaInfo {
@@ -120,9 +120,9 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     return paradas
       .map(parada => {
         if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && empresa?.latitud && empresa?.longitud) {
-          return { id: `empresa-${empresa.id}`, lat: empresa.latitud, lng: empresa.longitud, label: `Retiro en ${empresa.nombre}`, type: 'pickup' };
+          return { id: `empresa-${empresa.id}`, lat: empresa.latitud, lng: empresa.longitud, label: `Retiro en ${empresa.nombre || 'Empresa'}`, type: 'pickup' as const };
         } else if (parada.envio?.latitud && parada.envio?.longitud) {
-          return { id: parada.id, lat: parada.envio.latitud, lng: parada.envio.longitud, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Envío', type: 'delivery' };
+          return { id: parada.id, lat: parada.envio.latitud, lng: parada.envio.longitud, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Envío', type: 'delivery' as const };
         }
         return null;
       })
@@ -182,6 +182,18 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     calculateAndSetCurrentRouteDistance();
   }, [reparto.paradas, reparto.empresas, mapsApiReady, calculateRouteDistance, getParadasMapaInfo]);
 
+  const geocodableParadasCount = useMemo(() => {
+    let count = 0;
+    if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null && reparto.paradas.some(p => p.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa)) {
+      count++;
+    }
+    reparto.paradas.forEach(parada => {
+      if (parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio?.latitud != null && parada.envio?.longitud != null) {
+        count++;
+      }
+    });
+    return count;
+  }, [reparto.paradas, reparto.empresas]);
 
   const handleStatusChange = async () => {
     startUpdatingStatusTransition(async () => {
@@ -191,7 +203,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         if (result.success) {
             const updatedParadas = reparto.paradas.map(parada => {
                 if (!parada.envio) return parada;
-                let newEnvioStatus: string | null = parada.envio.status; // Keep current if no specific change
+                let newEnvioStatus: string | null = parada.envio.status; 
                 if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
                     newEnvioStatus = estadoEnvioEnum.Values.en_transito;
                 } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
@@ -258,7 +270,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     const result = await reorderParadasAction(reparto.id, paradaId, direccion);
     if (!result.success) {
       toast({ title: "Error al Reordenar", description: result.error || "No se pudo reordenar la parada.", variant: "destructive" });
-      setReparto(prev => ({...prev, paradas: currentParadas})); // Revert
+      setReparto(prev => ({...prev, paradas: currentParadas})); 
     }
     setIsReordering(null);
   };
@@ -272,7 +284,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
             if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
                 acc.push({
-                    id: `empresa-${reparto.empresas.id}`,
+                    id: `empresa-${reparto.empresas.id}`, 
                     label: reparto.empresas.nombre || 'Punto de Retiro',
                     lat: reparto.empresas.latitud,
                     lng: reparto.empresas.longitud,
@@ -299,24 +311,33 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     }
 
     const result = await optimizeRouteAction({ stops: validStops });
-    if (result && result.optimized_stop_ids) {
-      setSuggestedRoute(result);
+    if (result.success && result.data) {
+      setSuggestedRoute(result.data);
       toast({ title: "Ruta Optimizada Sugerida", description: "La IA ha sugerido un nuevo orden para las paradas." });
+      // Call distance calculation for AI route if AI didn't provide it
+      if (result.data.estimated_total_distance_km === undefined) {
+        handleCalculateAiRouteDistance(result.data, validStops);
+      }
     } else {
-      toast({ title: "Error de Optimización", description: "No se pudo obtener una ruta optimizada de la IA.", variant: "destructive" });
+      toast({ title: "Error de Optimización", description: result.error || "No se pudo obtener una ruta optimizada de la IA.", variant: "destructive" });
     }
     setIsOptimizingRoute(false);
   };
   
-  const handleCalculateAiRouteDistance = async () => {
-    if (!suggestedRoute || !suggestedRoute.optimized_stop_ids || !mapsApiReady) return;
+  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalValidStops: OptimizeRouteStopInput[]) => {
+    if (!aiRoute || !aiRoute.optimized_stop_ids || !mapsApiReady) return;
     setIsLoadingAiRouteDistance(true);
 
-    const allParadasInfo = getParadasMapaInfo(reparto.paradas, reparto.empresas);
-    const paradasInfoMap = new Map(allParadasInfo.map(p => [p.id, p]));
+    const paradasInfoMap = new Map(originalValidStops.map(p => [p.id, p]));
     
-    const orderedStopsForAiRoute: ParadaMapaInfo[] = suggestedRoute.optimized_stop_ids
-        .map(stopId => paradasInfoMap.get(stopId))
+    const orderedStopsForAiRoute: ParadaMapaInfo[] = aiRoute.optimized_stop_ids
+        .map(stopId => {
+            const stopInfo = paradasInfoMap.get(stopId);
+            if (stopInfo) {
+                return { id: stopInfo.id, lat: stopInfo.lat, lng: stopInfo.lng, label: stopInfo.label, type: stopInfo.type as 'pickup' | 'delivery' };
+            }
+            return undefined;
+        })
         .filter(p => p !== undefined) as ParadaMapaInfo[];
 
     if (orderedStopsForAiRoute.length < 2) {
@@ -338,7 +359,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     reparto.paradas.forEach(parada => {
       if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && reparto.empresas) {
         map.set(`empresa-${reparto.empresas.id}`, { type: 'pickup', details: reparto.empresas });
-      } else if (parada.envio) {
+      } else if (parada.envio) { // Ensure parada.envio exists before setting
         map.set(parada.id, parada); 
       }
     });
@@ -441,7 +462,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             </CardTitle>
             <CardDescription>Secuencia de entrega planificada. Puede ajustar el orden o solicitar una optimización por IA.</CardDescription>
           </div>
-          <Button onClick={handleOptimizeRoute} disabled={isOptimizingRoute || reparto.paradas.length < 2 || !mapsApiReady || !GOOGLE_MAPS_API_KEY} className="mt-2 md:mt-0">
+          <Button onClick={handleOptimizeRoute} disabled={isOptimizingRoute || geocodableParadasCount < 2} className="mt-2 md:mt-0">
             {isOptimizingRoute ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
             Optimizar Ruta (IA)
           </Button>
@@ -470,7 +491,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                                     variant="ghost" 
                                     size="icon" 
                                     onClick={() => handleReorderParada(parada.id, 'up')}
-                                    disabled={(parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && parada.orden === 0) || (index === 0 && (parada.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || parada.orden !== 0) ) || isReordering === parada.id}
+                                    disabled={(parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && parada.orden === 0) || (index === 0 && parada.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa) || isReordering === parada.id}
                                     title="Mover arriba"
                                 >
                                     {isReordering === parada.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
@@ -549,7 +570,20 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             )}
             {suggestedRoute.estimated_total_distance_km === undefined && (
                  <Button 
-                    onClick={handleCalculateAiRouteDistance} 
+                    onClick={() => {
+                      // Get the original valid stops that were sent to AI for this specific suggestion
+                      const originalValidStopsForThisSuggestion: OptimizeRouteStopInput[] = reparto.paradas.reduce((acc, parada) => {
+                          if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
+                              if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
+                                  acc.push({ id: `empresa-${reparto.empresas.id}`, label: reparto.empresas.nombre || 'Punto de Retiro', lat: reparto.empresas.latitud, lng: reparto.empresas.longitud, type: 'pickup'});
+                              }
+                          } else if (parada.envio?.latitud != null && parada.envio?.longitud != null) {
+                              acc.push({ id: parada.id, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Entrega Cliente', lat: parada.envio.latitud, lng: parada.envio.longitud, type: 'delivery' });
+                          }
+                          return acc;
+                      }, [] as OptimizeRouteStopInput[]);
+                      handleCalculateAiRouteDistance(suggestedRoute, originalValidStopsForThisSuggestion);
+                    }} 
                     disabled={isLoadingAiRouteDistance || !mapsApiReady || !GOOGLE_MAPS_API_KEY}
                     size="sm"
                     variant="outline"
