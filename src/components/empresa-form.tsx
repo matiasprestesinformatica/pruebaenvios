@@ -37,7 +37,9 @@ export function EmpresaForm({
     resolver: zodResolver(empresaSchema),
     defaultValues: initialData || {
       nombre: "",
-      direccion: "", // Direccion is now required
+      direccion: "",
+      latitud: null,
+      longitud: null,
       telefono: "",
       email: "",
       notas: "",
@@ -72,15 +74,59 @@ export function EmpresaForm({
             <FormItem>
               <FormLabel>Dirección</FormLabel> 
               <FormControl>
-                <Input placeholder="Dirección de la empresa" {...field} />
+                <Input placeholder="Dirección (será geocodificada si no ingresa coordenadas)" {...field} />
               </FormControl>
               <FormDescription>
-                La dirección será utilizada para geocodificación.
+                La dirección será utilizada para geocodificación si no se ingresan coordenadas manualmente.
               </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
+         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="latitud"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Latitud (Manual)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="any" 
+                    placeholder="Ej: -38.0055" 
+                    {...field} 
+                    value={field.value ?? ""}
+                    onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                  />
+                </FormControl>
+                <FormDescription>Opcional. Dejar vacío para geocodificar la dirección.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="longitud"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Longitud (Manual)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="any" 
+                    placeholder="Ej: -57.5426" 
+                    {...field} 
+                    value={field.value ?? ""}
+                    onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                  />
+                </FormControl>
+                <FormDescription>Opcional. Dejar vacío para geocodificar la dirección.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -161,5 +207,3 @@ export function EmpresaForm({
     </Form>
   );
 }
-
-    

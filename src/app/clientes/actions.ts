@@ -16,7 +16,6 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
     return null;
   }
 
-  // Component filtering biases results to Mar del Plata, Argentina
   const encodedAddress = encodeURIComponent(address);
   const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}&components=locality:Mar%20del%20Plata|administrative_area:Buenos%20Aires|country:AR`;
 
@@ -26,9 +25,7 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
-      // const addressComponents = data.results[0].address_components; // Keep for debugging if needed
-
-      // Primary validation: check if coordinates fall within Mar del Plata bounds
+      
       const MDP_BOUNDS = {
         minLat: -38.15, maxLat: -37.90,
         minLng: -57.70, maxLng: -57.45,
@@ -59,27 +56,32 @@ export async function addClientAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    const processedData: Partial<NuevoCliente> = {
+    let processedData: Partial<NuevoCliente> = {
       ...data,
       telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
       email: data.email === "" || data.email === null ? null : data.email,
       notas: data.notas === "" || data.notas === null ? null : data.notas,
       empresa_id: data.empresa_id === "" || data.empresa_id === null ? null : data.empresa_id,
       estado: data.estado === undefined ? true : data.estado,
+      latitud: null, // Initialize
+      longitud: null, // Initialize
     };
 
-    if (data.direccion) {
+    if (data.latitud != null && data.longitud != null) {
+      processedData.latitud = data.latitud;
+      processedData.longitud = data.longitud;
+      geocodingInfo = "Coordenadas manuales utilizadas.";
+    } else if (data.direccion) {
       const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
       if (coordinates) {
         processedData.latitud = coordinates.lat;
         processedData.longitud = coordinates.lng;
         geocodingInfo = "Dirección geocodificada y validada en Mar del Plata.";
       } else {
-        processedData.latitud = null;
-        processedData.longitud = null;
         geocodingInfo = "No se pudo geocodificar la dirección o está fuera de Mar del Plata. Coordenadas no guardadas.";
       }
     }
+
 
     const validatedFields = clientSchema.safeParse(processedData);
     if (!validatedFields.success) {
@@ -102,10 +104,8 @@ export async function addClientAction(
       console.error("Supabase error object while inserting client:", JSON.stringify(pgError, null, 2));
 
       let errorMessage = "No se pudo guardar el cliente.";
-      if (pgError.code === '23505') {
-          if (pgError.constraint === 'clientes_email_key') {
-              errorMessage = "Ya existe un cliente con este email.";
-          }
+      if (pgError.code === '23505' && pgError.constraint === 'clientes_email_key') {
+          errorMessage = "Ya existe un cliente con este email.";
       } else if (pgError.message) {
         errorMessage = pgError.message;
       } else if (Object.keys(pgError).length === 0 && typeof pgError === 'object') {
@@ -196,7 +196,7 @@ export async function getEmpresasForClientFormAction(): Promise<Pick<Empresa, 'i
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Unexpected error in getEmpresasForClientFormAction:", err.message);
-    throw err;
+    throw err; // Re-throw to be caught by calling component
   }
 }
 

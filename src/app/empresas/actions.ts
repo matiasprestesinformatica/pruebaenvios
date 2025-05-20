@@ -25,9 +25,7 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
-      // const addressComponents = data.results[0].address_components; // Keep for debugging
-
-      // Primary validation: check if coordinates fall within Mar del Plata bounds
+      
       const MDP_BOUNDS = {
         minLat: -38.15, maxLat: -37.90,
         minLng: -57.70, maxLng: -57.45,
@@ -58,25 +56,30 @@ export async function addEmpresaAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    let coordinates: { lat: number; lng: number } | null = null;
-    if (data.direccion) { // Dirección is now required by the schema
-      coordinates = await geocodeAddressInMarDelPlata(data.direccion);
+    let processedData: Partial<NuevaEmpresa> = { 
+      ...data,
+      telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
+      email: data.email === "" || data.email === null ? null : data.email,
+      notas: data.notas === "" || data.notas === null ? null : data.notas,
+      estado: data.estado === undefined ? true : data.estado,
+      latitud: null,
+      longitud: null,
+    };
+
+    if (data.latitud != null && data.longitud != null) {
+      processedData.latitud = data.latitud;
+      processedData.longitud = data.longitud;
+      geocodingInfo = "Coordenadas manuales utilizadas.";
+    } else if (data.direccion) { // Direccion is now required by schema
+      const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
       if (coordinates) {
+        processedData.latitud = coordinates.lat;
+        processedData.longitud = coordinates.lng;
         geocodingInfo = "Dirección de empresa geocodificada y validada en Mar del Plata.";
       } else {
         geocodingInfo = "No se pudo geocodificar la dirección de la empresa o está fuera de Mar del Plata. Coordenadas no guardadas.";
       }
     }
-
-    const processedData: Partial<NuevaEmpresa> = { 
-      ...data,
-      latitud: coordinates?.lat ?? null,
-      longitud: coordinates?.lng ?? null,
-      telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
-      email: data.email === "" || data.email === null ? null : data.email,
-      notas: data.notas === "" || data.notas === null ? null : data.notas,
-      estado: data.estado === undefined ? true : data.estado,
-    };
     
     const validatedFields = empresaSchema.safeParse(processedData);
     if (!validatedFields.success) {

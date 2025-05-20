@@ -3,12 +3,13 @@ import { z } from 'zod';
 
 export const empresaSchema = z.object({
   nombre: z.string().min(1, "El nombre de la empresa es obligatorio."),
-  direccion: z.string().min(1, "La dirección de la empresa es obligatoria."), // Changed from optional
+  direccion: z.string().min(1, "La dirección de la empresa es obligatoria."),
+  latitud: z.coerce.number().optional().nullable(),
+  longitud: z.coerce.number().optional().nullable(),
   telefono: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
   email: z.string().email("Formato de email inválido.").optional().nullable().or(z.literal('')),
   notas: z.string().optional().nullable(),
   estado: z.boolean().default(true),
-  // latitud and longitud will be handled server-side, not directly in this form schema
 });
 export type EmpresaFormData = z.infer<typeof empresaSchema>;
 
@@ -16,12 +17,13 @@ export const clientSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
   apellido: z.string().min(1, "El apellido es obligatorio."),
   direccion: z.string().min(1, "La dirección es obligatoria."),
+  latitud: z.coerce.number().optional().nullable(),
+  longitud: z.coerce.number().optional().nullable(),
   telefono: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
   email: z.string().email("Formato de email inválido.").optional().nullable().or(z.literal('')),
   notas: z.string().optional().nullable(),
   empresa_id: z.string().uuid("ID de empresa inválido.").optional().nullable(),
   estado: z.boolean().default(true),
-  // latitud and longitud will be handled server-side
 });
 export type ClientFormData = z.infer<typeof clientSchema>;
 
@@ -42,10 +44,9 @@ export const shipmentSchema = z.object({
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "La dirección del cliente no pudo ser obtenida. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
-            path: ["client_location"], // This path might need adjustment based on form structure if it's hidden
+            path: ["client_location"],
           });
     }
-    // nombre_cliente_temporal is not needed if cliente_id is present
   } else { // If no client is selected (temporal client)
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
@@ -108,12 +109,9 @@ export const repartoLoteCreationSchema = z.object({
   repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
   empresa_id: z.string().uuid("Debe seleccionar una empresa."),
   cliente_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un cliente de la empresa."),
-  // envio_ids no se incluye aquí ya que los envíos se generan automáticamente
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
 
 
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
-
-    

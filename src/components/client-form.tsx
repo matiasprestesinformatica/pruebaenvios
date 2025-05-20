@@ -51,8 +51,10 @@ export function ClientForm({
       nombre: "",
       apellido: "",
       direccion: "",
-      telefono: "", // Will be handled as optional, empty string becomes null
-      email: "",   // Will be handled as optional, empty string becomes null
+      latitud: null,
+      longitud: null,
+      telefono: "",
+      email: "",
       notas: "",
       empresa_id: null,
       estado: true,
@@ -131,12 +133,56 @@ export function ClientForm({
             <FormItem>
               <FormLabel>Dirección</FormLabel>
               <FormControl>
-                <Input placeholder="Av. Siempreviva 742" {...field} />
+                <Input placeholder="Av. Siempreviva 742 (será geocodificada si no ingresa coordenadas)" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="latitud"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Latitud (Manual)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="any" 
+                    placeholder="Ej: -38.0055" 
+                    {...field} 
+                    value={field.value ?? ""}
+                    onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                  />
+                </FormControl>
+                <FormDescription>Opcional. Dejar vacío para geocodificar la dirección.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="longitud"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Longitud (Manual)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    step="any" 
+                    placeholder="Ej: -57.5426" 
+                    {...field} 
+                    value={field.value ?? ""} 
+                    onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                  />
+                </FormControl>
+                <FormDescription>Opcional. Dejar vacío para geocodificar la dirección.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -217,5 +263,3 @@ export function ClientForm({
     </Form>
   );
 }
-
-    
