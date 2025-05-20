@@ -10,9 +10,13 @@ interface MapaEnviosViewProps {
   envios: EnvioMapa[];
 }
 
-const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 }; // Approximate center of Mar del Plata
+const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 const INITIAL_ZOOM = 13;
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script';
+
+// Module-level promise to ensure the API loading process is initiated only once.
+let loadGoogleMapsPromise: Promise<void> | null = null;
 
 function getEnvioMarkerColorHex(status: string | null): string {
   if (!status) return '#A9A9A9'; // DarkGray for unknown
@@ -28,11 +32,6 @@ function getEnvioMarkerColorHex(status: string | null): string {
   }
 }
 
-// Global variable to ensure the script is loaded only once
-let mapsApiLoaded = false;
-const mapsApiLoadingPromise: Promise<void> | null = null;
-
-
 export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -40,10 +39,9 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
   const [isLoadingApi, setIsLoadingApi] = useState(true);
   const [errorLoadingApi, setErrorLoadingApi] = useState<string | null>(null);
-   const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    // Check online status on mount and listen for changes
     if (typeof window !== 'undefined') {
       setIsOnline(navigator.onLine);
       const handleOnline = () => setIsOnline(true);
@@ -57,63 +55,78 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
     }
   }, []);
 
-
   useEffect(() => {
-    if (!isOnline) {
-      setErrorLoadingApi("No hay conexión a internet para cargar el mapa.");
-      setIsLoadingApi(false);
-      return;
-    }
-
-    if (!GOOGLE_MAPS_API_KEY) {
-      setErrorLoadingApi("La clave API de Google Maps no está configurada. El mapa no se puede cargar.");
-      setIsLoadingApi(false);
-      return;
-    }
-
-    if (mapsApiLoaded) {
-      setIsLoadingApi(false);
-      return;
-    }
-
-    if (mapsApiLoadingPromise) {
-      mapsApiLoadingPromise.then(() => {
+    const loadMaps = async () => {
+      if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
         setIsLoadingApi(false);
-      }).catch(err => {
-        console.error("Error in existing API loading promise:", err);
-        setErrorLoadingApi("Error al cargar el script de Google Maps (promesa existente).");
+        return;
+      }
+
+      if (!isOnline) {
+        setErrorLoadingApi("No hay conexión a internet para cargar el mapa.");
         setIsLoadingApi(false);
-      });
-      return;
-    }
-    
-    // Assign to a new const to ensure it's only set once within this scope
-    const currentLoadingPromise = new Promise<void>((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker`;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => {
-          mapsApiLoaded = true;
-          setIsLoadingApi(false);
-          resolve();
-        };
-        script.onerror = (err) => {
-          console.error("Error loading Google Maps API script:", err);
-          setErrorLoadingApi("No se pudo cargar el script de Google Maps. Verifique la clave API y la conexión.");
-          setIsLoadingApi(false);
-          reject(err);
-        };
-        document.head.appendChild(script);
-    });
-    // Assign the promise to the global-like variable
-    (globalThis as any).mapsApiLoadingPromise = currentLoadingPromise;
+        return;
+      }
 
+      if (!GOOGLE_MAPS_API_KEY) {
+        setErrorLoadingApi("La clave API de Google Maps no está configurada. El mapa no se puede cargar.");
+        setIsLoadingApi(false);
+        return;
+      }
+      
+      setIsLoadingApi(true); // Set loading true before attempting to load
 
+      if (!loadGoogleMapsPromise) {
+        loadGoogleMapsPromise = new Promise((resolve, reject) => {
+          // Define the callback function on the window object
+          (window as any).initGoogleMapsApiForRumbos = () => {
+            delete (window as any).initGoogleMapsApiForRumbos; // Clean up
+            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
+              resolve();
+            } else {
+              reject(new Error("Google Maps API cargada pero 'google.maps' no está disponible."));
+            }
+          };
+
+          // Check if the script tag already exists
+          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
+            // If it exists, assume it's loading or loaded and the callback will be handled.
+            // This can happen with React StrictMode or fast refresh.
+            // The promise will be resolved/rejected by the existing script's callback.
+            // console.warn("Google Maps script tag already exists. Waiting for existing load process.");
+            return; // Do not append another script
+          }
+
+          const script = document.createElement('script');
+          script.id = GOOGLE_MAPS_SCRIPT_ID;
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&callback=initGoogleMapsApiForRumbos`;
+          script.async = true;
+          script.defer = true;
+          script.onerror = (err) => {
+            delete (window as any).initGoogleMapsApiForRumbos;
+            document.getElementById(GOOGLE_MAPS_SCRIPT_ID)?.remove(); // Remove failed script
+            loadGoogleMapsPromise = null; // Allow retry for subsequent attempts
+            reject(new Error(`No se pudo cargar el script de Google Maps. Error: ${err ? (err as Event).type : 'desconocido'}`));
+          };
+          document.head.appendChild(script);
+        });
+      }
+
+      try {
+        await loadGoogleMapsPromise;
+        setIsLoadingApi(false);
+      } catch (error: any) {
+        setErrorLoadingApi(error.message || "Error desconocido al cargar Google Maps API.");
+        setIsLoadingApi(false);
+        // loadGoogleMapsPromise is set to null on error by the script.onerror handler
+      }
+    };
+
+    loadMaps();
   }, [isOnline]);
 
   useEffect(() => {
-    if (!isLoadingApi && !errorLoadingApi && mapRef.current && !map) {
+    if (!isLoadingApi && !errorLoadingApi && mapRef.current && !map && (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined')) {
       const newMap = new google.maps.Map(mapRef.current, {
         center: MAR_DEL_PLATA_CENTER,
         zoom: INITIAL_ZOOM,
@@ -127,7 +140,6 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
 
   useEffect(() => {
     if (map && infoWindow && envios) {
-      // Clear existing markers
       markers.forEach(marker => marker.setMap(null));
       const newMarkers: google.maps.Marker[] = [];
 
@@ -138,12 +150,12 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
             position: { lat: envio.latitud, lng: envio.longitud },
             map: map,
             icon: {
-              path: google.maps.SymbolPath.CIRCLE, // Simple circle
+              path: google.maps.SymbolPath.CIRCLE,
               fillColor: markerColor,
               fillOpacity: 0.9,
-              strokeColor: '#ffffff', // White border
+              strokeColor: '#ffffff',
               strokeWeight: 1.5,
-              scale: 7, // Size of the circle
+              scale: 7,
             },
             title: envio.nombre_cliente || envio.client_location,
           });
@@ -154,7 +166,7 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
                 <h4 style="margin-top: 0; margin-bottom: 5px; font-weight: bold;">${envio.nombre_cliente || 'Destinatario Temporal'}</h4>
                 <p style="margin: 2px 0;"><strong>Dirección:</strong> ${envio.client_location}</p>
                 <p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.package_size}, ${envio.package_weight}kg</p>
-                <p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status.replace(/_/g, ' ')}</span></p>
+                <p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</span></p>
               </div>
             `;
             infoWindow.setContent(content);
@@ -166,7 +178,7 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
       setMarkers(newMarkers);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, infoWindow, envios]); // markers dependency removed to avoid loop with setMarkers
+  }, [map, infoWindow, envios]);
 
   if (isLoadingApi) {
     return (
@@ -193,11 +205,11 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
         <div className="flex flex-col items-center justify-center h-[calc(100vh-300px)] border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
             <Info className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold text-muted-foreground mb-2">No hay Envíos para Mostrar</h3>
-            <p className="text-muted-foreground max-w-md">Actualmente no hay envíos geolocalizados en Mar del Plata para mostrar en el mapa.</p>
+            <p className="text-muted-foreground max-w-md">Actualmente no hay envíos geolocalizados en Mar del Plata para mostrar en el mapa con el filtro actual.</p>
         </div>
     )
   }
 
-
-  return <div ref={mapRef} style={{ height: 'calc(100vh - 250px)', width: '100%' }} className="rounded-lg shadow-md" />;
+  return <div ref={mapRef} style={{ height: 'calc(100vh - 300px)', width: '100%' }} className="rounded-lg shadow-md border" />;
 }
+
