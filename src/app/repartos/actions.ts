@@ -1,3 +1,4 @@
+
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -56,7 +57,7 @@ export async function getEnviosPendientesAction(searchTerm?: string): Promise<En
     const supabase = createSupabaseServerClient();
     let query = supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido, direccion, email)")
+      .select("*, clientes (id, nombre, apellido, direccion, email, latitud, longitud)")
       .is("reparto_id", null) 
       .eq("status", estadoEnvioEnum.Values.pending); 
 
@@ -100,7 +101,7 @@ export async function getEnviosPendientesPorEmpresaAction(empresaId: string): Pr
 
     const { data: enviosData, error: enviosError } = await supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido, direccion, email)")
+      .select("*, clientes (id, nombre, apellido, direccion, email, latitud, longitud)")
       .in("cliente_id", clientIds)
       .is("reparto_id", null)
       .eq("status", estadoEnvioEnum.Values.pending)
@@ -348,7 +349,8 @@ export async function reorderParadasAction(
 
     if (fetchError) {
       console.error("Error fetching paradas for reorder:", fetchError);
-      return { success: false, error: `Error al obtener paradas: ${fetchError.message}` };
+      const pgFetchError = fetchError as PostgrestError;
+      return { success: false, error: `Error al obtener paradas: ${pgFetchError.message}` };
     }
     if (!paradas || paradas.length === 0) {
       return { success: false, error: "No se encontraron paradas para este reparto." };
@@ -403,7 +405,7 @@ export async function reorderParadasAction(
       await supabase
         .from('paradas_reparto')
         .update({ orden: paradaToMove.orden }) 
-        .eq('id', paradaToMove.id);
+        .eq('id', paradaToMove.id); // Rollback
       console.error("Error updating orden for swapped parada:", updateError2);
       const pgError = updateError2 as PostgrestError;
       return { success: false, error: `Error al actualizar orden (2): ${pgError.message}` };
@@ -452,7 +454,7 @@ export async function getEnviosByClientesAction(clienteIds: string[]): Promise<E
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido, direccion, email)")
+      .select("*, clientes (id, nombre, apellido, direccion, email, latitud, longitud)") // Incluye latitud y longitud del cliente
       .in("cliente_id", clienteIds)
       .order("created_at", { ascending: true });
   
@@ -512,7 +514,7 @@ export async function createRepartoLoteAction(
   if (cliente_ids && cliente_ids.length > 0) {
     const { data: clientesData, error: clientesError } = await supabase
       .from("clientes")
-      .select("id, direccion") 
+      .select("id, direccion, latitud, longitud") // Añadir latitud y longitud
       .in("id", cliente_ids);
 
     if (clientesError) {
@@ -529,6 +531,8 @@ export async function createRepartoLoteAction(
       nuevosEnviosParaInsertar.push({
         cliente_id: cliente.id,
         client_location: cliente.direccion,
+        latitud: cliente.latitud, // Usar latitud del cliente
+        longitud: cliente.longitud, // Usar longitud del cliente
         package_size: 'medium', 
         package_weight: 1, 
         status: estadoEnvioEnum.Values.asignado_a_reparto,
