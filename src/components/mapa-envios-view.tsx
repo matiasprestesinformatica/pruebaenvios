@@ -15,20 +15,19 @@ const INITIAL_ZOOM = 13;
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script';
 
-// Module-level promise to ensure the API loading process is initiated only once.
 let loadGoogleMapsPromise: Promise<void> | null = null;
 
 function getEnvioMarkerColorHex(status: string | null): string {
-  if (!status) return '#A9A9A9'; // DarkGray for unknown
+  if (!status) return '#A9A9A9'; 
   switch (status) {
-    case estadoEnvioEnum.Values.pending: return '#FF0000'; // Red
-    case estadoEnvioEnum.Values.suggested: return '#800080'; // Purple
-    case estadoEnvioEnum.Values.asignado_a_reparto: return '#0000FF'; // Blue
-    case estadoEnvioEnum.Values.en_transito: return '#FFA500'; // Orange
-    case estadoEnvioEnum.Values.entregado: return '#008000'; // Green
-    case estadoEnvioEnum.Values.cancelado: return '#696969'; // DimGray
-    case estadoEnvioEnum.Values.problema_entrega: return '#FF69B4'; // HotPink
-    default: return '#A9A9A9'; // DarkGray
+    case estadoEnvioEnum.Values.pending: return '#FF0000'; 
+    case estadoEnvioEnum.Values.suggested: return '#800080'; 
+    case estadoEnvioEnum.Values.asignado_a_reparto: return '#0000FF'; 
+    case estadoEnvioEnum.Values.en_transito: return '#FFA500'; 
+    case estadoEnvioEnum.Values.entregado: return '#008000'; 
+    case estadoEnvioEnum.Values.cancelado: return '#696969'; 
+    case estadoEnvioEnum.Values.problema_entrega: return '#FF69B4'; 
+    default: return '#A9A9A9'; 
   }
 }
 
@@ -74,13 +73,12 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
         return;
       }
       
-      setIsLoadingApi(true); // Set loading true before attempting to load
+      setIsLoadingApi(true); 
 
       if (!loadGoogleMapsPromise) {
         loadGoogleMapsPromise = new Promise((resolve, reject) => {
-          // Define the callback function on the window object
           (window as any).initGoogleMapsApiForRumbos = () => {
-            delete (window as any).initGoogleMapsApiForRumbos; // Clean up
+            delete (window as any).initGoogleMapsApiForRumbos; 
             if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
               resolve();
             } else {
@@ -88,13 +86,8 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
             }
           };
 
-          // Check if the script tag already exists
           if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
-            // If it exists, assume it's loading or loaded and the callback will be handled.
-            // This can happen with React StrictMode or fast refresh.
-            // The promise will be resolved/rejected by the existing script's callback.
-            // console.warn("Google Maps script tag already exists. Waiting for existing load process.");
-            return; // Do not append another script
+            return; 
           }
 
           const script = document.createElement('script');
@@ -104,8 +97,8 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
           script.defer = true;
           script.onerror = (err) => {
             delete (window as any).initGoogleMapsApiForRumbos;
-            document.getElementById(GOOGLE_MAPS_SCRIPT_ID)?.remove(); // Remove failed script
-            loadGoogleMapsPromise = null; // Allow retry for subsequent attempts
+            document.getElementById(GOOGLE_MAPS_SCRIPT_ID)?.remove(); 
+            loadGoogleMapsPromise = null; 
             reject(new Error(`No se pudo cargar el script de Google Maps. Error: ${err ? (err as Event).type : 'desconocido'}`));
           };
           document.head.appendChild(script);
@@ -118,7 +111,6 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
       } catch (error: any) {
         setErrorLoadingApi(error.message || "Error desconocido al cargar Google Maps API.");
         setIsLoadingApi(false);
-        // loadGoogleMapsPromise is set to null on error by the script.onerror handler
       }
     };
 
@@ -146,6 +138,16 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
       envios.forEach(envio => {
         if (envio.latitud != null && envio.longitud != null) {
           const markerColor = getEnvioMarkerColorHex(envio.status);
+          let markerLabel: google.maps.MarkerLabel | undefined = undefined;
+          if (envio.orden !== null && envio.orden !== undefined) {
+            markerLabel = {
+              text: (envio.orden + 1).toString(),
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: '11px',
+            };
+          }
+
           const marker = new google.maps.Marker({
             position: { lat: envio.latitud, lng: envio.longitud },
             map: map,
@@ -155,18 +157,24 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
               fillOpacity: 0.9,
               strokeColor: '#ffffff',
               strokeWeight: 1.5,
-              scale: 7,
+              scale: envio.orden !== null && envio.orden !== undefined ? 9 : 7, // Make marker slightly larger if it has an order
             },
+            label: markerLabel,
             title: envio.nombre_cliente || envio.client_location,
           });
 
           marker.addListener('click', () => {
+            let orderInfo = '';
+            if (envio.orden !== null && envio.orden !== undefined) {
+              orderInfo = `<p style="margin: 2px 0;"><strong>Orden:</strong> ${envio.orden + 1}</p>`;
+            }
             const content = `
               <div style="font-family: sans-serif; font-size: 14px; max-width: 250px;">
                 <h4 style="margin-top: 0; margin-bottom: 5px; font-weight: bold;">${envio.nombre_cliente || 'Destinatario Temporal'}</h4>
                 <p style="margin: 2px 0;"><strong>Dirección:</strong> ${envio.client_location}</p>
                 <p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.package_size}, ${envio.package_weight}kg</p>
                 <p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</span></p>
+                ${orderInfo}
               </div>
             `;
             infoWindow.setContent(content);
@@ -202,7 +210,7 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
   
   if(envios.length === 0 && !isLoadingApi && !errorLoadingApi){
     return (
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-300px)] border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
+        <div className="flex flex-col items-center justify-center h-[calc(100vh-350px)] border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
             <Info className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold text-muted-foreground mb-2">No hay Envíos para Mostrar</h3>
             <p className="text-muted-foreground max-w-md">Actualmente no hay envíos geolocalizados en Mar del Plata para mostrar en el mapa con el filtro actual.</p>
@@ -212,4 +220,3 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
 
   return <div ref={mapRef} style={{ height: 'calc(100vh - 300px)', width: '100%' }} className="rounded-lg shadow-md border" />;
 }
-

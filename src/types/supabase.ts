@@ -15,9 +15,9 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string // Changed from string | null
-          latitud: number | null // New field
-          longitud: number | null // New field
+          direccion: string
+          latitud: number | null
+          longitud: number | null
           telefono: string | null
           email: string | null
           notas: string | null
@@ -27,9 +27,9 @@ export interface Database {
           id?: string
           created_at?: string
           nombre: string
-          direccion: string // Changed from string | null
-          latitud?: number | null // New field
-          longitud?: number | null // New field
+          direccion: string
+          latitud?: number | null
+          longitud?: number | null
           telefono?: string | null
           email?: string | null
           notas?: string | null
@@ -39,9 +39,9 @@ export interface Database {
           id?: string
           created_at?: string
           nombre?: string
-          direccion?: string // Changed from string | null
-          latitud?: number | null // New field
-          longitud?: number | null // New field
+          direccion?: string
+          latitud?: number | null
+          longitud?: number | null
           telefono?: string | null
           email?: string | null
           notas?: string | null
@@ -233,6 +233,7 @@ export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
 export type UpdateEmpresa = Database['public']['Tables']['empresas']['Update'];
 export type Cliente = Database['public']['Tables']['clientes']['Row'];
 export type NuevoCliente = Database['public']['Tables']['clientes']['Insert'];
+export type UpdateCliente = Database['public']['Tables']['clientes']['Update'];
 export type Repartidor = Database['public']['Tables']['repartidores']['Row'];
 export type NuevoRepartidor = Database['public']['Tables']['repartidores']['Insert'];
 export type Reparto = Database['public']['Tables']['repartos']['Row'];
@@ -246,7 +247,7 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null; // Added direccion
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null;
 };
 
 export type EnvioConCliente = Envio & {
@@ -274,11 +275,10 @@ export interface EnvioMapa {
   client_location: string;
   package_size: string;
   package_weight: number;
+  orden?: number | null; // Added for displaying order on map markers
 }
 
 export interface RepartoParaFiltro {
   id: string;
   label: string;
 }
-
-    
