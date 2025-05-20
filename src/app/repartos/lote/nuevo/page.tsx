@@ -60,4 +60,3 @@ function RepartoLoteFormSkeleton() {
 }
 
 export const dynamic = 'force-dynamic';
-```

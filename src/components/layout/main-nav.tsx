@@ -57,4 +57,3 @@ export function MainNav({ className, onItemClick, direction = "horizontal", ...p
     </nav>
   );
 }
-```

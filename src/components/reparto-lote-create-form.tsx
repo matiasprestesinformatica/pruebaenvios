@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import type { RepartoLoteCreationFormData } from "@/lib/schemas";
-import { repartoLoteCreationSchema, tipoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
+import { repartoLoteCreationSchema, estadoEnvioEnum } from "@/lib/schemas"; // tipoRepartoEnum removed as it's not directly used here but in actions
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -30,8 +30,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-import { Loader2, CalendarIcon, Search, User, Package, MapPin, Info } from "lucide-react";
-import type { Repartidor, Empresa, Cliente, Envio, Reparto, EnvioConCliente } from "@/types/supabase";
+import { Loader2, CalendarIcon } from "lucide-react"; // Search, User, Package, MapPin, Info removed as not used
+import type { Repartidor, Empresa, Cliente, Reparto, EnvioConCliente } from "@/types/supabase";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -149,7 +149,7 @@ export function RepartoLoteCreateForm({
   };
   
   const filteredClientes = clientesDeEmpresa.filter(cliente => 
-    `${cliente.nombre} ${cliente.apellido} ${cliente.email} ${cliente.direccion}`.toLowerCase().includes(searchTermClientes.toLowerCase())
+    `${cliente.nombre} ${cliente.apellido} ${cliente.email || ''} ${cliente.direccion || ''}`.toLowerCase().includes(searchTermClientes.toLowerCase())
   );
 
   return (
@@ -423,4 +423,3 @@ export function RepartoLoteCreateForm({
     </Form>
   );
 }
-```

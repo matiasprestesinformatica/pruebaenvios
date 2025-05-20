@@ -26,21 +26,25 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(),
+  client_location: z.string().optional().nullable(), // Made optional here, refined below
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
+    // If a client is selected, their location should ideally be auto-filled.
+    // The form logic will set client_location. If it's still empty, means client has no address.
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "La dirección del cliente no pudo ser obtenida. Verifique los datos del cliente o ingrésela manualmente.",
-            path: ["cliente_id"], // Error asociado a la selección del cliente
+            message: "La dirección del cliente no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrese la dirección manualmente deseleccionando el cliente.",
+            path: ["cliente_id"], // Error associated with client selection
           });
     }
+    // nombre_cliente_temporal is not needed if cliente_id is present
   } else {
+    // If no client is selected, then temporary name and location are required
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -110,4 +114,3 @@ export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSche
 
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
-```
