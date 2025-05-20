@@ -2,7 +2,7 @@
 "use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { EnvioMapa, RepartoConDetalles, EnvioConCliente, RepartoParaFiltro } from "@/types/supabase";
+import type { EnvioMapa, RepartoConDetalles, EnvioConCliente, RepartoParaFiltro, Reparto, Repartidor } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -22,7 +22,7 @@ export async function getEnviosGeolocalizadosAction(
     const supabase = createSupabaseServerClient();
     let query = supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido)") // Select specific fields from clientes
+      .select("*, clientes (id, nombre, apellido)") 
       .not("latitud", "is", null)
       .not("longitud", "is", null)
       .gte("latitud", MDP_BOUNDS.minLat)
@@ -34,11 +34,9 @@ export async function getEnviosGeolocalizadosAction(
       if (repartoId === "unassigned") {
         query = query.is("reparto_id", null);
       } else {
-        // Assume it's a specific reparto UUID
         query = query.eq("reparto_id", repartoId);
       }
     }
-    // If repartoId is "all" or null/undefined, no additional reparto_id filter is applied
 
     query = query.order("created_at", { ascending: false });
     
@@ -56,10 +54,10 @@ export async function getEnviosGeolocalizadosAction(
       return { data: [], error: errorMessage };
     }
 
-    const enviosMapa: EnvioMapa[] = (data as EnvioConCliente[]).map(envio => ({
+    const enviosMapa: EnvioMapa[] = (data || []).map(envio => ({
       id: envio.id,
-      latitud: envio.latitud as number, // Asserting not null due to query filters
-      longitud: envio.longitud as number, // Asserting not null
+      latitud: envio.latitud as number, 
+      longitud: envio.longitud as number, 
       status: envio.status,
       nombre_cliente: envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.nombre_cliente_temporal,
       client_location: envio.client_location,
@@ -76,15 +74,20 @@ export async function getEnviosGeolocalizadosAction(
   }
 }
 
+// Define a more specific type for the data fetched for the filter
+type RepartoDataForFilter = Pick<Reparto, 'id' | 'fecha_reparto'> & {
+  repartidores: Pick<Repartidor, 'nombre'> | null;
+};
+
 export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoParaFiltro[]; error: string | null }> {
   try {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("repartos")
-      .select("id, fecha_reparto, repartidores (nombre)")
+      .select("id, fecha_reparto, repartidores (nombre)") // Select only needed fields
       .order("fecha_reparto", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(20); // Limit to recent repartos for filter brevity
+      .limit(20); 
 
     if (error) {
       const pgError = error as PostgrestError;
@@ -92,7 +95,10 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
       return { data: [], error: "No se pudieron cargar los repartos para el filtro." };
     }
     
-    const repartosParaFiltro: RepartoParaFiltro[] = (data as unknown as RepartoConDetalles[]).map(r => {
+    // Use the more specific type and handle potential null data
+    const repartosFetched = (data as RepartoDataForFilter[]) || [];
+
+    const repartosParaFiltro: RepartoParaFiltro[] = repartosFetched.map(r => {
       let label = `Reparto del ${r.fecha_reparto ? format(parseISO(r.fecha_reparto), "dd MMM yy", { locale: es }) : 'N/A'}`;
       if (r.repartidores?.nombre) {
         label += ` - ${r.repartidores.nombre}`;
