@@ -24,13 +24,53 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 
 
 export const shipmentSchema = z.object({
-  cliente_id: z.string().optional(), 
-  nombre_cliente_temporal: z.string().optional(),
-  client_location: z.string().min(1, "La ubicación del cliente es obligatoria."),
+  cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
+  nombre_cliente_temporal: z.string().optional().nullable(),
+  client_location: z.string().optional().nullable(), // Será validado con superRefine
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
+}).superRefine((data, ctx) => {
+  if (data.cliente_id) {
+    // Si se selecciona un cliente existente
+    if (data.nombre_cliente_temporal && data.nombre_cliente_temporal.trim() !== "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "No ingrese un nombre temporal si selecciona un cliente existente.",
+        path: ["nombre_cliente_temporal"],
+      });
+    }
+    // client_location se tomará del cliente, por lo que no se valida aquí si está vacío
+    // pero la lógica del formulario se encargará de llenarlo.
+    // Si por alguna razón el cliente no tuviera dirección, el formulario debería impedirlo antes.
+    // O bien, aquí podríamos verificar que data.client_location tenga valor si data.cliente_id existe.
+    // Por ahora, el formulario se encarga de autocompletarlo, haciéndolo efectivamente presente.
+    if (!data.client_location || data.client_location.trim() === "") {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "No se pudo obtener la dirección del cliente seleccionado. Verifique los datos del cliente.",
+            path: ["cliente_id"], // Error en el cliente si no se puede obtener la dirección
+          });
+    }
+
+  } else {
+    // Si NO se selecciona un cliente existente (envío temporal)
+    if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El nombre del cliente es obligatorio si no selecciona uno existente.",
+        path: ["nombre_cliente_temporal"],
+      });
+    }
+    if (!data.client_location || data.client_location.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La ubicación del cliente es obligatoria si no selecciona uno existente.",
+        path: ["client_location"],
+      });
+    }
+  }
 });
 
 export type ShipmentFormData = z.infer<typeof shipmentSchema>;
