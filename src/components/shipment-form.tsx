@@ -32,10 +32,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
 interface ShipmentFormProps {
-  clientes: Cliente[]; // Asegúrate de que el tipo Cliente incluye 'direccion'
+  clientes: Cliente[]; 
   onSuggestOptions: (data: ShipmentFormData) => Promise<SuggestDeliveryOptionsOutput | null>;
   onSubmitShipment: (data: ShipmentFormData, aiSuggestions?: SuggestDeliveryOptionsOutput) => Promise<{success: boolean, error?: string | null}>;
 }
+
+const NULL_VALUE_PLACEHOLDER = "_NULL_VALUE_";
 
 export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: ShipmentFormProps) {
   const [isSuggesting, setIsSuggesting] = useState(false);
@@ -48,7 +50,7 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
   const form = useForm<ShipmentFormData>({
     resolver: zodResolver(shipmentSchema),
     defaultValues: {
-      cliente_id: undefined,
+      cliente_id: null, // Default to null for better control
       nombre_cliente_temporal: "",
       client_location: "",
       package_size: undefined,
@@ -66,18 +68,15 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
         form.setValue("nombre_cliente_temporal", "", { shouldValidate: true });
         setSelectedClientAddress(client.direccion);
       } else {
-        // Cliente seleccionado pero no encontrado o sin dirección
-        form.setValue("client_location", "", { shouldValidate: true }); // Limpiar para que la validación falle si es necesario
+        form.setValue("client_location", "", { shouldValidate: true }); 
         setSelectedClientAddress(null);
         if(client && !client.direccion) {
             toast({title: "Advertencia", description: "El cliente seleccionado no tiene una dirección registrada. Por favor, actualice los datos del cliente o ingrese la dirección manualmente.", variant: "destructive", duration: 7000});
         }
       }
     } else {
-      // No hay cliente seleccionado, permitir entrada manual
-      // No limpiamos client_location aquí para permitir que el usuario lo ingrese
-      // form.setValue("client_location", "", { shouldValidate: true }); // Esto borraría la entrada manual al deseleccionar
       setSelectedClientAddress(null);
+      // Do not clear client_location here to allow manual input if cliente_id is deselected
     }
   }, [selectedClientId, clientes, form, toast]);
 
@@ -147,9 +146,9 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                   <FormLabel>Cliente Existente (Opcional)</FormLabel>
                   <Select 
                     onValueChange={(value) => {
-                      field.onChange(value === "" ? null : value); // Manejar deselección
+                      field.onChange(value === NULL_VALUE_PLACEHOLDER ? null : value);
                     }} 
-                    value={field.value || ""}
+                    value={field.value === null || field.value === undefined ? NULL_VALUE_PLACEHOLDER : field.value}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -157,7 +156,7 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Ninguno / Envío Temporal</SelectItem>
+                      <SelectItem value={NULL_VALUE_PLACEHOLDER}>Ninguno / Envío Temporal</SelectItem>
                       {clientes.map((cliente) => (
                         <SelectItem key={cliente.id} value={cliente.id}>
                           {cliente.nombre} {cliente.apellido} ({cliente.email})
@@ -192,7 +191,6 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                       <Info className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span>{selectedClientAddress}</span>
                     </div>
-                    {/* Campo oculto para mantener client_location en los datos del formulario */}
                     <FormField
                         control={form.control}
                         name="client_location"
@@ -247,7 +245,7 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                     <FormLabel>Peso del Paquete (kg)</FormLabel>
                     <FormControl>
                       <Input type="number" step="0.1" min="0.1" placeholder="Ej: 1.5" {...field} 
-                      onChange={event => field.onChange(+event.target.value)} // coerce to number
+                      onChange={event => field.onChange(+event.target.value)} 
                       />
                     </FormControl>
                     <FormMessage />

@@ -34,6 +34,8 @@ interface ClientFormProps {
   empresas: Pick<Empresa, 'id' | 'nombre'>[];
 }
 
+const NULL_VALUE_PLACEHOLDER = "_NULL_VALUE_";
+
 export function ClientForm({
   onSubmit,
   initialData,
@@ -55,11 +57,8 @@ export function ClientForm({
   });
 
   const handleFormSubmit = async (data: ClientFormData) => {
-    const submittedData = {
-        ...data,
-        empresa_id: data.empresa_id === "" ? null : data.empresa_id, // Ensure empty string is sent as null
-    };
-    await onSubmit(submittedData);
+    // No longer need to transform empresa_id here, as onValueChange handles it
+    await onSubmit(data);
   };
 
   return (
@@ -99,14 +98,19 @@ export function ClientForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Empresa (Opcional)</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+              <Select
+                onValueChange={(value) => {
+                  field.onChange(value === NULL_VALUE_PLACEHOLDER ? null : value);
+                }}
+                value={field.value === null || field.value === undefined ? NULL_VALUE_PLACEHOLDER : field.value}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar una empresa" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">Ninguna</SelectItem>
+                  <SelectItem value={NULL_VALUE_PLACEHOLDER}>Ninguna</SelectItem>
                   {empresas.map((empresa) => (
                     <SelectItem key={empresa.id} value={empresa.id}>
                       {empresa.nombre}
