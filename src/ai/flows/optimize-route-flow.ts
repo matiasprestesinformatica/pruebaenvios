@@ -25,13 +25,13 @@ const OptimizeRouteInputSchema = z.object({
   stops: z.array(OptimizeRouteStopInputSchema)
     .min(2, "At least two stops are required for route optimization.")
     .describe("An array of stops to be routed. The AI should consider the first stop as the starting point if it's a pickup location."),
-  // Consider adding vehicle type, delivery windows, traffic considerations for more advanced prompts later
 });
 export type OptimizeRouteInput = z.infer<typeof OptimizeRouteInputSchema>;
 
 const OptimizeRouteOutputSchema = z.object({
   optimized_stop_ids: z.array(z.string()).describe("An array of stop IDs in the suggested optimal order."),
-  notes: z.string().optional().describe("Any notes, estimated distance/time, or reasoning from the AI about the suggested route."),
+  notes: z.string().optional().describe("Any notes or reasoning from the AI about the suggested route."),
+  estimated_total_distance_km: z.number().optional().describe("An estimated total travel distance for the optimized route in kilometers, if calculable by the AI."),
 });
 export type OptimizeRouteOutput = z.infer<typeof OptimizeRouteOutputSchema>;
 
@@ -57,8 +57,10 @@ Otherwise, determine the best starting point among the stops provided to minimiz
 The output should be a list of stop IDs in the suggested optimized sequence.
 
 Please provide the result as a JSON object adhering to the OptimizeRouteOutputSchema.
-Include the 'optimized_stop_ids' array. You can optionally include 'notes' with a brief explanation or total estimated distance if you can infer it (assume urban driving conditions in Mar del Plata).
-Prioritize minimizing travel distance/time.
+Include the 'optimized_stop_ids' array.
+Please also try to calculate and include the 'estimated_total_distance_km' with the estimated total travel distance for the optimized route in kilometers.
+You can optionally include 'notes' with a brief explanation or reasoning for the route.
+Prioritize minimizing travel distance/time. Assume urban driving conditions in Mar del Plata.
 `,
 });
 
@@ -73,16 +75,14 @@ const optimizeRouteFlow = ai.defineFlow(
     if (!output) {
       throw new Error("AI did not return an output for route optimization.");
     }
-    // Ensure the output contains all original stop IDs, just reordered.
-    // This is a basic check; more sophisticated validation might be needed.
+    
     const originalIds = new Set(input.stops.map(s => s.id));
     const optimizedIds = new Set(output.optimized_stop_ids);
     if (originalIds.size !== optimizedIds.size || !Array.from(originalIds).every(id => optimizedIds.has(id))) {
         console.warn("AI route optimization output is missing some original stop IDs or has duplicates.", {original: input.stops, optimized: output.optimized_stop_ids});
-        // Potentially throw an error or try to return the original order as a fallback if critical
-        // For now, we'll let it pass but log a warning.
     }
 
     return output;
   }
 );
+
