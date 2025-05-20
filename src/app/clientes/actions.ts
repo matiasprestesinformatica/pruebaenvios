@@ -26,25 +26,19 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
-      const addressComponents = data.results[0].address_components;
+      // const addressComponents = data.results[0].address_components; // Keep for debugging if needed
 
-      const isMarDelPlata = addressComponents.some(
-        (component: any) =>
-          (component.types.includes('locality') && component.long_name.toLowerCase().includes('mar del plata')) ||
-          (component.types.includes('administrative_area_level_1') && component.long_name.toLowerCase().includes('buenos aires'))
-      );
-
+      // Primary validation: check if coordinates fall within Mar del Plata bounds
       const MDP_BOUNDS = {
         minLat: -38.15, maxLat: -37.90,
         minLng: -57.70, maxLng: -57.45,
       };
 
-      if (isMarDelPlata &&
-          location.lat >= MDP_BOUNDS.minLat && location.lat <= MDP_BOUNDS.maxLat &&
+      if (location.lat >= MDP_BOUNDS.minLat && location.lat <= MDP_BOUNDS.maxLat &&
           location.lng >= MDP_BOUNDS.minLng && location.lng <= MDP_BOUNDS.maxLng) {
         return { lat: location.lat, lng: location.lng };
       } else {
-        console.warn(`Geocoded address for "${address}" is outside Mar del Plata or components do not match.`);
+        console.warn(`Geocoded address for "${address}" is outside Mar del Plata bounds. Coordinates: Lat ${location.lat}, Lng ${location.lng}`);
         return null;
       }
     } else {
@@ -235,5 +229,3 @@ export async function updateClientEstadoAction(
     return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
-
-    

@@ -9,8 +9,6 @@ import type { Empresa, NuevaEmpresa, UpdateEmpresa } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 // Helper function to geocode address and validate if it's in Mar del Plata
-// This function is similar to the one in clientes/actions.ts
-// For a real app, this should be in a shared utility file.
 async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: number; lng: number } | null> {
   const apiKey = process.env.GOOGLE_GEOCODING_API_KEY;
   if (!apiKey) {
@@ -27,25 +25,19 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
-      const addressComponents = data.results[0].address_components;
+      // const addressComponents = data.results[0].address_components; // Keep for debugging
 
-      const isMarDelPlata = addressComponents.some(
-        (component: any) =>
-          (component.types.includes('locality') && component.long_name.toLowerCase().includes('mar del plata')) ||
-          (component.types.includes('administrative_area_level_1') && component.long_name.toLowerCase().includes('buenos aires'))
-      );
-      
+      // Primary validation: check if coordinates fall within Mar del Plata bounds
       const MDP_BOUNDS = {
         minLat: -38.15, maxLat: -37.90,
         minLng: -57.70, maxLng: -57.45,
       };
 
-      if (isMarDelPlata &&
-          location.lat >= MDP_BOUNDS.minLat && location.lat <= MDP_BOUNDS.maxLat &&
+      if (location.lat >= MDP_BOUNDS.minLat && location.lat <= MDP_BOUNDS.maxLat &&
           location.lng >= MDP_BOUNDS.minLng && location.lng <= MDP_BOUNDS.maxLng) {
         return { lat: location.lat, lng: location.lng };
       } else {
-        console.warn(`Geocoded address for empresa "${address}" is outside Mar del Plata or components do not match.`);
+        console.warn(`Geocoded address for empresa "${address}" is outside Mar del Plata bounds. Coordinates: Lat ${location.lat}, Lng ${location.lng}`);
         return null;
       }
     } else {
@@ -66,12 +58,14 @@ export async function addEmpresaAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    // Dirección is now required by the schema, so data.direccion will always be present
-    const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
-    if (coordinates) {
-      geocodingInfo = "Dirección de empresa geocodificada y validada en Mar del Plata.";
-    } else {
-      geocodingInfo = "No se pudo geocodificar la dirección de la empresa o está fuera de Mar del Plata. Coordenadas no guardadas.";
+    let coordinates: { lat: number; lng: number } | null = null;
+    if (data.direccion) { // Dirección is now required by the schema
+      coordinates = await geocodeAddressInMarDelPlata(data.direccion);
+      if (coordinates) {
+        geocodingInfo = "Dirección de empresa geocodificada y validada en Mar del Plata.";
+      } else {
+        geocodingInfo = "No se pudo geocodificar la dirección de la empresa o está fuera de Mar del Plata. Coordenadas no guardadas.";
+      }
     }
 
     const processedData: Partial<NuevaEmpresa> = { 
@@ -96,7 +90,7 @@ export async function addEmpresaAction(
     
     const { data: empresa, error } = await supabase
       .from("empresas")
-      .insert(validatedFields.data as NuevaEmpresa) // Cast after validation
+      .insert(validatedFields.data as NuevaEmpresa) 
       .select()
       .single();
 
@@ -197,7 +191,7 @@ export async function getEmpresasForSelectAction(): Promise<Pick<Empresa, 'id' |
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Unexpected error in getEmpresasForSelectAction:", err.message);
-    return []; // Return empty array on critical error
+    return []; 
   }
 }
 
@@ -209,7 +203,7 @@ export async function updateEmpresaEstadoAction(
     const supabase = createSupabaseServerClient();
     const { error } = await supabase
       .from("empresas")
-      .update({ estado: nuevoEstado } as UpdateEmpresa) // Use UpdateEmpresa type
+      .update({ estado: nuevoEstado } as UpdateEmpresa) 
       .eq("id", empresaId);
 
     if (error) {
@@ -230,5 +224,3 @@ export async function updateEmpresaEstadoAction(
     return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
-
-    
