@@ -64,7 +64,8 @@ function getEstadoBadgeVariant(estado: string) {
       return 'outline';
   }
 }
-function getEstadoBadgeColor(estado: string) {
+function getEstadoBadgeColor(estado: string | null) {
+    if(!estado) return 'bg-gray-400 text-white';
     switch (estado) {
       case 'asignado':
         return 'bg-blue-500 hover:bg-blue-600 text-white';
@@ -178,11 +179,11 @@ export function RepartosListTable({
                     <TableCell className="hidden sm:table-cell">
                       <Badge variant={reparto.tipo_reparto === 'individual' ? 'secondary' : 'outline'} className="capitalize flex items-center w-fit gap-1">
                         {reparto.tipo_reparto === 'individual' ? <Route className="h-3 w-3"/> : <Building2 className="h-3 w-3"/>}
-                        {reparto.tipo_reparto.replace('_', ' ')}
+                        {reparto.tipo_reparto ? reparto.tipo_reparto.replace(/_/g, ' ') : 'Desconocido'}
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                        {reparto.tipo_reparto === 'viaje_empresa' && reparto.empresas?.nombre ? (
+                        {(reparto.tipo_reparto === 'viaje_empresa' || reparto.tipo_reparto === 'viaje_empresa_lote') && reparto.empresas?.nombre ? (
                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
                                 <Building2 className="h-3 w-3" /> {reparto.empresas.nombre}
                              </Badge>
@@ -190,7 +191,7 @@ export function RepartosListTable({
                     </TableCell>
                     <TableCell>
                       <Badge variant={getEstadoBadgeVariant(reparto.estado)} className={`${getEstadoBadgeColor(reparto.estado)} capitalize`}>
-                        {reparto.estado.replace('_', ' ')}
+                        {reparto.estado ? reparto.estado.replace(/_/g, ' ') : 'Desconocido'}
                       </Badge>
                     </TableCell>
                     <TableCell>
