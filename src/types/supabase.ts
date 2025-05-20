@@ -21,8 +21,8 @@ export interface Database {
           notas: string | null
         }
         Insert: {
-          id?: string
-          created_at?: string
+          id?: string // Usually auto-generated
+          created_at?: string // Default value
           nombre: string
           direccion?: string | null
           telefono?: string | null
@@ -52,8 +52,8 @@ export interface Database {
           empresa_id: string | null
         }
         Insert: {
-          id?: string
-          created_at?: string
+          id?: string // Usually auto-generated
+          created_at?: string // Default value
           nombre: string
           apellido: string
           direccion: string
@@ -82,10 +82,10 @@ export interface Database {
           estado: boolean
         }
         Insert: {
-          id?: string
-          created_at?: string
+          id?: string // Usually auto-generated
+          created_at?: string // Default value
           nombre: string
-          estado?: boolean 
+          estado: boolean // Has default in DB, but often good to be explicit
         }
         Update: {
           id?: string
@@ -98,18 +98,18 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string 
+          fecha_reparto: string // DATE type from DB comes as string
           repartidor_id: string | null
-          estado: string 
-          tipo_reparto: string 
+          estado: string // TEXT, constrained by Zod schema
+          tipo_reparto: string // TEXT, constrained by Zod schema
           empresa_id: string | null
         }
         Insert: {
-          id?: string
-          created_at?: string
+          id?: string // Usually auto-generated
+          created_at?: string // Default value
           fecha_reparto: string
           repartidor_id?: string | null
-          estado?: string
+          estado: string
           tipo_reparto: string
           empresa_id?: string | null
         }
@@ -127,25 +127,25 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          cliente_id: string | null 
-          nombre_cliente_temporal: string | null 
+          cliente_id: string | null
+          nombre_cliente_temporal: string | null
           client_location: string
-          package_size: string 
-          package_weight: number 
-          status: string 
+          package_size: string // TEXT, constrained by Zod schema
+          package_weight: number // float4
+          status: string // TEXT, constrained by Zod schema
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
         }
         Insert: {
-          id?: string
-          created_at?: string
+          id?: string // Usually auto-generated
+          created_at?: string // Default value
           cliente_id?: string | null
           nombre_cliente_temporal?: string | null
           client_location: string
           package_size: string
           package_weight: number
-          status?: string
+          status: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
@@ -164,20 +164,20 @@ export interface Database {
           reparto_id?: string | null
         }
       }
-      paradas_reparto: { // Nueva tabla
+      paradas_reparto: {
         Row: {
           id: string
           reparto_id: string
           envio_id: string
-          orden: number
+          orden: number // int4
           created_at: string
         }
         Insert: {
-          id?: string
+          id?: string // Usually auto-generated
           reparto_id: string
           envio_id: string
           orden: number
-          created_at?: string
+          created_at?: string // Default value
         }
         Update: {
           id?: string
@@ -195,7 +195,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-       [_ in never]: never 
+       [_ in never]: never // Your schema uses TEXT for enum-like fields, validated by Zod
     }
     CompositeTypes: {
       [_ in never]: never
@@ -229,7 +229,7 @@ export type EnvioConCliente = Envio & {
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente; // Asumimos que una parada siempre tendrá un envío válido.
+  envio: EnvioConCliente;
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
