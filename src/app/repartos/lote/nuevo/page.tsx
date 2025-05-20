@@ -1,35 +1,40 @@
 
 import { PageHeader } from "@/components/page-header";
 import { RepartoLoteCreateForm } from "@/components/reparto-lote-create-form";
-import { 
-    getRepartidoresActivosAction, 
+import {
+    getRepartidoresActivosAction,
     getEmpresasForRepartoAction,
     getClientesByEmpresaAction,
-    getEnviosByClientesAction,
     createRepartoLoteAction
-} from "../../actions"; // Ajustado para usar actions del directorio padre
+} from "../../actions"; // Corrected path
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+// Types are not strictly needed here if passed as props from Server Component to Client Component
+// import type { Repartidor, Empresa } from "@/types/supabase";
 
-async function NuevoRepartoLotePageContent() {
-  // Fetch initial data needed for the form
-  const [repartidores, empresas] = await Promise.all([
-    getRepartidoresActivosAction(),
-    getEmpresasForRepartoAction(),
-  ]);
+interface NuevoRepartoLotePageContentProps {
+  repartidores: Awaited<ReturnType<typeof getRepartidoresActivosAction>>;
+  empresas: Awaited<ReturnType<typeof getEmpresasForRepartoAction>>;
+}
 
+async function NuevoRepartoLotePageContent({ repartidores, empresas }: NuevoRepartoLotePageContentProps) {
+  // getClientesByEmpresaAction and createRepartoLoteAction will be passed directly
+  // to RepartoLoteCreateForm, as they are Server Actions.
   return (
     <RepartoLoteCreateForm
       repartidores={repartidores}
       empresas={empresas}
       getClientesByEmpresaAction={getClientesByEmpresaAction}
-      getEnviosByClientesAction={getEnviosByClientesAction}
       createRepartoLoteAction={createRepartoLoteAction}
     />
   );
 }
 
 export default async function NuevoRepartoLotePage() {
+  // Fetch initial data needed for the form directly in the Server Component
+  const repartidores = await getRepartidoresActivosAction();
+  const empresas = await getEmpresasForRepartoAction();
+
   return (
     <>
       <PageHeader
@@ -37,7 +42,7 @@ export default async function NuevoRepartoLotePage() {
         description="Seleccione una empresa y sus clientes para generar un reparto por lote."
       />
       <Suspense fallback={<RepartoLoteFormSkeleton />}>
-        <NuevoRepartoLotePageContent />
+        <NuevoRepartoLotePageContent repartidores={repartidores} empresas={empresas} />
       </Suspense>
     </>
   );
@@ -53,7 +58,6 @@ function RepartoLoteFormSkeleton() {
       </div>
       <Skeleton className="h-10 w-full sm:w-72" />
       <Skeleton className="h-40 w-full" /> {/* Placeholder for clientes selection area */}
-      <Skeleton className="h-40 w-full" /> {/* Placeholder for envios selection area */}
       <Skeleton className="h-10 w-full sm:w-48" />
     </div>
   );
