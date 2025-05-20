@@ -1,9 +1,9 @@
 
 "use client";
 
-import type { RepartoCompleto, ParadaConEnvioYCliente } from "@/types/supabase";
+import type { RepartoCompleto, ParadaConEnvioYCliente, TipoParadaEnum } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
-import { estadoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
+import { estadoRepartoEnum, estadoEnvioEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -20,8 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, MapPin as IconMapPin, ArrowUp, ArrowDown } from "lucide-react";
-import type { reorderParadasAction } from "@/app/repartos/actions"; // For type checking the prop
+import { User, CalendarDays, Truck, Building, Loader2, MapPin as IconMapPin, ArrowUp, ArrowDown, Home } from "lucide-react";
 
 interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
@@ -89,7 +88,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   const [reparto, setReparto] = useState<RepartoCompleto>(initialReparto);
   const [selectedStatus, setSelectedStatus] = useState<EstadoReparto>(reparto.estado as EstadoReparto);
   const [isUpdatingStatus, startUpdatingStatusTransition] = useTransition();
-  const [isReordering, setIsReordering] = useState<string | null>(null); // parada.id of the item being reordered
+  const [isReordering, setIsReordering] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -99,11 +98,12 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
 
   const handleStatusChange = async () => {
     startUpdatingStatusTransition(async () => {
-        const envioIds = reparto.paradas.map(p => p.envio_id).filter(Boolean) as string[];
+        const envioIds = reparto.paradas.filter(p => p.envio_id).map(p => p.envio_id as string);
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
         
         if (result.success) {
             const updatedParadas = reparto.paradas.map(parada => {
+                if (!parada.envio) return parada; // Skip pickup points or paradas without envio
                 let newEnvioStatus = parada.envio.status;
                 if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
                     newEnvioStatus = estadoEnvioEnum.Values.en_transito;
@@ -121,7 +121,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             toast({ title: "Estado Actualizado", description: "El estado del reparto y envíos asociados ha sido actualizado." });
         } else {
             toast({ title: "Error", description: result.error || "No se pudo actualizar el estado.", variant: "destructive" });
-            setSelectedStatus(reparto.estado as EstadoReparto); // Revert select on error
+            setSelectedStatus(reparto.estado as EstadoReparto);
         }
     });
   };
@@ -129,7 +129,6 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   const handleReorderParada = async (paradaId: string, direccion: 'up' | 'down') => {
     setIsReordering(paradaId);
 
-    // Optimistic update
     const currentParadas = [...reparto.paradas];
     const currentIndex = currentParadas.findIndex(p => p.id === paradaId);
     if (currentIndex === -1) {
@@ -138,11 +137,19 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     }
 
     let newParadas = [...currentParadas];
+    const paradaToMove = newParadas[currentIndex];
+
+    if (paradaToMove.orden === 0 && direccion === 'up') { // Cannot move pickup point further up
+        setIsReordering(null);
+        return;
+    }
+
+
     if (direccion === 'up' && currentIndex > 0) {
         const temp = newParadas[currentIndex];
         newParadas[currentIndex] = newParadas[currentIndex - 1];
         newParadas[currentIndex - 1] = temp;
-        // Swap 'orden' for optimistic display, actual 'orden' swap happens in server action
+        
         const tempOrden = newParadas[currentIndex].orden;
         newParadas[currentIndex].orden = newParadas[currentIndex - 1].orden;
         newParadas[currentIndex - 1].orden = tempOrden;
@@ -151,16 +158,15 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         const temp = newParadas[currentIndex];
         newParadas[currentIndex] = newParadas[currentIndex + 1];
         newParadas[currentIndex + 1] = temp;
-        // Swap 'orden' for optimistic display
+       
         const tempOrden = newParadas[currentIndex].orden;
         newParadas[currentIndex].orden = newParadas[currentIndex + 1].orden;
         newParadas[currentIndex + 1].orden = tempOrden;
     } else {
         setIsReordering(null);
-        return; // No change
+        return; 
     }
     
-    // Sort by new optimistic order for UI
     newParadas.sort((a,b) => a.orden - b.orden);
     setReparto(prev => ({...prev, paradas: newParadas}));
 
@@ -168,20 +174,15 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     const result = await reorderParadasAction(reparto.id, paradaId, direccion);
     if (result.success) {
       toast({ title: "Parada Reordenada", description: "El orden de la parada ha sido actualizado." });
-      // The revalidation from server action should refresh the data,
-      // but if not, a manual fetch or relying on optimistic update could be done.
-      // For now, we assume revalidation works. If state inconsistency, uncomment below:
-      // const updatedDetails = await getRepartoDetailsAction(reparto.id);
-      // if (updatedDetails.data) setReparto(updatedDetails.data);
     } else {
       toast({ title: "Error al Reordenar", description: result.error || "No se pudo reordenar la parada.", variant: "destructive" });
-      setReparto(prev => ({...prev, paradas: currentParadas})); // Revert optimistic update
+      setReparto(prev => ({...prev, paradas: currentParadas})); 
     }
     setIsReordering(null);
   };
 
 
-  const isViajeEmpresa = reparto.tipo_reparto === 'viaje_empresa' || reparto.tipo_reparto === 'viaje_empresa_lote';
+  const isViajeEmpresaType = reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa || reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa_lote;
 
   return (
     <div className="space-y-6">
@@ -209,10 +210,10 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             <Truck className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Tipo de Reparto</p>
-              <p className="font-medium capitalize">{reparto.tipo_reparto?.replace(/_/g, ' ') || 'Desconocido'}</p>
+              <p className="font-medium capitalize">{(reparto.tipo_reparto || 'Desconocido').replace(/_/g, ' ')}</p>
             </div>
           </div>
-          {isViajeEmpresa && reparto.empresas && (
+          {isViajeEmpresaType && reparto.empresas && (
              <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
                 <Building className="h-5 w-5 text-muted-foreground" />
                 <div>
@@ -221,11 +222,11 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                 </div>
             </div>
           )}
-          {isViajeEmpresa && reparto.empresas?.direccion && (
+          {isViajeEmpresaType && reparto.empresas?.direccion && (
              <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-2 lg:col-span-1">
                 <IconMapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
                 <div>
-                <p className="text-sm text-muted-foreground">Dirección de Retiro Inicial</p>
+                <p className="text-sm text-muted-foreground">Dirección de Empresa/Retiro</p>
                 <p className="font-medium">{reparto.empresas.direccion}</p>
                 </div>
             </div>
@@ -260,8 +261,8 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
 
       <Card>
         <CardHeader>
-          <CardTitle>Envíos/Paradas Asignadas ({reparto.paradas.length})</CardTitle>
-           <CardDescription>Esta es la secuencia de entrega planificada. Puede ajustar el orden utilizando los botones de flecha.</CardDescription>
+          <CardTitle>Paradas Asignadas ({reparto.paradas.length})</CardTitle>
+           <CardDescription>Secuencia de entrega planificada. Puede ajustar el orden.</CardDescription>
         </CardHeader>
         <CardContent>
           {reparto.paradas.length > 0 ? (
@@ -271,7 +272,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                     <TableRow>
                         <TableHead className="w-12">Orden</TableHead>
                         <TableHead className="w-20 text-center">Reordenar</TableHead>
-                        <TableHead>Cliente/Destino</TableHead>
+                        <TableHead>Destino/Tipo Parada</TableHead>
                         <TableHead>Ubicación</TableHead>
                         <TableHead>Paquete</TableHead>
                         <TableHead>Estado Envío</TableHead>
@@ -279,7 +280,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                     </TableHeader>
                     <TableBody>
                     {reparto.paradas.map((parada, index) => (
-                        <TableRow key={parada.id}>
+                        <TableRow key={parada.id} className={parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
                         <TableCell className="font-medium text-center">{parada.orden + 1}</TableCell>
                         <TableCell className="text-center">
                             <div className="flex justify-center items-center gap-1">
@@ -287,7 +288,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                                     variant="ghost" 
                                     size="icon" 
                                     onClick={() => handleReorderParada(parada.id, 'up')}
-                                    disabled={index === 0 || isReordering === parada.id}
+                                    disabled={(parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && parada.orden === 0) || index === 0 || isReordering === parada.id}
                                     title="Mover arriba"
                                 >
                                     {isReordering === parada.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
@@ -304,17 +305,34 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                             </div>
                         </TableCell>
                         <TableCell>
-                            <div className="font-medium">
-                            {parada.envio.clientes ? `${parada.envio.clientes.nombre} ${parada.envio.clientes.apellido}` : parada.envio.nombre_cliente_temporal || "N/A"}
+                            <div className="font-medium flex items-center gap-2">
+                                {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa ? <Home className="h-4 w-4 text-blue-600"/> : <User className="h-4 w-4 text-muted-foreground"/>}
+                                {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa 
+                                    ? `Retiro en ${reparto.empresas?.nombre || 'Empresa'}`
+                                    : parada.envio?.clientes ? `${parada.envio.clientes.nombre} ${parada.envio.clientes.apellido}` : parada.envio?.nombre_cliente_temporal || "N/A"
+                                }
                             </div>
-                            {parada.envio.clientes?.email && <div className="text-xs text-muted-foreground">{parada.envio.clientes.email}</div>}
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio?.clientes?.email && 
+                                <div className="text-xs text-muted-foreground pl-6">{parada.envio.clientes.email}</div>}
                         </TableCell>
-                        <TableCell>{parada.envio.client_location}</TableCell>
-                        <TableCell>{parada.envio.package_size}, {parada.envio.package_weight}kg</TableCell>
                         <TableCell>
-                            <Badge className={`${getEstadoEnvioBadgeColor(parada.envio.status)} capitalize`}>
-                                {(parada.envio.status || 'desconocido').replace(/_/g, ' ')}
-                            </Badge>
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa 
+                                ? reparto.empresas?.direccion 
+                                : parada.envio?.client_location
+                            }
+                        </TableCell>
+                        <TableCell>
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio
+                                ? `${parada.envio.package_size || '-'}, ${parada.envio.package_weight || '-'}kg`
+                                : <span className="text-muted-foreground">-</span>
+                            }
+                        </TableCell>
+                        <TableCell>
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio?.status ? (
+                                <Badge className={`${getEstadoEnvioBadgeColor(parada.envio.status)} capitalize`}>
+                                    {(parada.envio.status).replace(/_/g, ' ')}
+                                </Badge>
+                            ) : <span className="text-muted-foreground">-</span>}
                         </TableCell>
                         </TableRow>
                     ))}
@@ -322,7 +340,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                 </Table>
             </div>
           ) : (
-            <p className="text-muted-foreground">No hay envíos asignados a este reparto.</p>
+            <p className="text-muted-foreground">No hay paradas asignadas a este reparto.</p>
           )}
         </CardContent>
       </Card>

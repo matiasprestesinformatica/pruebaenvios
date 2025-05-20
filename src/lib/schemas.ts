@@ -31,23 +31,21 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(), // Made optional here, will be validated by superRefine
+  client_location: z.string().optional().nullable(), 
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
 }).superRefine((data, ctx) => {
-  if (data.cliente_id) { // If a client is selected
+  if (data.cliente_id) { 
     if (!data.client_location || data.client_location.trim() === "") {
-        // This case implies the selected client has no address, which should be handled by form logic
-        // or client data validation. If client_location is auto-filled and empty, it's an issue.
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "La dirección del cliente no pudo ser obtenida. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
+            message: "La dirección del cliente seleccionada no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
             path: ["client_location"],
           });
     }
-  } else { // If no client is selected (temporal client)
+  } else { 
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -115,3 +113,6 @@ export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSche
 
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
+
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;

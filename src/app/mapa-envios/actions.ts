@@ -2,20 +2,26 @@
 "use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro, Envio, Cliente } from "@/types/supabase";
+import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro, Envio, Cliente, Empresa } from "@/types/supabase"; // Added Empresa
 import type { PostgrestError } from "@supabase/supabase-js";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { tipoParadaEnum } from "@/lib/schemas";
 
-// Approximate bounding box for Mar del Plata
+
 const MDP_BOUNDS = {
-  minLat: -38.15, // South
-  maxLat: -37.90, // North
-  minLng: -57.70, // West
-  maxLng: -57.45, // East
+  minLat: -38.15, 
+  maxLat: -37.90, 
+  minLng: -57.70, 
+  maxLng: -57.45, 
 };
 
 type EnvioConClienteParaMapa = Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null };
+type ParadaConEnvioYClienteParaMapa = Database['public']['Tables']['paradas_reparto']['Row'] & {
+    envio: (Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null }) | null;
+};
+type RepartoConEmpresa = Reparto & { empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null };
+
 
 export async function getEnviosGeolocalizadosAction(
   repartoId?: string | null
@@ -25,12 +31,28 @@ export async function getEnviosGeolocalizadosAction(
     let enviosMapa: EnvioMapa[] = [];
 
     if (repartoId && repartoId !== "all" && repartoId !== "unassigned") {
-      // Fetch ordered shipments for a specific reparto
+      // Fetch the reparto to get empresa details if it's a lote/empresa type
+      const { data: repartoData, error: repartoError } = await supabase
+        .from('repartos')
+        .select('*, empresas (id, nombre, direccion, latitud, longitud)')
+        .eq('id', repartoId)
+        .single();
+
+      if (repartoError || !repartoData) {
+        console.error("Error fetching reparto for map view or reparto not found:", repartoError);
+        return { data: [], error: "No se pudo encontrar el reparto especificado." };
+      }
+      const typedRepartoData = repartoData as RepartoConEmpresa;
+
+
+      // Fetch ordered paradas for the specific reparto
       const { data: paradasData, error: paradasError } = await supabase
         .from("paradas_reparto")
         .select(`
+          id,
           orden,
-          envio:envios!inner(
+          tipo_parada,
+          envio:envios!left(
             id,
             created_at,
             cliente_id,
@@ -46,12 +68,6 @@ export async function getEnviosGeolocalizadosAction(
           )
         `)
         .eq("reparto_id", repartoId)
-        .not("envio.latitud", "is", null)
-        .not("envio.longitud", "is", null)
-        .gte("envio.latitud", MDP_BOUNDS.minLat)
-        .lte("envio.latitud", MDP_BOUNDS.maxLat)
-        .gte("envio.longitud", MDP_BOUNDS.minLng)
-        .lte("envio.longitud", MDP_BOUNDS.maxLng)
         .order("orden", { ascending: true });
 
       if (paradasError) {
@@ -60,23 +76,43 @@ export async function getEnviosGeolocalizadosAction(
         return { data: [], error: `Error al cargar paradas del reparto: ${pgError.message}` };
       }
 
-      enviosMapa = (paradasData || []).map(parada => {
-        const envioData = parada.envio as EnvioConClienteParaMapa; // Cast to ensure 'clientes' is typed
-        return {
-            id: envioData.id,
-            latitud: envioData.latitud as number,
-            longitud: envioData.longitud as number,
-            status: envioData.status,
-            nombre_cliente: envioData.clientes ? `${envioData.clientes.nombre} ${envioData.clientes.apellido}` : envioData.nombre_cliente_temporal,
-            client_location: envioData.client_location,
-            package_size: envioData.package_size,
-            package_weight: envioData.package_weight,
+      enviosMapa = (paradasData as ParadaConEnvioYClienteParaMapa[] || []).map(parada => {
+        if (parada.tipo_parada === tipoParadaEnum.Values.retiro_empresa && typedRepartoData.empresas && typedRepartoData.empresas.latitud && typedRepartoData.empresas.longitud) {
+          // This is the company pickup point
+          return {
+            id: `pickup-${typedRepartoData.empresas.id}-${parada.id}`, // Unique ID for the pickup point marker
+            latitud: typedRepartoData.empresas.latitud,
+            longitud: typedRepartoData.empresas.longitud,
+            status: 'pickup', // Special status for map differentiation
+            nombre_cliente: typedRepartoData.empresas.nombre,
+            client_location: typedRepartoData.empresas.direccion || 'Dirección de empresa no disponible',
+            package_size: null,
+            package_weight: null,
             orden: parada.orden,
-        };
-      });
+            tipo_parada: tipoParadaEnum.Values.retiro_empresa,
+          };
+        } else if (parada.envio && parada.envio.latitud && parada.envio.longitud &&
+                   parada.envio.latitud >= MDP_BOUNDS.minLat && parada.envio.latitud <= MDP_BOUNDS.maxLat &&
+                   parada.envio.longitud >= MDP_BOUNDS.minLng && parada.envio.longitud <= MDP_BOUNDS.maxLng) {
+          // This is a regular client delivery
+          const envioData = parada.envio as EnvioConClienteParaMapa;
+          return {
+              id: envioData.id,
+              latitud: envioData.latitud as number,
+              longitud: envioData.longitud as number,
+              status: envioData.status,
+              nombre_cliente: envioData.clientes ? `${envioData.clientes.nombre} ${envioData.clientes.apellido}` : envioData.nombre_cliente_temporal,
+              client_location: envioData.client_location,
+              package_size: envioData.package_size,
+              package_weight: envioData.package_weight,
+              orden: parada.orden,
+              tipo_parada: tipoParadaEnum.Values.entrega_cliente,
+          };
+        }
+        return null; // Exclude paradas that don't fit criteria (e.g., pickup point for company without coords, or envio outside MDP)
+      }).filter(Boolean) as EnvioMapa[];
 
-    } else {
-      // Fetch all geolocated or unassigned geolocated shipments
+    } else { // "all" or "unassigned"
       let query = supabase
         .from("envios")
         .select("*, clientes (id, nombre, apellido)") 
@@ -91,7 +127,6 @@ export async function getEnviosGeolocalizadosAction(
       if (repartoId === "unassigned") {
         query = query.is("reparto_id", null);
       }
-      // If repartoId is "all" or null/undefined, no further filtering on reparto_id
 
       const { data: enviosData, error: enviosError } = await query;
 
@@ -116,7 +151,8 @@ export async function getEnviosGeolocalizadosAction(
         client_location: envio.client_location,
         package_size: envio.package_size,
         package_weight: envio.package_weight,
-        orden: null, // No specific order when fetching all or unassigned this way
+        orden: null,
+        tipo_parada: tipoParadaEnum.Values.entrega_cliente, // Assume entrega_cliente for these general queries
       }));
     }
     return { data: enviosMapa, error: null };
@@ -162,6 +198,7 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
       package_size: envio.package_size,
       package_weight: envio.package_weight,
       orden: null, 
+      tipo_parada: tipoParadaEnum.Values.entrega_cliente, // Default for unassigned
     }));
 
     return { data: enviosMapa, error: null };
@@ -172,7 +209,6 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
   }
 }
 
-// Define a more specific type for the data fetched for the filter
 type RepartoDataForFilter = Pick<Reparto, 'id' | 'fecha_reparto'> & {
   repartidores: Pick<Repartidor, 'nombre'> | null;
 };
@@ -213,3 +249,4 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     return { data: [], error: "Error inesperado al obtener repartos para el filtro." };
   }
 }
+

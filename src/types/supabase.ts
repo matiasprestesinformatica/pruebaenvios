@@ -15,7 +15,7 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string
+          direccion: string // NOT NULL
           latitud: number | null
           longitud: number | null
           telefono: string | null
@@ -27,7 +27,7 @@ export interface Database {
           id?: string
           created_at?: string
           nombre: string
-          direccion: string
+          direccion: string // NOT NULL
           latitud?: number | null
           longitud?: number | null
           telefono?: string | null
@@ -192,21 +192,24 @@ export interface Database {
         Row: {
           id: string
           reparto_id: string
-          envio_id: string
+          envio_id: string | null // Made nullable
+          tipo_parada: string | null // Added tipo_parada (e.g., 'retiro_empresa', 'entrega_cliente')
           orden: number
           created_at: string
         }
         Insert: {
           id?: string
           reparto_id: string
-          envio_id: string
+          envio_id?: string | null // Made nullable
+          tipo_parada?: string | null
           orden: number
           created_at?: string
         }
         Update: {
           id?: string
           reparto_id?: string
-          envio_id?: string
+          envio_id?: string | null // Made nullable
+          tipo_parada?: string | null
           orden?: number
           created_at?: string
         }
@@ -219,7 +222,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      tipoparadaenum: "retiro_empresa" | "entrega_cliente" 
     }
     CompositeTypes: {
       [_ in never]: never
@@ -247,15 +250,16 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null;
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null; // Added latitud, longitud
 };
 
 export type EnvioConCliente = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'estado'> | null;
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'estado' | 'latitud' | 'longitud'> | null;
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente; 
+  envio: EnvioConCliente | null; // envio can be null for pickup points
+  // For pickup points, we'll derive info from the reparto's empresa
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -267,18 +271,22 @@ export type ClienteWithEmpresa = Cliente & {
 };
 
 export interface EnvioMapa {
-  id: string;
+  id: string; // Can be envio_id or a generated id for the pickup point
   latitud: number;
   longitud: number;
-  status: string;
-  nombre_cliente: string | null;
-  client_location: string;
-  package_size: string;
-  package_weight: number;
-  orden?: number | null; // Added for displaying order on map markers
+  status: string | null; // Status of envio, or a special status for pickup
+  nombre_cliente: string | null; // Client name or Company name for pickup
+  client_location: string; // Address
+  package_size: string | null; // Null for pickup
+  package_weight: number | null; // Null for pickup
+  orden?: number | null; 
+  tipo_parada?: Database['public']['Enums']['tipoparadaenum'] | null; // Added to distinguish
 }
 
 export interface RepartoParaFiltro {
   id: string;
   label: string;
 }
+
+export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
+

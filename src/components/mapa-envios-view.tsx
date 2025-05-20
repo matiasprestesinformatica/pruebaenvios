@@ -2,9 +2,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import type { EnvioMapa } from '@/types/supabase';
-import { estadoEnvioEnum } from '@/lib/schemas';
-import { Loader2, AlertTriangle, Info } from 'lucide-react';
+import type { EnvioMapa, TipoParadaEnum as TipoParadaEnumType } from '@/types/supabase';
+import { estadoEnvioEnum, tipoParadaEnum } from '@/lib/schemas';
+import { Loader2, AlertTriangle, Info, Home } from 'lucide-react';
 
 interface MapaEnviosViewProps {
   envios: EnvioMapa[];
@@ -17,7 +17,8 @@ const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script';
 
 let loadGoogleMapsPromise: Promise<void> | null = null;
 
-function getEnvioMarkerColorHex(status: string | null): string {
+function getEnvioMarkerColorHex(status: string | null, tipoParada?: TipoParadaEnumType | null ): string {
+  if (tipoParada === tipoParadaEnum.Values.retiro_empresa) return '#4A90E2'; // Distinct color for pickup, e.g., blue
   if (!status) return '#A9A9A9'; 
   switch (status) {
     case estadoEnvioEnum.Values.pending: return '#FF0000'; 
@@ -87,7 +88,11 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
           };
 
           if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
-            return; 
+             // Script already exists, assume it's loading or loaded
+            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
+                resolve(); // Already loaded
+            } // else, it's loading, the callback will resolve it
+            return;
           }
 
           const script = document.createElement('script');
@@ -137,15 +142,26 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
 
       envios.forEach(envio => {
         if (envio.latitud != null && envio.longitud != null) {
-          const markerColor = getEnvioMarkerColorHex(envio.status);
+          const markerColor = getEnvioMarkerColorHex(envio.status, envio.tipo_parada);
           let markerLabel: google.maps.MarkerLabel | undefined = undefined;
-          if (envio.orden !== null && envio.orden !== undefined) {
+          let zIndex = 1;
+
+          if (envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa) {
+            markerLabel = {
+                text: 'R', // For "Retiro"
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '12px',
+            };
+            zIndex = 10; // Make pickup point stand out
+          } else if (envio.orden !== null && envio.orden !== undefined) {
             markerLabel = {
               text: (envio.orden + 1).toString(),
               color: 'white',
               fontWeight: 'bold',
               fontSize: '11px',
             };
+            zIndex = 2; // Regular stops
           }
 
           const marker = new google.maps.Marker({
@@ -157,23 +173,31 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
               fillOpacity: 0.9,
               strokeColor: '#ffffff',
               strokeWeight: 1.5,
-              scale: envio.orden !== null && envio.orden !== undefined ? 9 : 7, // Make marker slightly larger if it has an order
+              scale: (envio.orden !== null && envio.orden !== undefined) || envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 9 : 7,
             },
             label: markerLabel,
             title: envio.nombre_cliente || envio.client_location,
+            zIndex: zIndex,
           });
 
           marker.addListener('click', () => {
             let orderInfo = '';
             if (envio.orden !== null && envio.orden !== undefined) {
-              orderInfo = `<p style="margin: 2px 0;"><strong>Orden:</strong> ${envio.orden + 1}</p>`;
+              orderInfo = `<p style="margin: 2px 0;"><strong>Orden:</strong> ${envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro (0)' : envio.orden + 1}</p>`;
             }
+            const packageInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente 
+                ? `<p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.package_size || '-'}, ${envio.package_weight || '-'}kg</p>`
+                : '';
+            const statusInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente
+                ? `<p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</span></p>`
+                : `<p style="margin: 2px 0;"><strong>Tipo:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">Retiro en Empresa</span></p>`;
+
             const content = `
               <div style="font-family: sans-serif; font-size: 14px; max-width: 250px;">
-                <h4 style="margin-top: 0; margin-bottom: 5px; font-weight: bold;">${envio.nombre_cliente || 'Destinatario Temporal'}</h4>
+                <h4 style="margin-top: 0; margin-bottom: 5px; font-weight: bold;">${envio.nombre_cliente || 'Punto de Interés'}</h4>
                 <p style="margin: 2px 0;"><strong>Dirección:</strong> ${envio.client_location}</p>
-                <p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.package_size}, ${envio.package_weight}kg</p>
-                <p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</span></p>
+                ${packageInfo}
+                ${statusInfo}
                 ${orderInfo}
               </div>
             `;
