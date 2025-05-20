@@ -71,13 +71,22 @@ export function RepartoCreateForm({
   const form = useForm<RepartoCreationFormData>({
     resolver: zodResolver(repartoCreationSchema),
     defaultValues: {
-      fecha_reparto: new Date(),
+      fecha_reparto: undefined, // Initialize as undefined
       repartidor_id: undefined,
       tipo_reparto: tipoRepartoEnum.Values.individual,
       empresa_id: undefined,
       envio_ids: [],
     },
   });
+
+  // Set default date on client side
+  useEffect(() => {
+    if (!form.getValues("fecha_reparto")) {
+      form.setValue("fecha_reparto", new Date());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.setValue]);
+
 
   const fetchEnviosIndividuales = useCallback(async (term: string) => {
     setIsLoadingEnvios(true);
@@ -113,7 +122,7 @@ export function RepartoCreateForm({
     if (result.success) {
       toast({ title: "Reparto Creado", description: "El nuevo reparto ha sido guardado exitosamente." });
       router.push("/repartos");
-      form.reset();
+      form.reset({ fecha_reparto: new Date(), repartidor_id: undefined, tipo_reparto: tipoRepartoEnum.Values.individual, empresa_id: undefined, envio_ids: []});
       setEnviosParaSeleccion(initialEnviosPendientes); // Reset envios list
       setSearchTermIndividual("");
       setSelectedEmpresaId(undefined);

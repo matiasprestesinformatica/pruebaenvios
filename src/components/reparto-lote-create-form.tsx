@@ -30,7 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import { Loader2, CalendarIcon } from "lucide-react"; 
-import type { Repartidor, Empresa, Cliente, Reparto, EnvioConCliente } from "@/types/supabase";
+import type { Repartidor, Empresa, Cliente, Reparto } from "@/types/supabase";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -42,7 +42,6 @@ interface RepartoLoteCreateFormProps {
   repartidores: Pick<Repartidor, 'id' | 'nombre'>[];
   empresas: Pick<Empresa, 'id' | 'nombre'>[];
   getClientesByEmpresaAction: (empresaId: string) => Promise<Cliente[]>;
-  // getEnviosByClientesAction prop is no longer needed here as we auto-generate
   createRepartoLoteAction: (data: RepartoLoteCreationFormData) => Promise<{ success: boolean; error?: string | null; data?: Reparto | null }>;
 }
 
@@ -65,13 +64,21 @@ export function RepartoLoteCreateForm({
   const form = useForm<RepartoLoteCreationFormData>({
     resolver: zodResolver(repartoLoteCreationSchema),
     defaultValues: {
-      fecha_reparto: new Date(),
+      fecha_reparto: undefined, // Initialize as undefined
       repartidor_id: undefined,
       empresa_id: undefined,
       cliente_ids: [],
-      // envio_ids is removed as shipments are auto-generated
     },
   });
+
+  // Set default date on client side
+  useEffect(() => {
+    if (!form.getValues("fecha_reparto")) {
+      form.setValue("fecha_reparto", new Date());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.setValue]);
+
 
   const selectedEmpresaId = form.watch("empresa_id");
 
@@ -95,14 +102,13 @@ export function RepartoLoteCreateForm({
 
   const handleFormSubmit = async (data: RepartoLoteCreationFormData) => {
     setIsSubmitting(true);
-    // We only pass cliente_ids. The action will auto-generate shipments.
-    const dataToSubmit = { ...data, envio_ids: undefined }; 
+    const dataToSubmit = { ...data }; 
     
     const result = await createRepartoLoteAction(dataToSubmit);
     if (result.success) {
       toast({ title: "Reparto por Lote Creado", description: "El nuevo reparto por lote y los envíos asociados han sido generados exitosamente." });
       router.push("/repartos"); 
-      form.reset();
+      form.reset({ fecha_reparto: new Date(), repartidor_id: undefined, empresa_id: undefined, cliente_ids: [] });
       setClientesDeEmpresa([]);
       setSearchTermClientes("");
     } else {
