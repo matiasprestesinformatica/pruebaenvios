@@ -1,0 +1,171 @@
+Explicación de la Estructura y Configuración del Proyecto Rumbos Envíos
+
+=========================
+ESTRUCTURA DEL PROYECTO
+=========================
+
+El proyecto sigue una estructura típica para aplicaciones Next.js (App Router) con funcionalidades adicionales para la base de datos (Supabase) y la inteligencia artificial (Genkit).
+
+/
+├── .env                    # (Archivo local, no versionado) Variables de entorno para desarrollo local (ej. claves API de Supabase, Gemini).
+├── .eslintrc.json          # Configuración de ESLint para el análisis estático de código.
+├── .idx/                   # Directorio específico del entorno de desarrollo (Project IDX), no relevante para la estructura de la app.
+├── .vscode/                # Configuraciones específicas para Visual Studio Code.
+├── README.md               # Información general sobre el proyecto.
+├── components.json         # Configuración para la CLI de ShadCN UI, define alias y estilo de componentes.
+├── next.config.ts          # Configuración principal de Next.js (plugins, optimizaciones de imágenes, etc.).
+├── package.json            # Define las dependencias del proyecto y los scripts (npm/yarn/pnpm).
+├── pnpm-lock.yaml          # (O yarn.lock/package-lock.json) Archivo de bloqueo de dependencias.
+├── src/                    # Directorio principal del código fuente de la aplicación.
+│   ├── ai/                 # Módulos relacionados con la Inteligencia Artificial (Genkit).
+│   │   ├── dev.ts          # Archivo para iniciar Genkit en modo desarrollo, importa los flujos.
+│   │   ├── flows/          # Contiene los flujos de Genkit (lógica de IA reutilizable).
+│   │   │   ├── generate-client-summary.ts
+│   │   │   └── suggest-delivery-options.ts
+│   │   └── genkit.ts       # Inicialización y configuración del cliente de Genkit.
+│   ├── app/                # Directorio central del App Router de Next.js.
+│   │   ├── (app)/          # Directorio de grupo de rutas (actualmente neutralizado para evitar conflictos).
+│   │   ├── clientes/       # Ruta y lógica para la gestión de clientes.
+│   │   │   ├── actions.ts  # Server Actions para operaciones CRUD de clientes.
+│   │   │   └── page.tsx    # Componente de página para la ruta /clientes.
+│   │   ├── empresas/       # Ruta y lógica para la gestión de empresas.
+│   │   │   ├── actions.ts  # Server Actions para operaciones CRUD de empresas.
+│   │   │   └── page.tsx    # Componente de página para la ruta /empresas.
+│   │   ├── envios/         # Ruta y lógica para la gestión de envíos.
+│   │   │   ├── actions.ts  # Server Actions para envíos.
+│   │   │   ├── nuevo/
+│   │   │   │   └── page.tsx # Componente de página para /envios/nuevo.
+│   │   │   └── page.tsx    # Componente de página para la ruta /envios.
+│   │   ├── repartidores/   # Ruta y lógica para la gestión de repartidores.
+│   │   │   ├── actions.ts  # Server Actions para repartidores.
+│   │   │   └── page.tsx    # Componente de página para la ruta /repartidores.
+│   │   ├── repartos/       # Ruta y lógica para la gestión de repartos/rutas.
+│   │   │   ├── [id]/
+│   │   │   │   └── page.tsx # Página de detalle para un reparto específico (/repartos/[id]).
+│   │   │   ├── actions.ts  # Server Actions para repartos.
+│   │   │   ├── nuevo/
+│   │   │   │   └── page.tsx # Componente de página para /repartos/nuevo.
+│   │   │   └── page.tsx    # Componente de página para la ruta /repartos.
+│   │   ├── globals.css     # Estilos CSS globales y variables de tema (colores) para ShadCN/Tailwind.
+│   │   ├── layout.tsx      # Layout principal de la aplicación, define la estructura HTML base.
+│   │   └── page.tsx        # Página de inicio (actualmente redirige a /clientes).
+│   ├── components/         # Componentes React reutilizables.
+│   │   ├── layout/         # Componentes específicos para la estructura de la página (navbar, etc.).
+│   │   │   ├── main-nav.tsx
+│   │   │   ├── top-navbar.tsx
+│   │   │   └── user-nav.tsx
+│   │   ├── ui/             # Componentes de UI de ShadCN (botón, tabla, diálogo, etc.).
+│   │   │   ├── accordion.tsx
+│   │   │   ├── alert-dialog.tsx
+│   │   │   ├── alert.tsx
+│   │   │   ├── avatar.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── button.tsx
+│   │   │   ├── calendar.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── chart.tsx
+│   │   │   ├── checkbox.tsx
+│   │   │   ├── dialog.tsx
+│   │   │   ├── dropdown-menu.tsx
+│   │   │   ├── form.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── label.tsx
+│   │   │   ├── menubar.tsx
+│   │   │   ├── popover.tsx
+│   │   │   ├── progress.tsx
+│   │   │   ├── radio-group.tsx
+│   │   │   ├── scroll-area.tsx
+│   │   │   ├── select.tsx
+│   │   │   ├── separator.tsx
+│   │   │   ├── sheet.tsx
+│   │   │   ├── sidebar.tsx   # (No utilizado actualmente, reemplazado por top-navbar)
+│   │   │   ├── skeleton.tsx
+│   │   │   ├── slider.tsx
+│   │   │   ├── switch.tsx
+│   │   │   ├── table.tsx
+│   │   │   ├── tabs.tsx
+│   │   │   ├── textarea.tsx
+│   │   │   ├── toast.tsx
+│   │   │   ├── toaster.tsx
+│   │   │   └── tooltip.tsx
+│   │   ├── add-client-dialog.tsx
+│   │   ├── add-empresa-dialog.tsx
+│   │   ├── add-repartidor-dialog.tsx
+│   │   ├── client-form.tsx
+│   │   ├── clients-table.tsx
+│   │   ├── empresa-form.tsx
+│   │   ├── empresas-table.tsx
+│   │   ├── envios-table.tsx
+│   │   ├── page-header.tsx
+│   │   ├── repartidor-form.tsx
+│   │   ├── repartidores-table.tsx
+│   │   ├── reparto-create-form.tsx
+│   │   ├── reparto-detail-view.tsx
+│   │   ├── repartos-list-table.tsx
+│   │   └── shipment-form.tsx
+│   ├── hooks/              # Hooks de React personalizados.
+│   │   ├── use-mobile.tsx  # Hook para detectar si el dispositivo es móvil (usado por `sidebar.tsx`).
+│   │   └── use-toast.ts    # Hook para gestionar notificaciones (toasts).
+│   ├── lib/                # Funciones de utilidad, esquemas de validación, cliente Supabase.
+│   │   ├── schemas.ts      # Esquemas de validación Zod para formularios y datos.
+│   │   ├── supabase/       # Configuración del cliente de Supabase.
+│   │   │   ├── client.ts   # Cliente Supabase para el navegador.
+│   │   │   └── server.ts   # Cliente Supabase para el servidor (Server Actions, Server Components).
+│   │   └── utils.ts        # Funciones de utilidad generales (ej. `cn` para clases condicionales).
+│   └── types/              # Definiciones de tipos TypeScript.
+│       └── supabase.ts     # Tipos generados por Supabase y tipos personalizados para las tablas y vistas.
+├── supabase/               # Configuración local de Supabase.
+│   ├── config.toml         # Configuración del entorno de desarrollo local de Supabase.
+│   └── seed.sql            # Script SQL para inicializar la base de datos local con tablas y datos de ejemplo.
+└── tailwind.config.ts      # Configuración de Tailwind CSS (temas, plugins).
+└── tsconfig.json           # Configuración del compilador TypeScript.
+
+============================
+CONFIGURACIÓN DEL PROYECTO
+============================
+
+1. Next.js (`next.config.ts`):
+   - Configuración estándar para una aplicación Next.js.
+   - Incluye la configuración para `typescript` y `eslint` para ignorar errores durante el build (lo cual es común en desarrollo pero debería revisarse para producción).
+   - Configura `images.remotePatterns` para permitir imágenes desde `placehold.co`.
+
+2. Package Manager (`package.json`):
+   - Gestiona todas las dependencias del proyecto (Next.js, React, ShadCN UI, Supabase, Genkit, Tailwind CSS, etc.).
+   - Define scripts clave como:
+     - `dev`: Inicia el servidor de desarrollo de Next.js (con Turbopack para mayor velocidad).
+     - `build`: Crea la compilación de producción optimizada.
+     - `start`: Inicia el servidor de producción de Next.js.
+     - `lint`: Ejecuta ESLint para analizar el código.
+     - `genkit:dev` y `genkit:watch`: Scripts para ejecutar Genkit en modo desarrollo.
+
+3. TypeScript (`tsconfig.json`):
+   - Configura el compilador de TypeScript.
+   - Utiliza `moduleResolution: "bundler"` y `module: "esnext"`, comunes en proyectos Next.js modernos.
+   - Define `paths` para alias de importación (ej. `@/*` apunta a `./src/*`).
+   - Habilita `strict: true` para un tipado más robusto.
+
+4. Estilos (Tailwind CSS y ShadCN UI):
+   - `tailwind.config.ts`: Configura Tailwind CSS. Define colores, radios de borde y animaciones personalizadas basadas en variables CSS, lo que permite tematización (modo claro/oscuro).
+   - `src/app/globals.css`:
+     - Importa las directivas base de Tailwind.
+     - Define las variables CSS para el tema claro y oscuro que utilizan los componentes de ShadCN UI y Tailwind. Estos controlan los colores de fondo, texto, primario, secundario, acento, etc.
+   - `components.json`: Archivo de configuración para la CLI de ShadCN UI. Define el estilo, si se usan Server Components (RSC), alias de importación para componentes y utilidades, y la librería de iconos (Lucide).
+
+5. Variables de Entorno (`.env`):
+   - Este archivo (que no se incluye en el control de versiones y es específico para el entorno local) es donde se deben colocar las claves API sensibles, como:
+     - `NEXT_PUBLIC_SUPABASE_URL`: URL de tu proyecto Supabase.
+     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Clave anónima pública de tu proyecto Supabase.
+     - `GEMINI_API_KEY`: Clave API para Google AI (usada por Genkit).
+   - Estas variables son cruciales para que la aplicación se conecte a Supabase y utilice los servicios de IA. En entornos de producción (como Netlify), estas variables se configuran a través del panel de control del proveedor de hosting.
+
+6. Supabase (Local):
+   - `supabase/config.toml`: Configura el entorno de desarrollo local de Supabase (puertos para la API, base de datos, Studio, etc.).
+   - `supabase/seed.sql`: Contiene las sentencias SQL para crear las tablas (`empresas`, `clientes`, `repartidores`, `repartos`, `envios`) y, opcionalmente, para insertar datos iniciales de ejemplo. Este script se ejecuta cuando usas `supabase db reset`.
+
+7. Genkit (Inteligencia Artificial):
+   - `src/ai/genkit.ts`: Punto de entrada para la configuración de Genkit. Inicializa el cliente de Genkit con los plugins necesarios (como `googleAI`).
+   - `src/ai/flows/`: Directorio que contiene los flujos de Genkit, que son unidades de lógica de IA reutilizables. Actualmente tienes flujos para generar resúmenes de clientes y sugerir opciones de entrega.
+   - `src/ai/dev.ts`: Archivo que se usa para iniciar el servidor de desarrollo de Genkit, importando y registrando los flujos definidos.
+
+8. ESLint (`.eslintrc.json`):
+   - Configura ESLint con las recomendaciones de Next.js (`next/core-web-vitals`, `next/typescript`) para asegurar la calidad del código y seguir las mejores prácticas.

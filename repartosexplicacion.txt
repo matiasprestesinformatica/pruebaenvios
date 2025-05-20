@@ -1,0 +1,148 @@
+Explicación de la Lógica y Estructura de la Funcionalidad de Repartos
+
+=========================
+PROPÓSITO PRINCIPAL
+=========================
+
+La funcionalidad de "Repartos" está diseñada para permitir al personal operativo organizar y gestionar las entregas. Esto incluye la creación de hojas de ruta (repartos) asignando envíos específicos a un repartidor para una fecha determinada. Se pueden agrupar envíos individuales o planificar rutas basadas en los envíos pendientes para los clientes de una empresa específica. También permite ver el detalle de un reparto y actualizar su estado.
+
+=========================
+COMPONENTES PRINCIPALES Y FLUJO
+=========================
+
+1.  **Visualización de Repartos Existentes (`/repartos`)**
+    *   **Página (`src/app/repartos/page.tsx`):**
+        *   Es un Server Component que actúa como punto de entrada.
+        *   Utiliza `getRepartosListAction` para obtener la lista paginada de repartos.
+        *   Muestra un encabezado (`PageHeader`) con un botón para "Nuevo Reparto" que enlaza a `/repartos/nuevo`.
+        *   Renderiza el componente `RepartosListTable` dentro de un `<Suspense>` para manejar la carga de datos de forma asíncrona.
+    *   **Tabla de Repartos (`src/components/repartos-list-table.tsx`):**
+        *   Es un Client Component que recibe la lista inicial de repartos y el conteo total.
+        *   Muestra los repartos en una tabla con columnas como: Fecha, Repartidor, Tipo, Empresa (si aplica), Estado.
+        *   Incluye una barra de búsqueda y controles de paginación que actualizan los parámetros de la URL y recargan los datos mediante `router.push`.
+        *   Formatea la fecha usando un subcomponente `ClientSideFormattedDate` para evitar errores de hidratación.
+        *   Muestra el estado del reparto con un `Badge` coloreado.
+        *   Proporciona un botón "Ver Detalle" (icono de ojo) que enlaza a la página de detalle del reparto (`/repartos/[id]`).
+
+2.  **Creación de Nuevo Reparto (`/repartos/nuevo`)**
+    *   **Página (`src/app/repartos/nuevo/page.tsx`):**
+        *   Es un Server Component.
+        *   Llama a varias `actions` para obtener los datos iniciales necesarios para el formulario: repartidores activos (`getRepartidoresActivosAction`), lista de empresas (`getEmpresasForRepartoAction`), y envíos pendientes iniciales (`getEnviosPendientesAction`).
+        *   Renderiza el componente `RepartoCreateForm` dentro de un `<Suspense>`.
+    *   **Formulario de Creación de Reparto (`src/components/reparto-create-form.tsx`):**
+        *   Es un Client Component complejo que maneja la lógica de creación.
+        *   Utiliza `react-hook-form` y `zod` para la validación del formulario (`repartoCreationSchema`).
+        *   **Campos Principales:**
+            *   Fecha de Reparto (usando `Calendar` y `Popover` de ShadCN).
+            *   Selector de Repartidor Asignado (dropdown con repartidores activos).
+            *   Selector de Tipo de Reparto ("Envíos Individuales" o "Viaje por Empresa").
+        *   **Lógica de Selección de Envíos:**
+            *   **Si es "Envíos Individuales":**
+                *   Muestra una barra de búsqueda para filtrar envíos pendientes.
+                *   Llama a `getEnviosPendientesAction` (pasada como prop) para obtener los envíos filtrados.
+                *   Muestra los envíos en una tabla con checkboxes para seleccionar.
+            *   **Si es "Viaje por Empresa":**
+                *   Muestra un selector de Empresa.
+                *   Al seleccionar una empresa, llama a `getEnviosPendientesPorEmpresaAction` (pasada como prop) para obtener los envíos pendientes de los clientes de esa empresa.
+                *   Muestra estos envíos en una tabla con checkboxes.
+        *   **Estado Interno:** Maneja el estado de los envíos seleccionados (`envio_ids`), términos de búsqueda, envíos disponibles para selección, y estados de carga.
+        *   **Envío del Formulario:**
+            *   Al enviar, llama a `createRepartoAction` (pasada como prop) con los datos del formulario.
+            *   Muestra notificaciones (toasts) de éxito o error.
+            *   Redirige a `/repartos` en caso de éxito.
+
+3.  **Detalle del Reparto (`/repartos/[id]`)**
+    *   **Página (`src/app/repartos/[id]/page.tsx`):**
+        *   Es un Server Component que obtiene el `id` del reparto de los parámetros de la ruta.
+        *   Llama a `getRepartoDetailsAction` para obtener la información completa del reparto (datos del reparto, repartidor, empresa si aplica, y la lista de envíos asignados).
+        *   Renderiza el componente `RepartoDetailView` dentro de un `<Suspense>`, manejando estados de carga y error.
+    *   **Vista de Detalle del Reparto (`src/components/reparto-detail-view.tsx`):**
+        *   Es un Client Component que recibe los datos iniciales del reparto.
+        *   **Muestra Información General:**
+            *   ID del Reparto, Fecha, Repartidor, Tipo de Reparto, Empresa (si aplica).
+            *   Utiliza `Card` y componentes descriptivos para organizar la información.
+        *   **Gestión de Estado del Reparto:**
+            *   Muestra el estado actual del reparto con un `Badge` coloreado.
+            *   Proporciona un `<Select>` para cambiar el estado del reparto (Asignado, En Curso, Completado).
+            *   Al cambiar y guardar, llama a `updateRepartoEstadoAction` (pasada como prop).
+            *   Si el nuevo estado es "Completado", la acción del servidor también actualiza el estado de todos los envíos asociados a "Entregado".
+        *   **Lista de Envíos Asignados:**
+            *   Muestra una tabla con los detalles de cada envío vinculado a este reparto (Cliente/Destino, Ubicación, Paquete, Estado del Envío).
+            *   El estado de cada envío individual también se muestra con un `Badge` coloreado.
+
+=========================
+ESTRUCTURA DE DATOS (SUPABASE)
+=========================
+
+1.  **Tabla `repartos`:**
+    *   `id`: UUID, clave primaria.
+    *   `created_at`: Timestamp de creación.
+    *   `fecha_reparto`: DATE, fecha planificada para el reparto.
+    *   `repartidor_id`: UUID, FK a `repartidores.id` (el repartidor asignado).
+    *   `estado`: TEXT, almacena el estado actual del reparto (ej. 'asignado', 'en_curso', 'completado'). Definido por `estadoRepartoEnum`.
+    *   `tipo_reparto`: TEXT, indica si es 'individual' o 'viaje_empresa'. Definido por `tipoRepartoEnum`.
+    *   `empresa_id`: UUID, FK a `empresas.id`. Solo relevante si `tipo_reparto` es 'viaje_empresa'.
+
+2.  **Tabla `envios` (Modificada):**
+    *   Se añade la columna `reparto_id`: UUID, FK a `repartos.id`. Vincula un envío a un reparto específico. Es `NULL` si el envío aún no ha sido asignado a un reparto.
+    *   La columna `status` de `envios` ahora puede tener valores como 'pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado'. Definido por `estadoEnvioEnum`.
+
+3.  **Otras Tablas Involucradas:**
+    *   `repartidores`: Para seleccionar el repartidor.
+    *   `empresas`: Para seleccionar la empresa en "Viaje por Empresa".
+    *   `clientes`: Para buscar envíos de clientes de una empresa específica.
+
+=========================
+LÓGICA DE SERVIDOR (SERVER ACTIONS en `src/app/repartos/actions.ts`)
+=========================
+
+*   **`getRepartidoresActivosAction()`:**
+    *   Obtiene todos los repartidores de la tabla `repartidores` donde `estado` es `true`.
+    *   Usado para poblar el selector de repartidores en el formulario de creación.
+
+*   **`getEmpresasForRepartoAction()`:**
+    *   Obtiene todas las empresas (ID y nombre) de la tabla `empresas`.
+    *   Usado para poblar el selector de empresas en el formulario de creación cuando el tipo es "Viaje por Empresa".
+
+*   **`getEnviosPendientesAction(searchTerm?: string)`:**
+    *   Obtiene envíos de la tabla `envios` donde `reparto_id` es `NULL` y `status` es 'pending'.
+    *   Realiza un join con la tabla `clientes` para obtener datos del cliente.
+    *   Permite filtrar por un término de búsqueda (aplicado a la ubicación del cliente o nombre temporal).
+    *   Usado para la selección de "Envíos Individuales".
+
+*   **`getEnviosPendientesPorEmpresaAction(empresaId: string)`:**
+    *   Primero obtiene los IDs de los clientes que pertenecen a la `empresaId` dada.
+    *   Luego, obtiene los envíos de esos clientes que tienen `reparto_id` como `NULL` y `status` es 'pending'.
+    *   Usado para la selección de envíos en "Viaje por Empresa".
+
+*   **`createRepartoAction(formData: RepartoCreationFormData)`:**
+    *   Valida los datos del formulario usando `repartoCreationSchema`.
+    *   Inserta un nuevo registro en la tabla `repartos`.
+    *   Si la inserción es exitosa, actualiza la columna `reparto_id` y `status` ('asignado_a_reparto') en la tabla `envios` para todos los `envio_ids` seleccionados.
+    *   Revalida las rutas `/repartos`, `/repartos/nuevo`, y `/envios` para refrescar los datos.
+
+*   **`getRepartosListAction(page, pageSize, searchTerm?)`:**
+    *   Obtiene una lista paginada de repartos.
+    *   Realiza joins con `repartidores` y `empresas` para obtener nombres.
+    *   Permite buscar por nombre de repartidor, nombre de empresa o estado del reparto.
+
+*   **`getRepartoDetailsAction(repartoId: string)`:**
+    *   Obtiene los detalles de un reparto específico por su `id`, incluyendo datos del repartidor y empresa asociada (si aplica).
+    *   Luego, obtiene todos los envíos que tienen ese `reparto_id`, incluyendo los detalles del cliente asociado a cada envío.
+    *   Devuelve un objeto `RepartoCompleto` que combina toda esta información.
+
+*   **`updateRepartoEstadoAction(repartoId: string, nuevoEstado: EstadoReparto, envioIds: string[])`:**
+    *   Actualiza el campo `estado` del reparto especificado.
+    *   Si `nuevoEstado` es 'completado', también actualiza el `status` de todos los `envioIds` proporcionados a 'entregado'.
+    *   Revalida las rutas `/repartos/[id]` y `/repartos`.
+
+=========================
+CONSIDERACIONES ADICIONALES
+=========================
+
+*   **Atomicity:** La acción `createRepartoAction` intenta simular una transacción actualizando los envíos después de crear el reparto. Para una atomicidad real (todo o nada), especialmente en un sistema de producción, se recomendaría usar una **Función de Base de Datos (RPC)** en Supabase que encapsule la inserción del reparto y la actualización de los envíos en una única transacción.
+*   **Estado de Envíos:** El estado de los envíos individuales se actualiza a 'asignado_a_reparto' al crear el reparto, y a 'entregado' cuando el reparto se marca como 'completado'. Se podrían añadir más estados intermedios para los envíos si fuera necesario.
+*   **Errores y Feedback:** Las acciones del servidor y los componentes de cliente intentan manejar errores y proporcionar feedback al usuario a través de `toast` notifications.
+*   **UI/UX:** El formulario de creación de repartos es bastante denso. Se ha intentado organizar con `Card` componentes y lógica condicional. Mejoras futuras podrían incluir una interfaz más guiada o componentes de selección múltiple más avanzados si la lista de envíos crece mucho.
+
+Esta estructura proporciona una base sólida para la gestión de repartos en la aplicación "Rumbos Envíos".
