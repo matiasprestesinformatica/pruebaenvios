@@ -17,13 +17,13 @@ import { ClientForm } from "./client-form";
 import type { ClientFormData } from "@/lib/schemas";
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle } from "lucide-react";
-import type { Empresa } from "@/types/supabase";
-import { getEmpresasForClientFormAction } from "@/app/clientes/actions"; // Assuming the action is here
+import type { Empresa, Cliente } from "@/types/supabase"; // Import Cliente
+import { getEmpresasForClientFormAction } from "@/app/clientes/actions"; 
 import { Skeleton } from "@/components/ui/skeleton";
 
 
 interface AddClientDialogProps {
-  addClientAction: (data: ClientFormData) => Promise<{ success: boolean; error?: string | null }>;
+  addClientAction: (data: ClientFormData) => Promise<{ success: boolean; error?: string | null; data?: Cliente | null, info?: string | null }>;
 }
 
 export function AddClientDialog({ addClientAction }: AddClientDialogProps) {
@@ -62,7 +62,7 @@ export function AddClientDialog({ addClientAction }: AddClientDialogProps) {
       if (result.success) {
         toast({
           title: "Cliente Agregado",
-          description: "El nuevo cliente ha sido guardado exitosamente.",
+          description: `El nuevo cliente ha sido guardado exitosamente. ${result.info || ''}`,
         });
         setOpen(false);
       } else {

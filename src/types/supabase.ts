@@ -46,6 +46,8 @@ export interface Database {
           nombre: string
           apellido: string
           direccion: string
+          latitud: number | null // Agregado
+          longitud: number | null // Agregado
           telefono: string
           email: string
           notas: string | null
@@ -57,6 +59,8 @@ export interface Database {
           nombre: string
           apellido: string
           direccion: string
+          latitud?: number | null // Agregado
+          longitud?: number | null // Agregado
           telefono: string
           email: string
           notas?: string | null
@@ -68,6 +72,8 @@ export interface Database {
           nombre?: string
           apellido?: string
           direccion?: string
+          latitud?: number | null // Agregado
+          longitud?: number | null // Agregado
           telefono?: string
           email?: string
           notas?: string | null
@@ -98,16 +104,16 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string
+          fecha_reparto: string // DATE
           repartidor_id: string | null
-          estado: string
-          tipo_reparto: string
+          estado: string // TEXT, validado por Zod (estadoRepartoEnum)
+          tipo_reparto: string // TEXT, validado por Zod (tipoRepartoEnum)
           empresa_id: string | null
         }
         Insert: {
           id?: string
           created_at?: string
-          fecha_reparto: string
+          fecha_reparto: string // DATE
           repartidor_id?: string | null
           estado: string
           tipo_reparto: string
@@ -130,14 +136,14 @@ export interface Database {
           cliente_id: string | null
           nombre_cliente_temporal: string | null
           client_location: string
-          package_size: string
-          package_weight: number
-          status: string
+          latitud: number | null
+          longitud: number | null
+          package_size: string // TEXT, validado por Zod (packageSizeEnum)
+          package_weight: number // REAL
+          status: string // TEXT, validado por Zod (estadoEnvioEnum)
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
-          latitud: number | null // Added
-          longitud: number | null // Added
         }
         Insert: {
           id?: string
@@ -145,14 +151,14 @@ export interface Database {
           cliente_id?: string | null
           nombre_cliente_temporal?: string | null
           client_location: string
-          package_size?: string
+          latitud?: number | null
+          longitud?: number | null
+          package_size: string
           package_weight?: number
           status: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
-          latitud?: number | null // Added
-          longitud?: number | null // Added
         }
         Update: {
           id?: string
@@ -160,14 +166,14 @@ export interface Database {
           cliente_id?: string | null
           nombre_cliente_temporal?: string | null
           client_location?: string
+          latitud?: number | null
+          longitud?: number | null
           package_size?: string
           package_weight?: number
           status?: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
-          latitud?: number | null // Added
-          longitud?: number | null // Added
         }
       }
       paradas_reparto: {
@@ -175,7 +181,7 @@ export interface Database {
           id: string
           reparto_id: string
           envio_id: string
-          orden: number
+          orden: number // INTEGER
           created_at: string
         }
         Insert: {
@@ -235,7 +241,7 @@ export type EnvioConCliente = Envio & {
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente; // Nested Envio with its Cliente
+  envio: EnvioConCliente;
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -246,13 +252,12 @@ export type ClienteWithEmpresa = Cliente & {
   empresa: Pick<Empresa, 'id' | 'nombre'> | null;
 };
 
-// Type for map markers
 export interface EnvioMapa {
   id: string;
   latitud: number;
   longitud: number;
   status: string;
-  nombre_cliente: string | null; // Combined from cliente or nombre_cliente_temporal
+  nombre_cliente: string | null;
   client_location: string;
   package_size: string;
   package_weight: number;
