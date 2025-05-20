@@ -1,9 +1,9 @@
 
 "use client";
 
-import type { RepartoCompleto, ParadaConEnvioYCliente, TipoParadaEnum as TipoParadaEnumType } from "@/types/supabase";
+import type { RepartoCompleto, ParadaConEnvioYCliente, TipoParadaEnum as TipoParadaEnumType, Empresa } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
-import { estadoRepartoEnum, estadoEnvioEnum, tipoParadaEnum as tipoParadaSchemaEnum, tipoRepartoEnum } from "@/lib/schemas";
+import { estadoRepartoEnum, estadoEnvioEnum, tipoRepartoEnum as tipoRepartoSchemaEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -16,12 +16,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Not used directly, only as part of Toast
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, IconMapPin, ArrowUp, ArrowDown, Home, Wand2, Brain } from "lucide-react";
+import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain } from "lucide-react"; // Corregido: IconMapPin a MapPin
 import type { OptimizeRouteInput, OptimizeRouteOutput, OptimizeRouteStopInput } from "@/ai/flows/optimize-route-flow";
 
 interface RepartoDetailViewProps {
@@ -90,17 +90,18 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   useEffect(() => {
     setReparto(initialReparto);
     setSelectedStatus(initialReparto.estado as EstadoReparto);
-    setSuggestedRoute(null); // Reset suggested route when initialReparto changes
+    setSuggestedRoute(null);
   }, [initialReparto]);
 
   const handleStatusChange = async () => {
     startUpdatingStatusTransition(async () => {
         const envioIds = reparto.paradas.filter(p => p.envio_id).map(p => p.envio_id as string);
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
-        
+
         if (result.success) {
+            // Optimistic UI update
             const updatedParadas = reparto.paradas.map(parada => {
-                if (!parada.envio) return parada; 
+                if (!parada.envio) return parada;
                 let newEnvioStatus = parada.envio.status;
                 if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
                     newEnvioStatus = estadoEnvioEnum.Values.en_transito;
@@ -118,7 +119,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             toast({ title: "Estado Actualizado", description: "El estado del reparto y envíos asociados ha sido actualizado." });
         } else {
             toast({ title: "Error", description: result.error || "No se pudo actualizar el estado.", variant: "destructive" });
-            setSelectedStatus(reparto.estado as EstadoReparto); // Revert optimistic UI
+            setSelectedStatus(reparto.estado as EstadoReparto); // Revert dropdown
         }
     });
   };
@@ -126,6 +127,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   const handleReorderParada = async (paradaId: string, direccion: 'up' | 'down') => {
     setIsReordering(paradaId);
 
+    // Optimistic UI update
     const currentParadas = [...reparto.paradas];
     const currentIndex = currentParadas.findIndex(p => p.id === paradaId);
     if (currentIndex === -1) {
@@ -136,20 +138,23 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     let newParadas = [...currentParadas];
     const paradaToMove = newParadas[currentIndex];
 
-    if (paradaToMove.orden === 0 && direccion === 'up' && paradaToMove.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) { 
+    // Prevent moving "Retiro Empresa" from orden 0 if it's already there.
+    if (paradaToMove.orden === 0 && direccion === 'up' && paradaToMove.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
         setIsReordering(null);
-        return; 
+        return;
     }
     if (currentIndex === 0 && direccion === 'up' && paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa) {
          setIsReordering(null);
          return;
     }
 
+
     if (direccion === 'up' && currentIndex > 0) {
         const temp = newParadas[currentIndex];
         newParadas[currentIndex] = newParadas[currentIndex - 1];
         newParadas[currentIndex - 1] = temp;
-        
+
+        // Swap 'orden' property
         const tempOrden = newParadas[currentIndex].orden;
         newParadas[currentIndex].orden = newParadas[currentIndex - 1].orden;
         newParadas[currentIndex - 1].orden = tempOrden;
@@ -158,15 +163,15 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         const temp = newParadas[currentIndex];
         newParadas[currentIndex] = newParadas[currentIndex + 1];
         newParadas[currentIndex + 1] = temp;
-       
+        // Swap 'orden' property
         const tempOrden = newParadas[currentIndex].orden;
-        newParadas[currentIndex].orden = newParadas[currentIndex + 1].orden;
+        newParadas[currentIndex].orden = newParadas[currentIndex - 1].orden;
         newParadas[currentIndex + 1].orden = tempOrden;
     } else {
         setIsReordering(null);
-        return; 
+        return; // No move possible
     }
-    
+    // Re-sort by the swapped 'orden' values for consistent display before server confirms
     newParadas.sort((a,b) => a.orden - b.orden);
     setReparto(prev => ({...prev, paradas: newParadas}));
 
@@ -174,9 +179,11 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     const result = await reorderParadasAction(reparto.id, paradaId, direccion);
     if (result.success) {
       toast({ title: "Parada Reordenada", description: "El orden de la parada ha sido actualizado." });
+      // No need to setReparto again if revalidatePath works as expected,
+      // but if not, a full fetch and setReparto(newFullRepartoData) might be needed.
     } else {
       toast({ title: "Error al Reordenar", description: result.error || "No se pudo reordenar la parada.", variant: "destructive" });
-      setReparto(prev => ({...prev, paradas: currentParadas})); 
+      setReparto(prev => ({...prev, paradas: currentParadas})); // Revert optimistic update
     }
     setIsReordering(null);
   };
@@ -186,7 +193,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     setSuggestedRoute(null);
 
     const stopsInput: OptimizeRouteStopInput[] = reparto.paradas
-      .filter(parada => { // Filter out stops without valid coordinates
+      .filter(parada => { // Ensure parada has coordinates before including
         if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
           return reparto.empresas?.latitud != null && reparto.empresas?.longitud != null;
         }
@@ -195,18 +202,19 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
       .map(parada => {
         if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
           return {
-            id: `empresa-${reparto.empresas?.id || 'retiro'}`,
+            id: `empresa-${reparto.empresas?.id || 'retiro'}`, // Ensure a stable ID for the company pickup
             label: `Retiro en ${reparto.empresas?.nombre || 'Empresa'}`,
-            lat: reparto.empresas!.latitud!, // Assumes latitud is present if type is retiro_empresa and filtered
-            lng: reparto.empresas!.longitud!, // Assumes longitud is present
+            lat: reparto.empresas!.latitud!, // Assert non-null due to filter
+            lng: reparto.empresas!.longitud!, // Assert non-null due to filter
             type: 'pickup',
           };
         }
+        // For client deliveries
         return {
-          id: parada.id, // Use parada.id as the unique identifier for mapping back
+          id: parada.id, // Use parada.id as the stable identifier for AI
           label: parada.envio?.clientes ? `${parada.envio.clientes.nombre} ${parada.envio.clientes.apellido}` : parada.envio?.nombre_cliente_temporal || 'Envío',
-          lat: parada.envio!.latitud!, // Assumes latitud is present for entrega_cliente and filtered
-          lng: parada.envio!.longitud!, // Assumes longitud is present
+          lat: parada.envio!.latitud!, // Assert non-null due to filter
+          lng: parada.envio!.longitud!, // Assert non-null due to filter
           type: 'delivery',
         };
       });
@@ -227,16 +235,17 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     setIsOptimizingRoute(false);
   };
 
-  const isViajeEmpresaType = reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa || reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa_lote;
+  const isViajeEmpresaType = reparto.tipo_reparto === tipoRepartoSchemaEnum.Values.viaje_empresa || reparto.tipo_reparto === tipoRepartoSchemaEnum.Values.viaje_empresa_lote;
 
-  // Memoize the mapping of stop ID to stop details for rendering the suggested route
+
+  // Memoize paradasMap to avoid recomputing on every render unless reparto changes
   const paradasMap = useMemo(() => {
     const map = new Map<string, ParadaConEnvioYCliente | { type: 'pickup'; details: Empresa }>();
     reparto.paradas.forEach(parada => {
       if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && reparto.empresas) {
         map.set(`empresa-${reparto.empresas.id}`, { type: 'pickup', details: reparto.empresas });
-      } else if (parada.envio) {
-        map.set(parada.id, parada); // Using parada.id as the key
+      } else if (parada.envio) { // Ensure parada.envio exists before using parada.id (which is parada_reparto.id)
+        map.set(parada.id, parada); // Use parada.id (from paradas_reparto) as key for delivery stops
       }
     });
     return map;
@@ -283,7 +292,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
           )}
            {isViajeEmpresaType && reparto.empresas?.direccion && (
              <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-1">
-                <IconMapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+                <MapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
                 <div>
                 <p className="text-sm text-muted-foreground">Dirección Retiro Inicial</p>
                 <p className="font-medium">{reparto.empresas.direccion}</p>
@@ -345,22 +354,22 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                     </TableHeader>
                     <TableBody>
                     {reparto.paradas.map((parada, index) => (
-                        <TableRow key={parada.id} className={parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa ? "bg-blue-100 dark:bg-blue-900/40" : ""}>
+                        <TableRow key={parada.id} className={parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
                         <TableCell className="font-medium text-center">{parada.orden + 1}</TableCell>
                         <TableCell className="text-center">
                             <div className="flex justify-center items-center gap-1">
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
                                     onClick={() => handleReorderParada(parada.id, 'up')}
                                     disabled={(parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && parada.orden === 0) || (index === 0 && parada.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa) || isReordering === parada.id}
                                     title="Mover arriba"
                                 >
                                     {isReordering === parada.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
                                 </Button>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
                                     onClick={() => handleReorderParada(parada.id, 'down')}
                                     disabled={index === reparto.paradas.length - 1 || isReordering === parada.id}
                                     title="Mover abajo"
@@ -372,17 +381,17 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                         <TableCell>
                             <div className="font-medium flex items-center gap-2">
                                 {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa ? <Home className="h-4 w-4 text-blue-600"/> : <User className="h-4 w-4 text-muted-foreground"/>}
-                                {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa 
+                                {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa
                                     ? `Retiro en ${reparto.empresas?.nombre || 'Empresa'}`
                                     : parada.envio?.clientes ? `${parada.envio.clientes.nombre} ${parada.envio.clientes.apellido}` : parada.envio?.nombre_cliente_temporal || "N/A"
                                 }
                             </div>
-                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio?.clientes?.email && 
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio?.clientes?.email &&
                                 <div className="text-xs text-muted-foreground pl-6">{parada.envio.clientes.email}</div>}
                         </TableCell>
                         <TableCell>
-                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa 
-                                ? reparto.empresas?.direccion 
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa
+                                ? reparto.empresas?.direccion
                                 : parada.envio?.client_location
                             }
                         </TableCell>
@@ -435,24 +444,36 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                   <TableBody>
                     {suggestedRoute.optimized_stop_ids.map((stopId, index) => {
                       const paradaInfo = paradasMap.get(stopId);
-                      if (!paradaInfo) return null;
+                      if (!paradaInfo) {
+                        console.warn(`AI suggested stopId "${stopId}" not found in current paradasMap.`);
+                        return (
+                           <TableRow key={`${stopId}-${index}-missing`}>
+                             <TableCell colSpan={3} className="text-destructive text-center">
+                                Parada sugerida con ID '{stopId}' no encontrada en los datos actuales del reparto.
+                             </TableCell>
+                           </TableRow>
+                        );
+                      }
 
                       let label, location;
-                      if (paradaInfo.type === 'pickup') {
+                      let isPickup = false;
+                      if ('type' in paradaInfo && paradaInfo.type === 'pickup') { // Check if it's the pickup structure
                         label = `Retiro en ${paradaInfo.details.nombre}`;
                         location = paradaInfo.details.direccion;
-                      } else {
-                        const envio = (paradaInfo as ParadaConEnvioYCliente).envio;
+                        isPickup = true;
+                      } else { // It's a ParadaConEnvioYCliente structure
+                        const paradaEnvioCliente = paradaInfo as ParadaConEnvioYCliente;
+                        const envio = paradaEnvioCliente.envio;
                         label = envio?.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio?.nombre_cliente_temporal || 'N/A';
                         location = envio?.client_location;
                       }
 
                       return (
-                        <TableRow key={`${stopId}-${index}`} className={paradaInfo.type === 'pickup' ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
+                        <TableRow key={`${stopId}-${index}`} className={isPickup ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
                           <TableCell className="font-medium text-center">{index + 1}</TableCell>
                           <TableCell>
                             <div className="font-medium flex items-center gap-2">
-                               {paradaInfo.type === 'pickup' ? <Home className="h-4 w-4 text-blue-600"/> : <User className="h-4 w-4 text-muted-foreground"/>}
+                               {isPickup ? <Home className="h-4 w-4 text-blue-600"/> : <User className="h-4 w-4 text-muted-foreground"/>}
                                {label}
                             </div>
                           </TableCell>
@@ -472,3 +493,4 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     </div>
   );
 }
+
