@@ -12,7 +12,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
-export const OptimizeRouteStopInputSchema = z.object({
+const OptimizeRouteStopInputSchema = z.object({
   id: z.string().describe("Unique identifier for the stop (e.g., parada_id, envio_id, or a special ID for company pickup)."),
   label: z.string().describe("A human-readable label for the stop (e.g., client name or 'Retiro Empresa')."),
   lat: z.number().describe("Latitude of the stop."),
@@ -21,7 +21,7 @@ export const OptimizeRouteStopInputSchema = z.object({
 });
 export type OptimizeRouteStopInput = z.infer<typeof OptimizeRouteStopInputSchema>;
 
-export const OptimizeRouteInputSchema = z.object({
+const OptimizeRouteInputSchema = z.object({
   stops: z.array(OptimizeRouteStopInputSchema)
     .min(2, "At least two stops are required for route optimization.")
     .describe("An array of stops to be routed. The AI should consider the first stop as the starting point if it's a pickup location."),
@@ -29,7 +29,7 @@ export const OptimizeRouteInputSchema = z.object({
 });
 export type OptimizeRouteInput = z.infer<typeof OptimizeRouteInputSchema>;
 
-export const OptimizeRouteOutputSchema = z.object({
+const OptimizeRouteOutputSchema = z.object({
   optimized_stop_ids: z.array(z.string()).describe("An array of stop IDs in the suggested optimal order."),
   notes: z.string().optional().describe("Any notes, estimated distance/time, or reasoning from the AI about the suggested route."),
 });
