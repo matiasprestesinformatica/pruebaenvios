@@ -26,36 +26,21 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(), // Será validado con superRefine
+  client_location: z.string().optional().nullable(),
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
-    // Si se selecciona un cliente existente
-    if (data.nombre_cliente_temporal && data.nombre_cliente_temporal.trim() !== "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "No ingrese un nombre temporal si selecciona un cliente existente.",
-        path: ["nombre_cliente_temporal"],
-      });
-    }
-    // client_location se tomará del cliente, por lo que no se valida aquí si está vacío
-    // pero la lógica del formulario se encargará de llenarlo.
-    // Si por alguna razón el cliente no tuviera dirección, el formulario debería impedirlo antes.
-    // O bien, aquí podríamos verificar que data.client_location tenga valor si data.cliente_id existe.
-    // Por ahora, el formulario se encarga de autocompletarlo, haciéndolo efectivamente presente.
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "No se pudo obtener la dirección del cliente seleccionado. Verifique los datos del cliente.",
-            path: ["cliente_id"], // Error en el cliente si no se puede obtener la dirección
+            message: "La dirección del cliente no pudo ser obtenida. Verifique los datos del cliente o ingrésela manualmente.",
+            path: ["cliente_id"], // Error asociado a la selección del cliente
           });
     }
-
   } else {
-    // Si NO se selecciona un cliente existente (envío temporal)
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -84,7 +69,7 @@ export type RepartidorFormData = z.infer<typeof repartidorSchema>;
 export const estadoRepartoEnum = z.enum(['asignado', 'en_curso', 'completado']);
 export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 
-export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa']);
+export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
 
 export const repartoCreationSchema = z.object({
@@ -93,11 +78,36 @@ export const repartoCreationSchema = z.object({
     invalid_type_error: "Formato de fecha inválido.",
   }),
   repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
-  tipo_reparto: tipoRepartoEnum,
+  tipo_reparto: tipoRepartoEnum.refine(val => val === 'individual' || val === 'viaje_empresa', {
+    message: "Tipo de reparto inválido para esta acción."
+  }),
   empresa_id: z.string().uuid("Debe seleccionar una empresa para este tipo de reparto.").optional().nullable(),
   envio_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un envío."),
+}).superRefine((data, ctx) => {
+  if (data.tipo_reparto === 'viaje_empresa' && !data.empresa_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar una empresa para el tipo de reparto 'Viaje por Empresa'.",
+      path: ["empresa_id"],
+    });
+  }
 });
 export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 
+
+export const repartoLoteCreationSchema = z.object({
+  fecha_reparto: z.date({
+    required_error: "La fecha de reparto es obligatoria.",
+    invalid_type_error: "Formato de fecha inválido.",
+  }),
+  repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
+  empresa_id: z.string().uuid("Debe seleccionar una empresa."),
+  cliente_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un cliente de la empresa."),
+  envio_ids: z.array(z.string().uuid()).optional(), // Envíos a asociar, pueden ser 0
+});
+export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
+
+
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
+```
