@@ -179,36 +179,42 @@ export async function getRepartosListAction(page = 1, pageSize = 10, searchTerm?
 }
 
 export async function getRepartoDetailsAction(repartoId: string): Promise<{ data: RepartoCompleto | null; error: string | null }> {
-  const supabase = createSupabaseServerClient();
+  try {
+    const supabase = createSupabaseServerClient();
 
-  const { data: repartoData, error: repartoError } = await supabase
-    .from("repartos")
-    .select("*, repartidores (id, nombre), empresas (id, nombre)")
-    .eq("id", repartoId)
-    .single();
+    const { data: repartoData, error: repartoError } = await supabase
+      .from("repartos")
+      .select("*, repartidores (id, nombre), empresas (id, nombre)")
+      .eq("id", repartoId)
+      .single();
 
-  if (repartoError || !repartoData) {
-    console.error(`Error fetching reparto details for ID ${repartoId}:`, repartoError);
-    return { data: null, error: repartoError?.message || "Reparto no encontrado." };
+    if (repartoError || !repartoData) {
+      console.error(`Error fetching reparto details for ID ${repartoId}:`, repartoError);
+      return { data: null, error: repartoError?.message || "Reparto no encontrado." };
+    }
+
+    const { data: enviosData, error: enviosError } = await supabase
+      .from("envios")
+      .select("*, clientes (id, nombre, apellido, direccion, email)")
+      .eq("reparto_id", repartoId)
+      .order("created_at", { ascending: true });
+
+    if (enviosError) {
+      console.error(`Error fetching envios for reparto ID ${repartoId}:`, enviosError);
+      return { data: null, error: `Error al cargar envíos: ${enviosError.message}` };
+    }
+    
+    const repartoCompleto: RepartoCompleto = {
+      ...(repartoData as RepartoConDetalles),
+      envios_asignados: enviosData as EnvioConCliente[] || [],
+    };
+
+    return { data: repartoCompleto, error: null };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in getRepartoDetailsAction:", err.message);
+    return { data: null, error: `Error inesperado en el servidor al obtener detalles del reparto: ${err.message}` };
   }
-
-  const { data: enviosData, error: enviosError } = await supabase
-    .from("envios")
-    .select("*, clientes (id, nombre, apellido, direccion, email)")
-    .eq("reparto_id", repartoId)
-    .order("created_at", { ascending: true });
-
-  if (enviosError) {
-    console.error(`Error fetching envios for reparto ID ${repartoId}:`, enviosError);
-    return { data: null, error: `Error al cargar envíos: ${enviosError.message}` };
-  }
-  
-  const repartoCompleto: RepartoCompleto = {
-    ...(repartoData as RepartoConDetalles),
-    envios_asignados: enviosData as EnvioConCliente[] || [],
-  };
-
-  return { data: repartoCompleto, error: null };
 }
 
 export async function updateRepartoEstadoAction(
