@@ -7,7 +7,7 @@ export const empresaSchema = z.object({
   telefono: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
   email: z.string().email("Formato de email inválido.").optional().nullable().or(z.literal('')),
   notas: z.string().optional().nullable(),
-  estado: z.boolean().default(true), // Added estado
+  estado: z.boolean().default(true),
 });
 export type EmpresaFormData = z.infer<typeof empresaSchema>;
 
@@ -15,8 +15,8 @@ export const clientSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
   apellido: z.string().min(1, "El apellido es obligatorio."),
   direccion: z.string().min(1, "La dirección es obligatoria."),
-  telefono: z.string().min(1, "El teléfono es obligatorio.").regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido."),
-  email: z.string().min(1, "El email es obligatorio.").email("Formato de email inválido."),
+  telefono: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
+  email: z.string().email("Formato de email inválido.").optional().nullable().or(z.literal('')),
   notas: z.string().optional().nullable(),
   empresa_id: z.string().uuid("ID de empresa inválido.").optional().nullable(),
   estado: z.boolean().default(true),
@@ -28,24 +28,21 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(), // Made optional, will be validated in superRefine
+  client_location: z.string().optional().nullable(),
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
-    // If a client is selected, their location should be auto-filled or an error if not available.
-    // The form component handles auto-filling, but this ensures client_location has a value if cliente_id is set.
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "La dirección del cliente no pudo ser obtenida. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
-            path: ["client_location"], 
+            path: ["client_location"],
           });
     }
   } else {
-    // If no client is selected, both temporary name and location are required.
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -114,3 +111,5 @@ export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSche
 
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
+
+    

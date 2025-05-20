@@ -19,7 +19,7 @@ export interface Database {
           telefono: string | null
           email: string | null
           notas: string | null
-          estado: boolean 
+          estado: boolean
         }
         Insert: {
           id?: string
@@ -29,7 +29,7 @@ export interface Database {
           telefono?: string | null
           email?: string | null
           notas?: string | null
-          estado?: boolean 
+          estado?: boolean
         }
         Update: {
           id?: string
@@ -39,7 +39,7 @@ export interface Database {
           telefono?: string | null
           email?: string | null
           notas?: string | null
-          estado?: boolean 
+          estado?: boolean
         }
       }
       clientes: {
@@ -51,8 +51,8 @@ export interface Database {
           direccion: string
           latitud: number | null
           longitud: number | null
-          telefono: string
-          email: string
+          telefono: string | null // Updated to be nullable
+          email: string | null    // Updated to be nullable
           notas: string | null
           empresa_id: string | null
           estado: boolean
@@ -65,8 +65,8 @@ export interface Database {
           direccion: string
           latitud?: number | null
           longitud?: number | null
-          telefono: string
-          email: string
+          telefono?: string | null // Updated
+          email?: string | null    // Updated
           notas?: string | null
           empresa_id?: string | null
           estado?: boolean
@@ -79,8 +79,8 @@ export interface Database {
           direccion?: string
           latitud?: number | null
           longitud?: number | null
-          telefono?: string
-          email?: string
+          telefono?: string | null // Updated
+          email?: string | null    // Updated
           notas?: string | null
           empresa_id?: string | null
           estado?: boolean
@@ -110,7 +110,7 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string 
+          fecha_reparto: string
           repartidor_id: string | null
           estado: string // TEXT in DB, validated by Zod enum
           tipo_reparto: string // TEXT in DB, validated by Zod enum
@@ -119,7 +119,7 @@ export interface Database {
         Insert: {
           id?: string
           created_at?: string
-          fecha_reparto: string 
+          fecha_reparto: string
           repartidor_id?: string | null
           estado: string
           tipo_reparto: string
@@ -145,7 +145,7 @@ export interface Database {
           latitud: number | null
           longitud: number | null
           package_size: string // TEXT in DB, validated by Zod enum
-          package_weight: number 
+          package_weight: number
           status: string // TEXT in DB, validated by Zod enum
           suggested_options: Json | null
           reasoning: string | null
@@ -187,7 +187,7 @@ export interface Database {
           id: string
           reparto_id: string
           envio_id: string
-          orden: number 
+          orden: number
           created_at: string
         }
         Insert: {
@@ -213,7 +213,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-       [_ in never]: never // Since the main status/type columns are TEXT
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -239,7 +239,7 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null; 
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null;
 };
 
 export type EnvioConCliente = Envio & {
@@ -247,7 +247,7 @@ export type EnvioConCliente = Envio & {
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente; 
+  envio: EnvioConCliente;
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -273,3 +273,5 @@ export interface RepartoParaFiltro {
   id: string;
   label: string;
 }
+
+    

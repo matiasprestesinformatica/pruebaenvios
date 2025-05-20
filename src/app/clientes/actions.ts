@@ -25,21 +25,21 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
     const data = await response.json();
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
-      const location = data.results[0].geometry.location; 
+      const location = data.results[0].geometry.location;
       const addressComponents = data.results[0].address_components;
 
       const isMarDelPlata = addressComponents.some(
-        (component: any) => 
+        (component: any) =>
           (component.types.includes('locality') && component.long_name.toLowerCase().includes('mar del plata')) ||
-          (component.types.includes('administrative_area_level_1') && component.long_name.toLowerCase().includes('buenos aires')) 
+          (component.types.includes('administrative_area_level_1') && component.long_name.toLowerCase().includes('buenos aires'))
       );
-      
+
       const MDP_BOUNDS = {
         minLat: -38.15, maxLat: -37.90,
         minLng: -57.70, maxLng: -57.45,
       };
 
-      if (isMarDelPlata && 
+      if (isMarDelPlata &&
           location.lat >= MDP_BOUNDS.minLat && location.lat <= MDP_BOUNDS.maxLat &&
           location.lng >= MDP_BOUNDS.minLng && location.lng <= MDP_BOUNDS.maxLng) {
         return { lat: location.lat, lng: location.lng };
@@ -65,13 +65,15 @@ export async function addClientAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    const processedData: Partial<NuevoCliente> = { 
+    const processedData: Partial<NuevoCliente> = {
       ...data,
+      telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
+      email: data.email === "" || data.email === null ? null : data.email,
       notas: data.notas === "" || data.notas === null ? null : data.notas,
       empresa_id: data.empresa_id === "" || data.empresa_id === null ? null : data.empresa_id,
-      estado: data.estado === undefined ? true : data.estado, // Ensure estado is set
+      estado: data.estado === undefined ? true : data.estado,
     };
-    
+
     if (data.direccion) {
       const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
       if (coordinates) {
@@ -94,7 +96,7 @@ export async function addClientAction(
         info: geocodingInfo,
       };
     }
-    
+
     const { data: client, error: dbError } = await supabase
       .from("clientes")
       .insert(validatedFields.data as NuevoCliente)
@@ -104,7 +106,7 @@ export async function addClientAction(
     if (dbError) {
       const pgError = dbError as PostgrestError;
       console.error("Supabase error object while inserting client:", JSON.stringify(pgError, null, 2));
-      
+
       let errorMessage = "No se pudo guardar el cliente.";
       if (pgError.code === '23505') {
           if (pgError.constraint === 'clientes_email_key') {
@@ -112,7 +114,7 @@ export async function addClientAction(
           }
       } else if (pgError.message) {
         errorMessage = pgError.message;
-      } else if (Object.keys(pgError).length === 0 && typeof pgError === 'object') { 
+      } else if (Object.keys(pgError).length === 0 && typeof pgError === 'object') {
         errorMessage = "Error de conexión o configuración con Supabase al guardar. Por favor, verifique las variables de entorno y las políticas RLS.";
       } else {
         errorMessage = `Error inesperado al guardar: ${JSON.stringify(pgError)}`;
@@ -120,7 +122,7 @@ export async function addClientAction(
       return { success: false, error: errorMessage, data: null, info: geocodingInfo };
     }
 
-    revalidatePath("/clientes"); 
+    revalidatePath("/clientes");
     return { success: true, data: client, error: null, info: geocodingInfo };
 
   } catch (e: unknown) {
@@ -147,20 +149,20 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
 
     let query = supabase
       .from("clientes")
-      .select("*, empresa:empresas (id, nombre)", { count: "exact" }) 
+      .select("*, empresa:empresas (id, nombre)", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, to);
 
     if (searchTerm) {
       query = query.or(`nombre.ilike.%${searchTerm}%,apellido.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,empresa:empresas.nombre.ilike.%${searchTerm}%`);
     }
-    
+
     const { data, error, count } = await query;
 
     if (error) {
       const pgError = error as PostgrestError;
       console.error("Supabase error object while fetching clients:", JSON.stringify(pgError, null, 2));
-      
+
       let errorMessage = "Ocurrió un error al cargar los clientes.";
       if (pgError.message) {
         errorMessage = pgError.message;
@@ -194,13 +196,13 @@ export async function getEmpresasForClientFormAction(): Promise<Pick<Empresa, 'i
     if (error) {
       const pgError = error as PostgrestError;
       console.error("Error fetching empresas for client form:", JSON.stringify(pgError, null, 2));
-      return []; 
+      return [];
     }
     return data || [];
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Unexpected error in getEmpresasForClientFormAction:", err.message);
-    throw err; 
+    throw err;
   }
 }
 
@@ -233,3 +235,5 @@ export async function updateClientEstadoAction(
     return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
+
+    

@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch"; // Import Switch
+import { Switch } from "@/components/ui/switch";
 import { Loader2 } from "lucide-react";
 import type { Empresa } from "@/types/supabase";
 
@@ -51,11 +51,11 @@ export function ClientForm({
       nombre: "",
       apellido: "",
       direccion: "",
-      telefono: "",
-      email: "",
+      telefono: "", // Will be handled as optional, empty string becomes null
+      email: "",   // Will be handled as optional, empty string becomes null
       notas: "",
       empresa_id: null,
-      estado: true, // Default estado to true
+      estado: true,
     },
   });
 
@@ -143,9 +143,9 @@ export function ClientForm({
             name="telefono"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Teléfono</FormLabel>
+                <FormLabel>Teléfono (Opcional)</FormLabel>
                 <FormControl>
-                  <Input placeholder="+54 9 11 12345678" {...field} />
+                  <Input placeholder="+54 9 11 12345678" {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -156,9 +156,9 @@ export function ClientForm({
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Email</FormLabel>
+                <FormLabel>Email (Opcional)</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="juan.perez@example.com" {...field} />
+                  <Input type="email" placeholder="juan.perez@example.com" {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -217,3 +217,5 @@ export function ClientForm({
     </Form>
   );
 }
+
+    
