@@ -46,8 +46,8 @@ export interface Database {
           nombre: string
           apellido: string
           direccion: string
-          latitud: number | null // Agregado
-          longitud: number | null // Agregado
+          latitud: number | null
+          longitud: number | null
           telefono: string
           email: string
           notas: string | null
@@ -59,8 +59,8 @@ export interface Database {
           nombre: string
           apellido: string
           direccion: string
-          latitud?: number | null // Agregado
-          longitud?: number | null // Agregado
+          latitud?: number | null
+          longitud?: number | null
           telefono: string
           email: string
           notas?: string | null
@@ -72,8 +72,8 @@ export interface Database {
           nombre?: string
           apellido?: string
           direccion?: string
-          latitud?: number | null // Agregado
-          longitud?: number | null // Agregado
+          latitud?: number | null
+          longitud?: number | null
           telefono?: string
           email?: string
           notas?: string | null
@@ -104,16 +104,16 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string // DATE
+          fecha_reparto: string 
           repartidor_id: string | null
-          estado: string // TEXT, validado por Zod (estadoRepartoEnum)
-          tipo_reparto: string // TEXT, validado por Zod (tipoRepartoEnum)
+          estado: string 
+          tipo_reparto: string 
           empresa_id: string | null
         }
         Insert: {
           id?: string
           created_at?: string
-          fecha_reparto: string // DATE
+          fecha_reparto: string 
           repartidor_id?: string | null
           estado: string
           tipo_reparto: string
@@ -138,9 +138,9 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          package_size: string // TEXT, validado por Zod (packageSizeEnum)
-          package_weight: number // REAL
-          status: string // TEXT, validado por Zod (estadoEnvioEnum)
+          package_size: string 
+          package_weight: number 
+          status: string 
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
@@ -181,7 +181,7 @@ export interface Database {
           id: string
           reparto_id: string
           envio_id: string
-          orden: number // INTEGER
+          orden: number 
           created_at: string
         }
         Insert: {
@@ -261,4 +261,9 @@ export interface EnvioMapa {
   client_location: string;
   package_size: string;
   package_weight: number;
+}
+
+export interface RepartoParaFiltro {
+  id: string;
+  label: string;
 }

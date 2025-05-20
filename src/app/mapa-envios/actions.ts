@@ -2,7 +2,7 @@
 "use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { EnvioMapa, RepartoConDetalles, EnvioConCliente, RepartoParaFiltro, Reparto, Repartidor } from "@/types/supabase";
+import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro } from "@/types/supabase"; // Import RepartoParaFiltro
 import type { PostgrestError } from "@supabase/supabase-js";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -84,7 +84,7 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("repartos")
-      .select("id, fecha_reparto, repartidores (nombre)") // Select only needed fields
+      .select("id, fecha_reparto, repartidores (nombre)") 
       .order("fecha_reparto", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(20); 
@@ -95,7 +95,6 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
       return { data: [], error: "No se pudieron cargar los repartos para el filtro." };
     }
     
-    // Use the more specific type and handle potential null data
     const repartosFetched = (data as RepartoDataForFilter[]) || [];
 
     const repartosParaFiltro: RepartoParaFiltro[] = repartosFetched.map(r => {
