@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RepartoCreationFormData, RepartoLoteCreationFormData, EstadoReparto } from "@/lib/schemas";
 import { repartoCreationSchema, repartoLoteCreationSchema, estadoRepartoEnum, tipoRepartoEnum, estadoEnvioEnum, tipoParadaEnum } from "@/lib/schemas";
-import type { Database, Reparto, RepartoConDetalles, Cliente, NuevoEnvio, ParadaConEnvioYCliente, NuevaParadaReparto, ParadaReparto, EnvioConCliente, RepartoCompleto, Empresa, Repartidor as RepartidorType } from "@/types/supabase";
+import type { Database, Reparto, RepartoConDetalles, Cliente, NuevoEnvio, ParadaConEnvioYCliente, NuevaParadaReparto, ParadaReparto, EnvioConCliente, RepartoCompleto, Empresa, Repartidor as RepartidorType, TipoParadaEnum as TipoParadaEnumType } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { optimizeRoute, type OptimizeRouteInput, type OptimizeRouteOutput } from "@/ai/flows/optimize-route-flow";
 
 
 export async function getRepartidoresActivosAction(): Promise<Pick<RepartidorType, 'id' | 'nombre'>[]> {
@@ -19,7 +20,8 @@ export async function getRepartidoresActivosAction(): Promise<Pick<RepartidorTyp
       .order("nombre", { ascending: true });
 
     if (error) {
-      console.error("Error fetching active repartidores:", error);
+      const pgError = error as PostgrestError;
+      console.error("Error fetching active repartidores:", JSON.stringify(pgError, null, 2));
       return [];
     }
     return data || [];
@@ -35,10 +37,11 @@ export async function getEmpresasForRepartoAction(): Promise<Pick<Empresa, 'id' 
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("empresas")
-      .select("id, nombre, direccion, latitud, longitud")
+      .select("id, nombre, direccion, latitud, longitud") // Added direccion, latitud, longitud
       .order("nombre", { ascending: true });
     if (error) {
-      console.error("Error fetching empresas for reparto:", error);
+      const pgError = error as PostgrestError;
+      console.error("Error fetching empresas for reparto:", JSON.stringify(pgError, null, 2));
       return [];
     }
     return data || [];
@@ -137,17 +140,17 @@ export async function createRepartoAction(
 
   const fechaRepartoString = fecha_reparto.toISOString().split('T')[0];
 
-  const repartoToInsert = {
+  const repartoToInsert: Partial<Reparto> = { // Using Partial for Insert type consistency
     fecha_reparto: fechaRepartoString,
     repartidor_id,
     tipo_reparto,
-    empresa_id: tipo_reparto === 'viaje_empresa' ? empresa_id : null,
+    empresa_id: tipo_reparto === tipoRepartoEnum.Values.viaje_empresa ? empresa_id : null,
     estado: estadoRepartoEnum.Values.asignado, 
   };
 
   const { data: nuevoReparto, error: repartoError } = await supabase
     .from("repartos")
-    .insert(repartoToInsert)
+    .insert(repartoToInsert as Database['public']['Tables']['repartos']['Insert'])
     .select()
     .single();
 
@@ -169,13 +172,17 @@ export async function createRepartoAction(
   if (enviosError) {
     const pgError = enviosError as PostgrestError;
     console.error("Error updating envios for reparto:", JSON.stringify(pgError, null, 2));
+    // Even if envios fail to update, the reparto was created.
+    // Consider if this should be a full rollback or partial success with error message.
+    // For now, returning success for reparto creation but noting the envio update error.
     return { success: true, error: `Reparto creado, pero falló la asignación de envíos: ${pgError.message}.`, data: nuevoReparto };
   }
 
+  // Create paradas
   const paradasToInsert: NuevaParadaReparto[] = envio_ids.map((envioId, index) => ({
     reparto_id: nuevoReparto.id,
     envio_id: envioId,
-    tipo_parada: tipoParadaEnum.Values.entrega_cliente,
+    tipo_parada: tipoParadaEnum.Values.entrega_cliente, // All are client deliveries for individual/empresa
     orden: index, 
   }));
 
@@ -191,6 +198,7 @@ export async function createRepartoAction(
   revalidatePath("/repartos");
   revalidatePath("/repartos/nuevo");
   revalidatePath("/envios"); 
+  revalidatePath("/mapa-envios");
   return { success: true, data: nuevoReparto, error: null };
 }
 
@@ -272,7 +280,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
     const paradasConEnvioYCliente: ParadaConEnvioYCliente[] = (paradasData || []).map(p => ({
       ...p,
       envio_id: p.envio_id, 
-      tipo_parada: p.tipo_parada as Database['public']['Enums']['tipoparadaenum'] | null,
+      tipo_parada: p.tipo_parada as TipoParadaEnumType | null,
       envio: p.envio ? (p.envio as EnvioConCliente) : null
     }));
     
@@ -313,7 +321,7 @@ export async function updateRepartoEstadoAction(
   }
 
   if (envioIds && envioIds.length > 0) {
-    let nuevoEstadoEnvio: typeof estadoEnvioEnum.Values.asignado_a_reparto | typeof estadoEnvioEnum.Values.en_transito | typeof estadoEnvioEnum.Values.entregado | null = null;
+    let nuevoEstadoEnvio: Database['public']['Tables']['envios']['Row']['status'] | null = null;
 
     if (validatedEstado.data === estadoRepartoEnum.Values.completado) {
       nuevoEstadoEnvio = estadoEnvioEnum.Values.entregado;
@@ -340,6 +348,7 @@ export async function updateRepartoEstadoAction(
   revalidatePath(`/repartos/${repartoId}`);
   revalidatePath("/repartos");
   revalidatePath("/envios");
+  revalidatePath("/mapa-envios");
   return { success: true, error: null };
 }
 
@@ -421,6 +430,7 @@ export async function reorderParadasAction(
     }
 
     revalidatePath(`/repartos/${repartoId}`);
+    revalidatePath("/mapa-envios");
     return { success: true, error: null };
 
   } catch (e: unknown) {
@@ -507,7 +517,7 @@ export async function createRepartoLoteAction(
   }
 
   const fechaRepartoString = fecha_reparto.toISOString().split('T')[0];
-  const repartoToInsert = {
+  const repartoToInsert: Partial<Reparto> = {
     fecha_reparto: fechaRepartoString,
     repartidor_id,
     empresa_id,
@@ -517,7 +527,7 @@ export async function createRepartoLoteAction(
 
   const { data: nuevoReparto, error: repartoError } = await supabase
     .from("repartos")
-    .insert(repartoToInsert)
+    .insert(repartoToInsert as Database['public']['Tables']['repartos']['Insert'])
     .select()
     .single();
 
@@ -530,15 +540,16 @@ export async function createRepartoLoteAction(
   const paradasParaInsertar: NuevaParadaReparto[] = [];
   let currentOrder = 0;
 
+  // Add company pickup stop if coordinates exist
   if (empresaData.latitud && empresaData.longitud) {
     paradasParaInsertar.push({
       reparto_id: nuevoReparto.id,
-      envio_id: null,
+      envio_id: null, // No specific envio for company pickup
       tipo_parada: tipoParadaEnum.Values.retiro_empresa,
       orden: currentOrder++,
     });
   } else {
-    console.warn(`Empresa ${empresaData.nombre} no tiene coordenadas. No se creará parada de retiro geolocalizada.`);
+    console.warn(`Empresa ${empresaData.nombre} (ID: ${empresaData.id}) no tiene coordenadas. No se creará parada de retiro geolocalizada.`);
   }
 
   if (cliente_ids && cliente_ids.length > 0) {
@@ -550,8 +561,7 @@ export async function createRepartoLoteAction(
     if (clientesError) {
       const pgClientesError = clientesError as PostgrestError;
       console.error("Error fetching client details for auto-generating shipments:", JSON.stringify(pgClientesError, null, 2));
-      // Continue creating the reparto, but inform about the issue.
-      // The paradas for these clients won't be created if their details can't be fetched.
+      // Continue, but log that some shipments might not be created
     } else if (clientesData) {
         for (const cliente of clientesData) {
           if (!cliente.direccion) {
@@ -563,8 +573,8 @@ export async function createRepartoLoteAction(
             client_location: cliente.direccion,
             latitud: cliente.latitud, 
             longitud: cliente.longitud, 
-            package_size: 'medium', 
-            package_weight: 1,    
+            package_size: 'medium', // Default, can be configurable later
+            package_weight: 1,    // Default, can be configurable later
             status: estadoEnvioEnum.Values.asignado_a_reparto,
             reparto_id: nuevoReparto.id, 
           };
@@ -578,7 +588,7 @@ export async function createRepartoLoteAction(
           if (envioInsertError || !nuevoEnvioData) {
             const pgEnvioError = envioInsertError as PostgrestError | null;
             console.error(`Error auto-generating shipment for client ${cliente.id}:`, JSON.stringify(pgEnvioError, null, 2));
-            continue;
+            continue; // Skip creating parada for this failed shipment
           }
           
           paradasParaInsertar.push({
@@ -600,6 +610,7 @@ export async function createRepartoLoteAction(
       revalidatePath("/repartos");
       revalidatePath("/repartos/lote/nuevo");
       revalidatePath("/envios"); 
+      revalidatePath("/mapa-envios");
       return { success: true, data: nuevoReparto, error: `Reparto y envíos creados (si aplica), pero falló la creación de algunas paradas: ${pgParadasError.message}.` };
     }
   }
@@ -607,6 +618,18 @@ export async function createRepartoLoteAction(
   revalidatePath("/repartos");
   revalidatePath("/repartos/lote/nuevo");
   revalidatePath("/envios"); 
+  revalidatePath("/mapa-envios");
   return { success: true, data: nuevoReparto, error: null };
 }
-    
+
+export async function optimizeRouteAction(
+  paradasInput: OptimizeRouteInput
+): Promise<OptimizeRouteOutput | null> {
+  try {
+    const result = await optimizeRoute(paradasInput);
+    return result;
+  } catch (error) {
+    console.error("Error calling optimizeRoute AI flow:", error);
+    return null;
+  }
+}

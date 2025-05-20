@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Package, AlertTriangle } from "lucide-react";
-import { getRepartoDetailsAction, updateRepartoEstadoAction, reorderParadasAction } from "../actions";
+import { getRepartoDetailsAction, updateRepartoEstadoAction, reorderParadasAction, optimizeRouteAction } from "../actions"; // Added optimizeRouteAction
 import { RepartoDetailView } from "@/components/reparto-detail-view";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,7 +43,8 @@ async function RepartoDetailContent({ repartoId }: { repartoId: string }) {
   return <RepartoDetailView 
             initialReparto={repartoCompleto} 
             updateRepartoStatusAction={updateRepartoEstadoAction}
-            reorderParadasAction={reorderParadasAction} 
+            reorderParadasAction={reorderParadasAction}
+            optimizeRouteAction={optimizeRouteAction} // Pass the new action
         />;
 }
 
@@ -54,7 +55,7 @@ export default async function RepartoDetailPage({ params }: RepartoDetailPagePro
     <>
       <PageHeader
         title={`Detalle del Reparto`}
-        description="Vea y administre los detalles y el estado de este reparto."
+        description="Vea y administre los detalles y el estado de este reparto. Puede optimizar la ruta con IA."
         actions={
           <Button asChild variant="outline">
             <Link href="/repartos">
@@ -81,6 +82,9 @@ function RepartoDetailSkeleton() {
       </div>
       <Skeleton className="h-10 w-48 rounded-md" />
       <Skeleton className="h-64 w-full rounded-lg" />
+      {/* Skeleton for AI optimization section */}
+      <Skeleton className="h-10 w-56 rounded-md mt-4" />
+      <Skeleton className="h-40 w-full rounded-lg" />
     </div>
   );
 }
