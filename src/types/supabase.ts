@@ -108,7 +108,7 @@ export interface Database {
           id?: string
           created_at?: string
           fecha_reparto: string
-          repartidor_id: string | null
+          repartidor_id?: string | null // Made optional to align with nullable FK
           estado?: string
           tipo_reparto: string
           empresa_id?: string | null
@@ -172,7 +172,16 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      // If you were using actual DB ENUM types, they would be listed here.
+      // Based on seed.sql, 'estadoRepartoEnum', 'tipoRepartoEnum', 'estadoEnvioEnum',
+      // 'packagesizeenum' are conceptual enums enforced by Zod/app-logic,
+      // and stored as TEXT in the DB.
+      // Example if they were DB enums:
+      // estado_reparto_enum: "asignado" | "en_curso" | "completado"
+      // tipo_reparto_enum: "individual" | "viaje_empresa" | "viaje_empresa_lote"
+      // estado_envio_enum: "pending" | "suggested" | "asignado_a_reparto" | "en_transito" | "entregado" | "cancelado" | "problema_entrega"
+      // package_size_enum: "small" | "medium" | "large"
+       [_ in never]: never // Keeping this as TEXT columns are used in seed.sql
     }
     CompositeTypes: {
       [_ in never]: never

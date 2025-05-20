@@ -14,7 +14,13 @@ export async function addClientAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    const validatedFields = clientSchema.safeParse(data);
+    // Ensure notas is null if it's an empty string
+    const processedData = {
+      ...data,
+      notas: data.notas === "" ? null : data.notas,
+    };
+
+    const validatedFields = clientSchema.safeParse(processedData);
     if (!validatedFields.success) {
       return {
         success: false,
@@ -35,7 +41,6 @@ export async function addClientAction(
       
       let errorMessage = "No se pudo guardar el cliente.";
       if (pgError.code === '23505') {
-          // Check if it's the email unique constraint
           if (pgError.constraint === 'clientes_email_key') {
               errorMessage = "Ya existe un cliente con este email.";
           }
@@ -80,7 +85,7 @@ export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: str
       .range(from, to);
 
     if (searchTerm) {
-      query = query.or(`nombre.ilike.%${searchTerm}%,apellido.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      query = query.or(`nombre.ilike.%${searchTerm}%,apellido.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,empresa:empresas.nombre.ilike.%${searchTerm}%`);
     }
     
     const { data, error, count } = await query;
@@ -122,10 +127,11 @@ export async function getEmpresasForClientFormAction(): Promise<Pick<Empresa, 'i
     if (error) {
       const pgError = error as PostgrestError;
       console.error("Error fetching empresas for client form:", JSON.stringify(pgError, null, 2));
-      return [];
+      return []; // Return empty array on error, dialog will show toast
     }
     return data || [];
   } catch (e: unknown) {
+    // This error will be caught by the calling component (AddClientDialog)
     const err = e as Error;
     console.error("Unexpected error in getEmpresasForClientFormAction:", err.message);
     throw err; 
