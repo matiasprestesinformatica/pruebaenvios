@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import type { RepartoLoteCreationFormData } from "@/lib/schemas";
-import { repartoLoteCreationSchema, estadoEnvioEnum } from "@/lib/schemas"; // tipoRepartoEnum removed as it's not directly used here but in actions
+import { repartoLoteCreationSchema } from "@/lib/schemas"; 
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -28,9 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 
-import { Loader2, CalendarIcon } from "lucide-react"; // Search, User, Package, MapPin, Info removed as not used
+import { Loader2, CalendarIcon } from "lucide-react"; 
 import type { Repartidor, Empresa, Cliente, Reparto, EnvioConCliente } from "@/types/supabase";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -38,33 +37,20 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { es } from 'date-fns/locale';
 
+
 interface RepartoLoteCreateFormProps {
   repartidores: Pick<Repartidor, 'id' | 'nombre'>[];
   empresas: Pick<Empresa, 'id' | 'nombre'>[];
   getClientesByEmpresaAction: (empresaId: string) => Promise<Cliente[]>;
-  getEnviosByClientesAction: (clienteIds: string[]) => Promise<EnvioConCliente[]>;
+  // getEnviosByClientesAction prop is no longer needed here as we auto-generate
   createRepartoLoteAction: (data: RepartoLoteCreationFormData) => Promise<{ success: boolean; error?: string | null; data?: Reparto | null }>;
 }
 
-function getEstadoEnvioBadgeColor(estado: string | null): string {
-    if (!estado) return 'bg-gray-400 text-white';
-    switch (estado) {
-      case estadoEnvioEnum.Values.pending: return 'bg-yellow-500 text-black';
-      case estadoEnvioEnum.Values.suggested: return 'bg-purple-500 text-white';
-      case estadoEnvioEnum.Values.asignado_a_reparto: return 'bg-blue-500 text-white';
-      case estadoEnvioEnum.Values.en_transito: return 'bg-orange-500 text-white';
-      case estadoEnvioEnum.Values.entregado: return 'bg-green-500 text-white';
-      case estadoEnvioEnum.Values.cancelado: return 'bg-red-500 text-white';
-      case estadoEnvioEnum.Values.problema_entrega: return 'bg-pink-600 text-white';
-      default: return 'bg-gray-500 text-white';
-    }
-}
 
 export function RepartoLoteCreateForm({
   repartidores,
   empresas,
   getClientesByEmpresaAction,
-  getEnviosByClientesAction,
   createRepartoLoteAction,
 }: RepartoLoteCreateFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,9 +59,6 @@ export function RepartoLoteCreateForm({
   const [isLoadingClientes, setIsLoadingClientes] = useState(false);
   const [searchTermClientes, setSearchTermClientes] = useState("");
   
-  const [enviosDeClientesSeleccionados, setEnviosDeClientesSeleccionados] = useState<EnvioConCliente[]>([]);
-  const [isLoadingEnviosClientes, setIsLoadingEnviosClientes] = useState(false);
-
   const { toast } = useToast();
   const router = useRouter();
 
@@ -86,61 +69,41 @@ export function RepartoLoteCreateForm({
       repartidor_id: undefined,
       empresa_id: undefined,
       cliente_ids: [],
-      envio_ids: [],
+      // envio_ids is removed as shipments are auto-generated
     },
   });
 
   const selectedEmpresaId = form.watch("empresa_id");
-  const selectedClienteIds = form.watch("cliente_ids");
 
   const fetchClientes = useCallback(async (empresaId: string | undefined) => {
     if (!empresaId) {
       setClientesDeEmpresa([]);
-      setEnviosDeClientesSeleccionados([]);
       form.setValue("cliente_ids", []);
-      form.setValue("envio_ids", []);
       return;
     }
     setIsLoadingClientes(true);
     const clientes = await getClientesByEmpresaAction(empresaId);
     setClientesDeEmpresa(clientes);
     setIsLoadingClientes(false);
-    // Reset selections when company changes
-    setEnviosDeClientesSeleccionados([]);
     form.setValue("cliente_ids", []);
-    form.setValue("envio_ids", []);
   }, [getClientesByEmpresaAction, form]);
 
   useEffect(() => {
     fetchClientes(selectedEmpresaId);
   }, [selectedEmpresaId, fetchClientes]);
 
-  const fetchEnvios = useCallback(async (clienteIds: string[]) => {
-    if (!clienteIds || clienteIds.length === 0) {
-      setEnviosDeClientesSeleccionados([]);
-      form.setValue("envio_ids", []);
-      return;
-    }
-    setIsLoadingEnviosClientes(true);
-    const envios = await getEnviosByClientesAction(clienteIds);
-    setEnviosDeClientesSeleccionados(envios);
-    setIsLoadingEnviosClientes(false);
-    form.setValue("envio_ids", []); // Reset selected envios when client selection changes
-  }, [getEnviosByClientesAction, form]);
-
-  useEffect(() => {
-    fetchEnvios(selectedClienteIds);
-  }, [selectedClienteIds, fetchEnvios]);
 
   const handleFormSubmit = async (data: RepartoLoteCreationFormData) => {
     setIsSubmitting(true);
-    const result = await createRepartoLoteAction(data);
+    // We only pass cliente_ids. The action will auto-generate shipments.
+    const dataToSubmit = { ...data, envio_ids: undefined }; 
+    
+    const result = await createRepartoLoteAction(dataToSubmit);
     if (result.success) {
-      toast({ title: "Reparto por Lote Creado", description: "El nuevo reparto por lote ha sido guardado exitosamente." });
-      router.push("/repartos");
+      toast({ title: "Reparto por Lote Creado", description: "El nuevo reparto por lote y los envíos asociados han sido generados exitosamente." });
+      router.push("/repartos"); 
       form.reset();
       setClientesDeEmpresa([]);
-      setEnviosDeClientesSeleccionados([]);
       setSearchTermClientes("");
     } else {
       toast({ title: "Error", description: result.error || "No se pudo crear el reparto por lote.", variant: "destructive" });
@@ -158,7 +121,7 @@ export function RepartoLoteCreateForm({
         <Card>
           <CardHeader>
             <CardTitle>Detalles del Reparto por Lote</CardTitle>
-            <CardDescription>Configure la fecha, repartidor y empresa para el lote.</CardDescription>
+            <CardDescription>Configure la fecha, repartidor y empresa para el lote. Se generarán envíos automáticamente para los clientes seleccionados.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -256,7 +219,7 @@ export function RepartoLoteCreateForm({
           <Card>
             <CardHeader>
               <CardTitle>Selección de Clientes de la Empresa</CardTitle>
-              <CardDescription>Seleccione los clientes a incluir en este reparto por lote.</CardDescription>
+              <CardDescription>Seleccione los clientes para quienes se generarán automáticamente los envíos en este reparto por lote.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
@@ -333,83 +296,7 @@ export function RepartoLoteCreateForm({
           </Card>
         )}
 
-        {selectedClienteIds && selectedClienteIds.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Ajustar Envíos para Clientes Seleccionados</CardTitle>
-              <CardDescription>Seleccione los envíos existentes de los clientes seleccionados para incluir en este reparto.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingEnviosClientes && <p className="py-4 text-muted-foreground">Cargando envíos de clientes...</p>}
-              {!isLoadingEnviosClientes && enviosDeClientesSeleccionados.length === 0 && (
-                <p className="py-4 text-muted-foreground text-center">No hay envíos existentes para los clientes seleccionados.</p>
-              )}
-              {!isLoadingEnviosClientes && enviosDeClientesSeleccionados.length > 0 && (
-                <FormField
-                  control={form.control}
-                  name="envio_ids"
-                  render={() => (
-                    <FormItem>
-                      <ScrollArea className="h-72 w-full rounded-md border">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-[50px]"></TableHead>
-                              <TableHead>Cliente</TableHead>
-                              <TableHead>Ubicación</TableHead>
-                              <TableHead>Paquete</TableHead>
-                              <TableHead>Estado Actual</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {enviosDeClientesSeleccionados.map((envio) => (
-                              <TableRow key={envio.id}>
-                                <TableCell>
-                                  <FormField
-                                    key={envio.id}
-                                    control={form.control}
-                                    name="envio_ids"
-                                    render={({ field }) => (
-                                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                                        <FormControl>
-                                          <Checkbox
-                                            checked={field.value?.includes(envio.id)}
-                                            onCheckedChange={(checked) => {
-                                              return checked
-                                                ? field.onChange([...(field.value || []), envio.id])
-                                                : field.onChange(
-                                                    (field.value || []).filter((id) => id !== envio.id)
-                                                  );
-                                            }}
-                                          />
-                                        </FormControl>
-                                      </FormItem>
-                                    )}
-                                  />
-                                </TableCell>
-                                <TableCell>{envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.nombre_cliente_temporal || 'N/A'}</TableCell>
-                                <TableCell>{envio.client_location}</TableCell>
-                                <TableCell>{envio.package_size}, {envio.package_weight}kg</TableCell>
-                                <TableCell>
-                                    <Badge className={`${getEstadoEnvioBadgeColor(envio.status)} capitalize`}>
-                                        {envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}
-                                    </Badge>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </ScrollArea>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || isLoadingClientes || isLoadingEnviosClientes}>
+        <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || isLoadingClientes}>
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

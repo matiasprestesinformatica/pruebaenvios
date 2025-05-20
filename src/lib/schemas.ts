@@ -33,18 +33,14 @@ export const shipmentSchema = z.object({
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
-    // If a client is selected, their location should ideally be auto-filled.
-    // The form logic will set client_location. If it's still empty, means client has no address.
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "La dirección del cliente no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrese la dirección manualmente deseleccionando el cliente.",
-            path: ["cliente_id"], // Error associated with client selection
+            path: ["cliente_id"], 
           });
     }
-    // nombre_cliente_temporal is not needed if cliente_id is present
   } else {
-    // If no client is selected, then temporary name and location are required
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -107,7 +103,7 @@ export const repartoLoteCreationSchema = z.object({
   repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
   empresa_id: z.string().uuid("Debe seleccionar una empresa."),
   cliente_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un cliente de la empresa."),
-  envio_ids: z.array(z.string().uuid()).optional(), // Envíos a asociar, pueden ser 0
+  // envio_ids is removed as new shipments will be auto-generated
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
 

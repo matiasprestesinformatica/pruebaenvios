@@ -5,8 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RepartoCreationFormData, RepartoLoteCreationFormData, EstadoReparto } from "@/lib/schemas";
 import { repartoCreationSchema, repartoLoteCreationSchema, estadoRepartoEnum, tipoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
-import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto, Cliente } from "@/types/supabase";
-// Removed unused imports: PostgrestError, Envios, Clientes
+import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto, Cliente, NuevoEnvio } from "@/types/supabase";
 
 type Repartidores = Database['public']['Tables']['repartidores']['Row'];
 type Empresas = Database['public']['Tables']['empresas']['Row'];
@@ -29,7 +28,7 @@ export async function getRepartidoresActivosAction(): Promise<Pick<Repartidores,
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Critical error in getRepartidoresActivosAction:", err.message);
-    return []; // Ensure it always returns an array even on critical failure
+    return [];
   }
 }
 
@@ -48,7 +47,7 @@ export async function getEmpresasForRepartoAction(): Promise<Pick<Empresas, 'id'
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Critical error in getEmpresasForRepartoAction:", err.message);
-    return []; // Ensure it always returns an array even on critical failure
+    return [];
   }
 }
 
@@ -259,7 +258,6 @@ export async function updateRepartoEstadoAction(
 
     if (enviosError) {
       console.error("Error updating envios status to 'entregado':", enviosError);
-      // Reparto status updated, but envios failed. Client should be informed.
       return { success: true, error: `Estado del reparto actualizado, pero falló la actualización de los envíos: ${enviosError.message}` };
     }
   }
@@ -276,7 +274,7 @@ export async function getClientesByEmpresaAction(empresaId: string): Promise<Cli
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("clientes")
-      .select("*")
+      .select("*") // Select all client fields
       .eq("empresa_id", empresaId)
       .order("apellido", { ascending: true })
       .order("nombre", { ascending: true });
@@ -331,7 +329,7 @@ export async function createRepartoLoteAction(
       };
     }
     
-    const { fecha_reparto, repartidor_id, empresa_id, envio_ids = [] } = validatedFields.data;
+    const { fecha_reparto, repartidor_id, empresa_id, cliente_ids } = validatedFields.data;
   
     const fechaRepartoString = fecha_reparto.toISOString().split('T')[0];
   
@@ -358,15 +356,48 @@ export async function createRepartoLoteAction(
       return { success: false, error: "No se pudo crear el reparto por lote, no se obtuvo respuesta.", data: null };
     }
   
-    if (envio_ids && envio_ids.length > 0) {
-      const { error: enviosError } = await supabase
-        .from("envios")
-        .update({ reparto_id: nuevoReparto.id, status: estadoEnvioEnum.Values.asignado_a_reparto })
-        .in("id", envio_ids);
-  
-      if (enviosError) {
-        console.error("Error updating envios for reparto lote:", enviosError);
-        return { success: false, error: `Reparto por lote creado, pero falló la asignación de envíos: ${enviosError.message}.`, data: nuevoReparto };
+    // Auto-generate shipments for selected clients
+    if (cliente_ids && cliente_ids.length > 0) {
+      const { data: clientesData, error: clientesError } = await supabase
+        .from("clientes")
+        .select("id, direccion")
+        .in("id", cliente_ids);
+
+      if (clientesError) {
+        console.error("Error fetching client details for auto-generating shipments:", clientesError);
+        // Reparto created, but shipment auto-generation failed for client lookup
+        return { success: true, error: `Reparto por lote creado, pero falló la obtención de detalles de clientes para generar envíos: ${clientesError.message}.`, data: nuevoReparto };
+      }
+
+      const nuevosEnvios: NuevoEnvio[] = [];
+      for (const cliente of clientesData || []) {
+        if (!cliente.direccion) {
+          console.warn(`Cliente ${cliente.id} no tiene dirección. No se generará envío automático.`);
+          continue; // Skip creating shipment if client has no address
+        }
+        nuevosEnvios.push({
+          cliente_id: cliente.id,
+          client_location: cliente.direccion,
+          package_size: 'medium', // Default size
+          package_weight: 1, // Default weight
+          status: estadoEnvioEnum.Values.asignado_a_reparto,
+          reparto_id: nuevoReparto.id,
+          nombre_cliente_temporal: null,
+          suggested_options: null,
+          reasoning: null,
+        });
+      }
+
+      if (nuevosEnvios.length > 0) {
+        const { error: enviosInsertError } = await supabase
+          .from("envios")
+          .insert(nuevosEnvios);
+
+        if (enviosInsertError) {
+          console.error("Error auto-generating shipments for reparto lote:", enviosInsertError);
+          // Reparto created, but shipment auto-generation failed
+          return { success: true, error: `Reparto por lote creado, pero falló la generación automática de envíos: ${enviosInsertError.message}.`, data: nuevoReparto };
+        }
       }
     }
   
