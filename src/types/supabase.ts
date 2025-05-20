@@ -19,6 +19,7 @@ export interface Database {
           telefono: string | null
           email: string | null
           notas: string | null
+          estado: boolean // Added
         }
         Insert: {
           id?: string
@@ -28,6 +29,7 @@ export interface Database {
           telefono?: string | null
           email?: string | null
           notas?: string | null
+          estado?: boolean // Added
         }
         Update: {
           id?: string
@@ -37,6 +39,7 @@ export interface Database {
           telefono?: string | null
           email?: string | null
           notas?: string | null
+          estado?: boolean // Added
         }
       }
       clientes: {
@@ -52,7 +55,7 @@ export interface Database {
           email: string
           notas: string | null
           empresa_id: string | null
-          estado: boolean // Added estado
+          estado: boolean
         }
         Insert: {
           id?: string
@@ -66,7 +69,7 @@ export interface Database {
           email: string
           notas?: string | null
           empresa_id?: string | null
-          estado?: boolean // Added estado
+          estado?: boolean
         }
         Update: {
           id?: string
@@ -80,7 +83,7 @@ export interface Database {
           email?: string
           notas?: string | null
           empresa_id?: string | null
-          estado?: boolean // Added estado
+          estado?: boolean
         }
       }
       repartidores: {
@@ -210,7 +213,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-       [_ in never]: never // Using TEXT columns with Zod for enum-like behavior
+       [_ in never]: never 
     }
     CompositeTypes: {
       [_ in never]: never

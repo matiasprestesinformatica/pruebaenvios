@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Edit3, Trash2 } from "lucide-react";
@@ -19,6 +21,9 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { updateEmpresaEstadoAction } from "@/app/empresas/actions";
+
 
 interface EmpresasTableProps {
   initialEmpresas: Empresa[];
@@ -55,12 +60,14 @@ export function EmpresasTable({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   const [empresas, setEmpresas] = useState<Empresa[]>(initialEmpresas);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || "");
   const [isPending, startTransition] = useTransition();
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
   useEffect(() => {
     setEmpresas(initialEmpresas);
@@ -89,13 +96,34 @@ export function EmpresasTable({
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setCurrentPage(1); // Reset to first page on new search
+    setCurrentPage(1); 
     updateQueryParams(1, searchTerm);
   };
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
     updateQueryParams(newPage, searchTerm);
+  };
+
+  const handleEstadoChange = async (empresaId: string, newEstado: boolean) => {
+    setUpdatingStatusId(empresaId);
+    const result = await updateEmpresaEstadoAction(empresaId, newEstado);
+    setUpdatingStatusId(null);
+    if (result.success) {
+      toast({
+        title: "Estado Actualizado",
+        description: `El estado de la empresa ha sido ${newEstado ? 'activado' : 'desactivado'}.`,
+      });
+      setEmpresas(prev => 
+        prev.map(e => e.id === empresaId ? {...e, estado: newEstado} : e)
+      );
+    } else {
+      toast({
+        title: "Error",
+        description: result.error || "No se pudo actualizar el estado.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -131,6 +159,7 @@ export function EmpresasTable({
                   <TableHead>Nombre</TableHead>
                   <TableHead className="hidden md:table-cell">Email</TableHead>
                   <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
+                  <TableHead className="text-center">Estado</TableHead>
                   <TableHead className="hidden lg:table-cell">Registrada</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -144,15 +173,29 @@ export function EmpresasTable({
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{empresa.email || '-'}</TableCell>
                     <TableCell className="hidden sm:table-cell">{empresa.telefono || '-'}</TableCell>
+                     <TableCell className="text-center">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Switch
+                          id={`estado-${empresa.id}`}
+                          checked={empresa.estado}
+                          onCheckedChange={(newEstado) => handleEstadoChange(empresa.id, newEstado)}
+                          disabled={updatingStatusId === empresa.id}
+                          aria-label={`Estado de ${empresa.nombre}`}
+                        />
+                         <Badge variant={empresa.estado ? "default" : "secondary"} className={empresa.estado ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600"}>
+                          {empresa.estado ? "Activa" : "Inactiva"}
+                        </Badge>
+                      </div>
+                    </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <ClientSideFormattedDate dateString={empresa.created_at} />
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Editar: ${empresa.id}`)} title="Editar Empresa">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Funcionalidad "Editar Empresa ${empresa.nombre}" no implementada aún.`)} title="Editar Empresa">
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Eliminar: ${empresa.id}`)} title="Eliminar Empresa">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Funcionalidad "Eliminar Empresa ${empresa.nombre}" no implementada aún.`)} title="Eliminar Empresa">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>

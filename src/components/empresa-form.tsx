@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Loader2 } from "lucide-react";
 
 interface EmpresaFormProps {
@@ -39,6 +41,7 @@ export function EmpresaForm({
       telefono: "",
       email: "",
       notas: "",
+      estado: true, // Default estado to true
     },
   });
 
@@ -120,6 +123,26 @@ export function EmpresaForm({
               <FormMessage />
             </FormItem>
           )}
+        />
+        <FormField
+            control={form.control}
+            name="estado"
+            render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm bg-card">
+                <div className="space-y-0.5">
+                <FormLabel>Estado</FormLabel>
+                <FormDescription>
+                    Indica si la empresa está activa o inactiva.
+                </FormDescription>
+                </div>
+                <FormControl>
+                <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                />
+                </FormControl>
+            </FormItem>
+            )}
         />
         <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
           {isSubmitting ? (

@@ -7,6 +7,7 @@ export const empresaSchema = z.object({
   telefono: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
   email: z.string().email("Formato de email inválido.").optional().nullable().or(z.literal('')),
   notas: z.string().optional().nullable(),
+  estado: z.boolean().default(true), // Added estado
 });
 export type EmpresaFormData = z.infer<typeof empresaSchema>;
 
@@ -18,7 +19,7 @@ export const clientSchema = z.object({
   email: z.string().min(1, "El email es obligatorio.").email("Formato de email inválido."),
   notas: z.string().optional().nullable(),
   empresa_id: z.string().uuid("ID de empresa inválido.").optional().nullable(),
-  estado: z.boolean().default(true), // Added estado for client
+  estado: z.boolean().default(true),
 });
 
 export type ClientFormData = z.infer<typeof clientSchema>;
@@ -27,21 +28,24 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(),
+  client_location: z.string().optional().nullable(), // Made optional, will be validated in superRefine
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
+    // If a client is selected, their location should be auto-filled or an error if not available.
+    // The form component handles auto-filling, but this ensures client_location has a value if cliente_id is set.
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "La dirección del cliente no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrese la dirección manualmente deseleccionando el cliente.",
-            path: ["cliente_id"], 
+            message: "La dirección del cliente no pudo ser obtenida. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
+            path: ["client_location"], 
           });
     }
   } else {
+    // If no client is selected, both temporary name and location are required.
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
