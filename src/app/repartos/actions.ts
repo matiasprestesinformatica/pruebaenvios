@@ -166,7 +166,6 @@ export async function createRepartoAction(
 
   if (enviosError) {
     console.error("Error updating envios for reparto:", enviosError);
-    // Consider a transaction or rollback mechanism here in a real scenario
     return { success: true, error: `Reparto creado, pero falló la asignación de envíos: ${enviosError.message}. Considere usar una función RPC para atomicidad.`, data: nuevoReparto };
   }
 
@@ -184,7 +183,7 @@ export async function getRepartosListAction(page = 1, pageSize = 10, searchTerm?
 
     let query = supabase
       .from("repartos")
-      .select("*, repartidores (id, nombre), empresas (id, nombre)", { count: "exact" }) 
+      .select("*, repartidores (id, nombre), empresas (id, nombre, direccion)", { count: "exact" }) 
       .order("fecha_reparto", { ascending: false })
       .order("created_at", { ascending: false })
       .range(from, to);
@@ -213,7 +212,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
 
     const { data: repartoData, error: repartoError } = await supabase
       .from("repartos")
-      .select("*, repartidores (id, nombre), empresas (id, nombre)")
+      .select("*, repartidores (id, nombre), empresas (id, nombre, direccion)") // Ensure direccion is selected
       .eq("id", repartoId)
       .single();
 
@@ -268,7 +267,6 @@ export async function updateRepartoEstadoAction(
     return { success: false, error: repartoUpdateError.message };
   }
 
-  // Update associated envios status based on new reparto status
   if (envioIds && envioIds.length > 0) {
     let nuevoEstadoEnvio: typeof estadoEnvioEnum.Values | null = null;
 
@@ -277,10 +275,8 @@ export async function updateRepartoEstadoAction(
     } else if (validatedEstado.data === estadoRepartoEnum.Values.en_curso) {
       nuevoEstadoEnvio = estadoEnvioEnum.Values.en_transito;
     } else if (validatedEstado.data === estadoRepartoEnum.Values.asignado) {
-      // When a reparto is (re)set to 'asignado', its envios should also reflect that
       nuevoEstadoEnvio = estadoEnvioEnum.Values.asignado_a_reparto;
     }
-    // Add other mappings if necessary, e.g., for 'cancelado'
 
     if (nuevoEstadoEnvio) {
       const { error: enviosError } = await supabase
@@ -290,7 +286,6 @@ export async function updateRepartoEstadoAction(
 
       if (enviosError) {
         console.error(`Error updating envios status to '${nuevoEstadoEnvio}':`, enviosError);
-        // Return success for reparto update, but with a warning about envios
         return { success: true, error: `Estado del reparto actualizado, pero falló la actualización de los envíos: ${enviosError.message}` };
       }
     }
@@ -298,7 +293,7 @@ export async function updateRepartoEstadoAction(
 
   revalidatePath(`/repartos/${repartoId}`);
   revalidatePath("/repartos");
-  revalidatePath("/envios"); // Also revalidate envios page as their status might change
+  revalidatePath("/envios"); 
   return { success: true, error: null };
 }
 
@@ -396,7 +391,7 @@ export async function createRepartoLoteAction(
   if (cliente_ids && cliente_ids.length > 0) {
     const { data: clientesData, error: clientesError } = await supabase
       .from("clientes")
-      .select("id, direccion") // Fetch only id and direccion
+      .select("id, direccion") 
       .in("id", cliente_ids);
 
     if (clientesError) {
@@ -407,7 +402,7 @@ export async function createRepartoLoteAction(
     const nuevosEnvios: NuevoEnvio[] = [];
     for (const cliente of clientesData || []) {
       if (!cliente.direccion) {
-        console.warn(`Cliente ${cliente.id} no tiene dirección. No se generará envío automático.`);
+        console.warn(`Cliente ${cliente.id} no tiene dirección. No se generará envío automático para este cliente.`);
         continue; 
       }
       nuevosEnvios.push({

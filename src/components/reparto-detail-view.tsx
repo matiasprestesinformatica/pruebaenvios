@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2 } from "lucide-react";
+import { User, CalendarDays, Truck, Building, Loader2, MapPin } from "lucide-react"; // Added MapPin
 
 interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
@@ -99,11 +99,9 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
         const envioIds = reparto.envios_asignados.map(envio => envio.id);
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
         if (result.success) {
-            // Optimistically update reparto status
             const updatedReparto = { ...reparto, estado: selectedStatus };
             
-            // Optimistically update associated envios status
-            let newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto; // Default
+            let newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto; 
             if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
                 newEnvioStatus = estadoEnvioEnum.Values.en_transito;
             } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
@@ -125,6 +123,8 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
         }
     });
   };
+
+  const isViajeEmpresa = reparto.tipo_reparto === 'viaje_empresa' || reparto.tipo_reparto === 'viaje_empresa_lote';
 
   return (
     <div className="space-y-6">
@@ -152,15 +152,24 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
             <Truck className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Tipo de Reparto</p>
-              <p className="font-medium capitalize">{reparto.tipo_reparto?.replace('_', ' ') || 'Desconocido'}</p>
+              <p className="font-medium capitalize">{reparto.tipo_reparto?.replace(/_/g, ' ') || 'Desconocido'}</p>
             </div>
           </div>
-          {(reparto.tipo_reparto === 'viaje_empresa' || reparto.tipo_reparto === 'viaje_empresa_lote') && reparto.empresas && (
-             <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30 md:col-span-2 lg:col-span-1">
+          {isViajeEmpresa && reparto.empresas && (
+             <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
                 <Building className="h-5 w-5 text-muted-foreground" />
                 <div>
                 <p className="text-sm text-muted-foreground">Empresa</p>
                 <p className="font-medium">{reparto.empresas.nombre}</p>
+                </div>
+            </div>
+          )}
+          {isViajeEmpresa && reparto.empresas?.direccion && (
+             <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-2 lg:col-span-1">
+                <MapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+                <div>
+                <p className="text-sm text-muted-foreground">Dirección de Retiro Inicial</p>
+                <p className="font-medium">{reparto.empresas.direccion}</p>
                 </div>
             </div>
           )}
@@ -173,7 +182,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
         </CardHeader>
         <CardContent className="flex items-center gap-4">
           <Badge variant={getEstadoRepartoBadgeVariant(reparto.estado)} className={`${getEstadoRepartoBadgeColor(reparto.estado)} text-lg px-4 py-1.5`}>
-            {reparto.estado?.replace('_', ' ').toUpperCase() || 'DESCONOCIDO'}
+            {reparto.estado?.replace(/_/g, ' ').toUpperCase() || 'DESCONOCIDO'}
           </Badge>
           <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as EstadoReparto)} disabled={isUpdating}>
             <SelectTrigger className="w-[200px]">
@@ -181,7 +190,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
             </SelectTrigger>
             <SelectContent>
               {estadoRepartoEnum.options.map(estadoOpt => (
-                <SelectItem key={estadoOpt} value={estadoOpt}>{estadoOpt.replace('_', ' ').toUpperCase()}</SelectItem>
+                <SelectItem key={estadoOpt} value={estadoOpt}>{estadoOpt.replace(/_/g, ' ').toUpperCase()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -221,7 +230,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
                         <TableCell>{envio.package_size}, {envio.package_weight}kg</TableCell>
                         <TableCell>
                             <Badge className={`${getEstadoEnvioBadgeColor(envio.status)} capitalize`}>
-                                {envio.status?.replace('_', ' ') || 'desconocido'}
+                                {envio.status?.replace(/_/g, ' ') || 'desconocido'}
                             </Badge>
                         </TableCell>
                         </TableRow>
