@@ -20,11 +20,13 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, MapPin as IconMapPin } from "lucide-react"; // Renamed MapPin to IconMapPin
+import { User, CalendarDays, Truck, Building, Loader2, MapPin as IconMapPin, ArrowUp, ArrowDown } from "lucide-react";
+import type { reorderParadasAction } from "@/app/repartos/actions"; // For type checking the prop
 
 interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
   updateRepartoStatusAction: (repartoId: string, nuevoEstado: EstadoReparto, envioIds: string[]) => Promise<{ success: boolean; error?: string | null }>;
+  reorderParadasAction: (repartoId: string, paradaId: string, direccion: 'up' | 'down') => Promise<{ success: boolean; error?: string | null }>;
 }
 
 function ClientSideFormattedDate({ dateString, formatString = "PPP" }: { dateString: string | null, formatString?: string }) {
@@ -83,10 +85,11 @@ function getEstadoEnvioBadgeColor(estado?: string | null) {
   }
 }
 
-export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }: RepartoDetailViewProps) {
+export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, reorderParadasAction }: RepartoDetailViewProps) {
   const [reparto, setReparto] = useState<RepartoCompleto>(initialReparto);
   const [selectedStatus, setSelectedStatus] = useState<EstadoReparto>(reparto.estado as EstadoReparto);
-  const [isUpdating, startUpdatingTransition] = useTransition();
+  const [isUpdatingStatus, startUpdatingStatusTransition] = useTransition();
+  const [isReordering, setIsReordering] = useState<string | null>(null); // parada.id of the item being reordered
   const { toast } = useToast();
 
   useEffect(() => {
@@ -95,31 +98,26 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
   }, [initialReparto]);
 
   const handleStatusChange = async () => {
-    startUpdatingTransition(async () => {
+    startUpdatingStatusTransition(async () => {
         const envioIds = reparto.paradas.map(p => p.envio_id).filter(Boolean) as string[];
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
         
         if (result.success) {
-            // Optimistic update for reparto state
-            const updatedRepartoState = { ...reparto, estado: selectedStatus };
-            
-            // Optimistic update for envio states based on new reparto state
-            let newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto; 
-            if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
-                newEnvioStatus = estadoEnvioEnum.Values.en_transito;
-            } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
-                newEnvioStatus = estadoEnvioEnum.Values.entregado;
-            }
-            
-            updatedRepartoState.paradas = updatedRepartoState.paradas.map(parada => ({
-                ...parada,
-                envio: {
-                    ...parada.envio,
-                    status: newEnvioStatus
+            const updatedParadas = reparto.paradas.map(parada => {
+                let newEnvioStatus = parada.envio.status;
+                if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
+                    newEnvioStatus = estadoEnvioEnum.Values.en_transito;
+                } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
+                    newEnvioStatus = estadoEnvioEnum.Values.entregado;
+                } else if (selectedStatus === estadoRepartoEnum.Values.asignado) {
+                    newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto;
                 }
-            }));
-
-            setReparto(updatedRepartoState);
+                return {
+                    ...parada,
+                    envio: { ...parada.envio, status: newEnvioStatus }
+                };
+            });
+            setReparto(prev => ({ ...prev, estado: selectedStatus, paradas: updatedParadas }));
             toast({ title: "Estado Actualizado", description: "El estado del reparto y envíos asociados ha sido actualizado." });
         } else {
             toast({ title: "Error", description: result.error || "No se pudo actualizar el estado.", variant: "destructive" });
@@ -127,6 +125,61 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
         }
     });
   };
+
+  const handleReorderParada = async (paradaId: string, direccion: 'up' | 'down') => {
+    setIsReordering(paradaId);
+
+    // Optimistic update
+    const currentParadas = [...reparto.paradas];
+    const currentIndex = currentParadas.findIndex(p => p.id === paradaId);
+    if (currentIndex === -1) {
+        setIsReordering(null);
+        return;
+    }
+
+    let newParadas = [...currentParadas];
+    if (direccion === 'up' && currentIndex > 0) {
+        const temp = newParadas[currentIndex];
+        newParadas[currentIndex] = newParadas[currentIndex - 1];
+        newParadas[currentIndex - 1] = temp;
+        // Swap 'orden' for optimistic display, actual 'orden' swap happens in server action
+        const tempOrden = newParadas[currentIndex].orden;
+        newParadas[currentIndex].orden = newParadas[currentIndex - 1].orden;
+        newParadas[currentIndex - 1].orden = tempOrden;
+
+    } else if (direccion === 'down' && currentIndex < newParadas.length - 1) {
+        const temp = newParadas[currentIndex];
+        newParadas[currentIndex] = newParadas[currentIndex + 1];
+        newParadas[currentIndex + 1] = temp;
+        // Swap 'orden' for optimistic display
+        const tempOrden = newParadas[currentIndex].orden;
+        newParadas[currentIndex].orden = newParadas[currentIndex + 1].orden;
+        newParadas[currentIndex + 1].orden = tempOrden;
+    } else {
+        setIsReordering(null);
+        return; // No change
+    }
+    
+    // Sort by new optimistic order for UI
+    newParadas.sort((a,b) => a.orden - b.orden);
+    setReparto(prev => ({...prev, paradas: newParadas}));
+
+
+    const result = await reorderParadasAction(reparto.id, paradaId, direccion);
+    if (result.success) {
+      toast({ title: "Parada Reordenada", description: "El orden de la parada ha sido actualizado." });
+      // The revalidation from server action should refresh the data,
+      // but if not, a manual fetch or relying on optimistic update could be done.
+      // For now, we assume revalidation works. If state inconsistency, uncomment below:
+      // const updatedDetails = await getRepartoDetailsAction(reparto.id);
+      // if (updatedDetails.data) setReparto(updatedDetails.data);
+    } else {
+      toast({ title: "Error al Reordenar", description: result.error || "No se pudo reordenar la parada.", variant: "destructive" });
+      setReparto(prev => ({...prev, paradas: currentParadas})); // Revert optimistic update
+    }
+    setIsReordering(null);
+  };
+
 
   const isViajeEmpresa = reparto.tipo_reparto === 'viaje_empresa' || reparto.tipo_reparto === 'viaje_empresa_lote';
 
@@ -185,21 +238,21 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
           <CardTitle>Estado del Reparto</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center gap-4">
-          <Badge variant={getEstadoRepartoBadgeVariant(reparto.estado)} className={`${getEstadoRepartoBadgeColor(reparto.estado)} text-lg px-4 py-1.5`}>
+          <Badge variant={getEstadoRepartoBadgeVariant(reparto.estado)} className={`${getEstadoRepartoBadgeColor(reparto.estado || undefined)} text-lg px-4 py-1.5`}>
             {(reparto.estado || 'Desconocido').replace(/_/g, ' ').toUpperCase()}
           </Badge>
-          <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as EstadoReparto)} disabled={isUpdating}>
+          <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as EstadoReparto)} disabled={isUpdatingStatus}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Cambiar estado..." />
             </SelectTrigger>
             <SelectContent>
               {estadoRepartoEnum.options.map(estadoOpt => (
-                <SelectItem key={estadoOpt} value={estadoOpt}>{(estadoOpt || 'Desconocido').replace(/_/g, ' ').toUpperCase()}</SelectItem>
+                <SelectItem key={estadoOpt} value={estadoOpt}>{ (estadoOpt || 'Desconocido').replace(/_/g, ' ').toUpperCase()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={handleStatusChange} disabled={isUpdating || selectedStatus === reparto.estado}>
-            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button onClick={handleStatusChange} disabled={isUpdatingStatus || selectedStatus === reparto.estado}>
+            {isUpdatingStatus && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Actualizar Estado
           </Button>
         </CardContent>
@@ -208,7 +261,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
       <Card>
         <CardHeader>
           <CardTitle>Envíos/Paradas Asignadas ({reparto.paradas.length})</CardTitle>
-           <CardDescription>Esta es la secuencia de entrega planificada. La funcionalidad para reordenar las paradas se implementará en una futura actualización.</CardDescription>
+           <CardDescription>Esta es la secuencia de entrega planificada. Puede ajustar el orden utilizando los botones de flecha.</CardDescription>
         </CardHeader>
         <CardContent>
           {reparto.paradas.length > 0 ? (
@@ -217,6 +270,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
                     <TableHeader>
                     <TableRow>
                         <TableHead className="w-12">Orden</TableHead>
+                        <TableHead className="w-20 text-center">Reordenar</TableHead>
                         <TableHead>Cliente/Destino</TableHead>
                         <TableHead>Ubicación</TableHead>
                         <TableHead>Paquete</TableHead>
@@ -224,9 +278,31 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
                     </TableRow>
                     </TableHeader>
                     <TableBody>
-                    {reparto.paradas.map((parada) => (
+                    {reparto.paradas.map((parada, index) => (
                         <TableRow key={parada.id}>
-                        <TableCell className="font-medium">{parada.orden + 1}</TableCell> {/* Display 1-based order */}
+                        <TableCell className="font-medium text-center">{parada.orden + 1}</TableCell>
+                        <TableCell className="text-center">
+                            <div className="flex justify-center items-center gap-1">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    onClick={() => handleReorderParada(parada.id, 'up')}
+                                    disabled={index === 0 || isReordering === parada.id}
+                                    title="Mover arriba"
+                                >
+                                    {isReordering === parada.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                                </Button>
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    onClick={() => handleReorderParada(parada.id, 'down')}
+                                    disabled={index === reparto.paradas.length - 1 || isReordering === parada.id}
+                                    title="Mover abajo"
+                                >
+                                   {isReordering === parada.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
+                                </Button>
+                            </div>
+                        </TableCell>
                         <TableCell>
                             <div className="font-medium">
                             {parada.envio.clientes ? `${parada.envio.clientes.nombre} ${parada.envio.clientes.apellido}` : parada.envio.nombre_cliente_temporal || "N/A"}

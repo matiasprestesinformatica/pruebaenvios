@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RepartoCreationFormData, RepartoLoteCreationFormData, EstadoReparto } from "@/lib/schemas";
 import { repartoCreationSchema, repartoLoteCreationSchema, estadoRepartoEnum, tipoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
-import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto, Cliente, NuevoEnvio, ParadaConEnvioYCliente, NuevaParadaReparto } from "@/types/supabase";
+import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto, Cliente, NuevoEnvio, ParadaConEnvioYCliente, NuevaParadaReparto, ParadaReparto } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 type Repartidores = Database['public']['Tables']['repartidores']['Row'];
@@ -160,7 +160,6 @@ export async function createRepartoAction(
     return { success: false, error: "No se pudo crear el reparto, no se obtuvo respuesta.", data: null };
   }
 
-  // Update envios and create paradas_reparto
   const { error: enviosError } = await supabase
     .from("envios")
     .update({ reparto_id: nuevoReparto.id, status: estadoEnvioEnum.Values.asignado_a_reparto })
@@ -245,7 +244,6 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
         return { data: null, error: "Reparto no encontrado." };
     }
 
-
     const { data: paradasData, error: paradasError } = await supabase
       .from("paradas_reparto")
       .select("*, envio:envios (*, clientes (*))") 
@@ -256,7 +254,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
       const pgError = paradasError as PostgrestError;
       console.error(`Error fetching paradas for reparto ID ${repartoId}:`, JSON.stringify(pgError, null, 2));
       let errorMessage = `Error al cargar paradas del reparto: ${pgError.message || "Error desconocido"}`;
-       if (Object.keys(pgError).length === 0 && typeof pgError === 'object') { // Check if the error object is empty
+       if (Object.keys(pgError).length === 0 && typeof pgError === 'object') { 
         errorMessage = "Error de conexión o configuración con Supabase al obtener paradas. Verifique RLS para la tabla 'paradas_reparto'.";
       }
       return { data: null, error: errorMessage };
@@ -304,7 +302,7 @@ export async function updateRepartoEstadoAction(
   }
 
   if (envioIds && envioIds.length > 0) {
-    let nuevoEstadoEnvio: typeof estadoEnvioEnum.Values | null = null;
+    let nuevoEstadoEnvio: typeof estadoEnvioEnum.Values.asignado_a_reparto | typeof estadoEnvioEnum.Values.en_transito | typeof estadoEnvioEnum.Values.entregado | null = null;
 
     if (validatedEstado.data === estadoRepartoEnum.Values.completado) {
       nuevoEstadoEnvio = estadoEnvioEnum.Values.entregado;
@@ -329,8 +327,101 @@ export async function updateRepartoEstadoAction(
 
   revalidatePath(`/repartos/${repartoId}`);
   revalidatePath("/repartos");
-  revalidatePath("/envios"); 
+  revalidatePath("/envios");
   return { success: true, error: null };
+}
+
+export async function reorderParadasAction(
+  repartoId: string,
+  paradaId: string,
+  direccion: 'up' | 'down'
+): Promise<{ success: boolean; error?: string | null }> {
+  const supabase = createSupabaseServerClient();
+
+  try {
+    // 1. Fetch all current stops for the reparto, ordered by 'orden'
+    const { data: paradas, error: fetchError } = await supabase
+      .from('paradas_reparto')
+      .select('*')
+      .eq('reparto_id', repartoId)
+      .order('orden', { ascending: true });
+
+    if (fetchError) {
+      console.error("Error fetching paradas for reorder:", fetchError);
+      return { success: false, error: `Error al obtener paradas: ${fetchError.message}` };
+    }
+    if (!paradas || paradas.length === 0) {
+      return { success: false, error: "No se encontraron paradas para este reparto." };
+    }
+
+    // 2. Find the index of the stop to move
+    const currentIndex = paradas.findIndex(p => p.id === paradaId);
+    if (currentIndex === -1) {
+      return { success: false, error: "Parada especificada no encontrada en el reparto." };
+    }
+
+    const paradaToMove = paradas[currentIndex];
+    let paradaToSwapWith: ParadaReparto | undefined;
+    let newOrdenForMovedParada: number;
+    let newOrdenForSwappedParada: number;
+
+    // 3. Determine target index and validate move
+    if (direccion === 'up') {
+      if (currentIndex === 0) {
+        return { success: true, error: null }; // Already at the top
+      }
+      paradaToSwapWith = paradas[currentIndex - 1];
+      newOrdenForMovedParada = paradaToSwapWith.orden;
+      newOrdenForSwappedParada = paradaToMove.orden;
+    } else { // 'down'
+      if (currentIndex === paradas.length - 1) {
+        return { success: true, error: null }; // Already at the bottom
+      }
+      paradaToSwapWith = paradas[currentIndex + 1];
+      newOrdenForMovedParada = paradaToSwapWith.orden;
+      newOrdenForSwappedParada = paradaToMove.orden;
+    }
+
+    if (!paradaToSwapWith) {
+        return { success: false, error: "No se pudo encontrar la parada con la que intercambiar."}
+    }
+
+    // 4. Update the 'orden' for the two affected records
+    // Ideally, this would be a transaction. For now, two separate updates.
+    const { error: updateError1 } = await supabase
+      .from('paradas_reparto')
+      .update({ orden: newOrdenForMovedParada })
+      .eq('id', paradaToMove.id);
+
+    if (updateError1) {
+      console.error("Error updating orden for moved parada:", updateError1);
+      return { success: false, error: `Error al actualizar orden (1): ${updateError1.message}` };
+    }
+
+    const { error: updateError2 } = await supabase
+      .from('paradas_reparto')
+      .update({ orden: newOrdenForSwappedParada })
+      .eq('id', paradaToSwapWith.id);
+
+    if (updateError2) {
+      // Attempt to revert the first update if the second one fails (rudimentary rollback)
+      await supabase
+        .from('paradas_reparto')
+        .update({ orden: paradaToMove.orden }) // original orden
+        .eq('id', paradaToMove.id);
+      console.error("Error updating orden for swapped parada:", updateError2);
+      return { success: false, error: `Error al actualizar orden (2): ${updateError2.message}` };
+    }
+
+    // 5. Revalidate
+    revalidatePath(`/repartos/${repartoId}`);
+    return { success: true, error: null };
+
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in reorderParadasAction:", err.message);
+    return { success: false, error: `Error inesperado en el servidor: ${err.message}` };
+  }
 }
 
 
@@ -481,5 +572,3 @@ export async function createRepartoLoteAction(
   revalidatePath("/envios"); 
   return { success: true, data: nuevoReparto, error: null };
 }
-
-    

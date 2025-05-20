@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Package, AlertTriangle } from "lucide-react";
-import { getRepartoDetailsAction, updateRepartoEstadoAction } from "../actions";
+import { getRepartoDetailsAction, updateRepartoEstadoAction, reorderParadasAction } from "../actions";
 import { RepartoDetailView } from "@/components/reparto-detail-view";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +40,11 @@ async function RepartoDetailContent({ repartoId }: { repartoId: string }) {
       </div>
     );
   }
-  return <RepartoDetailView initialReparto={repartoCompleto} updateRepartoStatusAction={updateRepartoEstadoAction} />;
+  return <RepartoDetailView 
+            initialReparto={repartoCompleto} 
+            updateRepartoStatusAction={updateRepartoEstadoAction}
+            reorderParadasAction={reorderParadasAction} 
+        />;
 }
 
 export default async function RepartoDetailPage({ params }: RepartoDetailPageProps) {
