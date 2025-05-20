@@ -19,7 +19,7 @@ export interface Database {
           telefono: string | null
           email: string | null
           notas: string | null
-          estado: boolean // Added
+          estado: boolean 
         }
         Insert: {
           id?: string
@@ -29,7 +29,7 @@ export interface Database {
           telefono?: string | null
           email?: string | null
           notas?: string | null
-          estado?: boolean // Added
+          estado?: boolean 
         }
         Update: {
           id?: string
@@ -39,7 +39,7 @@ export interface Database {
           telefono?: string | null
           email?: string | null
           notas?: string | null
-          estado?: boolean // Added
+          estado?: boolean 
         }
       }
       clientes: {
@@ -112,8 +112,8 @@ export interface Database {
           created_at: string
           fecha_reparto: string 
           repartidor_id: string | null
-          estado: string 
-          tipo_reparto: string 
+          estado: string // TEXT in DB, validated by Zod enum
+          tipo_reparto: string // TEXT in DB, validated by Zod enum
           empresa_id: string | null
         }
         Insert: {
@@ -144,9 +144,9 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          package_size: string 
+          package_size: string // TEXT in DB, validated by Zod enum
           package_weight: number 
-          status: string 
+          status: string // TEXT in DB, validated by Zod enum
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
@@ -213,7 +213,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-       [_ in never]: never 
+       [_ in never]: never // Since the main status/type columns are TEXT
     }
     CompositeTypes: {
       [_ in never]: never
