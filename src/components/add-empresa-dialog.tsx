@@ -17,9 +17,10 @@ import { EmpresaForm } from "./empresa-form";
 import type { EmpresaFormData } from "@/lib/schemas";
 import { useToast } from "@/hooks/use-toast";
 import { Building2 } from "lucide-react";
+import type { Empresa } from "@/types/supabase";
 
 interface AddEmpresaDialogProps {
-  addEmpresaAction: (data: EmpresaFormData) => Promise<{ success: boolean; error?: string | null }>;
+  addEmpresaAction: (data: EmpresaFormData) => Promise<{ success: boolean; error?: string | null; data?: Empresa | null; info?: string | null }>;
 }
 
 export function AddEmpresaDialog({ addEmpresaAction }: AddEmpresaDialogProps) {
@@ -34,7 +35,7 @@ export function AddEmpresaDialog({ addEmpresaAction }: AddEmpresaDialogProps) {
       if (result.success) {
         toast({
           title: "Empresa Agregada",
-          description: "La nueva empresa ha sido guardada exitosamente.",
+          description: `La nueva empresa ha sido guardada exitosamente. ${result.info || ''}`,
         });
         setOpen(false); 
       } else {
@@ -83,3 +84,5 @@ export function AddEmpresaDialog({ addEmpresaAction }: AddEmpresaDialogProps) {
     </Dialog>
   );
 }
+
+    

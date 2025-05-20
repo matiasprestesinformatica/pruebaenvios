@@ -37,11 +37,11 @@ export function EmpresaForm({
     resolver: zodResolver(empresaSchema),
     defaultValues: initialData || {
       nombre: "",
-      direccion: "",
+      direccion: "", // Direccion is now required
       telefono: "",
       email: "",
       notas: "",
-      estado: true, // Default estado to true
+      estado: true,
     },
   });
 
@@ -70,10 +70,13 @@ export function EmpresaForm({
           name="direccion"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Dirección (Opcional)</FormLabel>
+              <FormLabel>Dirección</FormLabel> 
               <FormControl>
-                <Input placeholder="Dirección de la empresa" {...field} value={field.value ?? ""} />
+                <Input placeholder="Dirección de la empresa" {...field} />
               </FormControl>
+              <FormDescription>
+                La dirección será utilizada para geocodificación.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -158,3 +161,5 @@ export function EmpresaForm({
     </Form>
   );
 }
+
+    

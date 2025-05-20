@@ -15,7 +15,9 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string | null
+          direccion: string // Changed from string | null
+          latitud: number | null // New field
+          longitud: number | null // New field
           telefono: string | null
           email: string | null
           notas: string | null
@@ -25,7 +27,9 @@ export interface Database {
           id?: string
           created_at?: string
           nombre: string
-          direccion?: string | null
+          direccion: string // Changed from string | null
+          latitud?: number | null // New field
+          longitud?: number | null // New field
           telefono?: string | null
           email?: string | null
           notas?: string | null
@@ -35,7 +39,9 @@ export interface Database {
           id?: string
           created_at?: string
           nombre?: string
-          direccion?: string | null
+          direccion?: string // Changed from string | null
+          latitud?: number | null // New field
+          longitud?: number | null // New field
           telefono?: string | null
           email?: string | null
           notas?: string | null
@@ -51,8 +57,8 @@ export interface Database {
           direccion: string
           latitud: number | null
           longitud: number | null
-          telefono: string | null // Updated to be nullable
-          email: string | null    // Updated to be nullable
+          telefono: string | null
+          email: string | null
           notas: string | null
           empresa_id: string | null
           estado: boolean
@@ -65,8 +71,8 @@ export interface Database {
           direccion: string
           latitud?: number | null
           longitud?: number | null
-          telefono?: string | null // Updated
-          email?: string | null    // Updated
+          telefono?: string | null
+          email?: string | null
           notas?: string | null
           empresa_id?: string | null
           estado?: boolean
@@ -79,8 +85,8 @@ export interface Database {
           direccion?: string
           latitud?: number | null
           longitud?: number | null
-          telefono?: string | null // Updated
-          email?: string | null    // Updated
+          telefono?: string | null
+          email?: string | null
           notas?: string | null
           empresa_id?: string | null
           estado?: boolean
@@ -110,16 +116,16 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string
+          fecha_reparto: string 
           repartidor_id: string | null
-          estado: string // TEXT in DB, validated by Zod enum
-          tipo_reparto: string // TEXT in DB, validated by Zod enum
+          estado: string 
+          tipo_reparto: string 
           empresa_id: string | null
         }
         Insert: {
           id?: string
           created_at?: string
-          fecha_reparto: string
+          fecha_reparto: string 
           repartidor_id?: string | null
           estado: string
           tipo_reparto: string
@@ -144,9 +150,9 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          package_size: string // TEXT in DB, validated by Zod enum
+          package_size: string 
           package_weight: number
-          status: string // TEXT in DB, validated by Zod enum
+          status: string 
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
@@ -224,6 +230,7 @@ export interface Database {
 // Helper types
 export type Empresa = Database['public']['Tables']['empresas']['Row'];
 export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
+export type UpdateEmpresa = Database['public']['Tables']['empresas']['Update'];
 export type Cliente = Database['public']['Tables']['clientes']['Row'];
 export type NuevoCliente = Database['public']['Tables']['clientes']['Insert'];
 export type Repartidor = Database['public']['Tables']['repartidores']['Row'];
@@ -239,7 +246,7 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null;
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion'> | null; // Added direccion
 };
 
 export type EnvioConCliente = Envio & {
@@ -247,7 +254,7 @@ export type EnvioConCliente = Envio & {
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente;
+  envio: EnvioConCliente; 
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
