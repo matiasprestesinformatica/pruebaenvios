@@ -1,8 +1,8 @@
 
 "use client";
 
-import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, ParadaReparto } from "@/types/supabase";
-import type { EstadoReparto, TipoParada } from "@/lib/schemas";
+import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, ParadaReparto, TipoParadaEnum as TipoParadaEnumTypeFromDB } from "@/types/supabase";
+import type { EstadoReparto } from "@/lib/schemas";
 import { estadoRepartoEnum, estadoEnvioEnum, tipoRepartoEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -34,7 +34,8 @@ interface ParadaMapaInfo {
     id: string;
     lat: number;
     lng: number;
-    label?: string; // For debugging or more detailed info in Directions API
+    label?: string; 
+    type?: 'pickup' | 'delivery';
 }
 
 function ClientSideFormattedDate({ dateString, formatString = "PPP" }: { dateString: string | null, formatString?: string }) {
@@ -119,9 +120,9 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     return paradas
       .map(parada => {
         if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && empresa?.latitud && empresa?.longitud) {
-          return { id: `empresa-${empresa.id}`, lat: empresa.latitud, lng: empresa.longitud, label: `Retiro en ${empresa.nombre}` };
+          return { id: `empresa-${empresa.id}`, lat: empresa.latitud, lng: empresa.longitud, label: `Retiro en ${empresa.nombre}`, type: 'pickup' };
         } else if (parada.envio?.latitud && parada.envio?.longitud) {
-          return { id: parada.id, lat: parada.envio.latitud, lng: parada.envio.longitud, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Envío' };
+          return { id: parada.id, lat: parada.envio.latitud, lng: parada.envio.longitud, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Envío', type: 'delivery' };
         }
         return null;
       })
@@ -190,7 +191,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         if (result.success) {
             const updatedParadas = reparto.paradas.map(parada => {
                 if (!parada.envio) return parada;
-                let newEnvioStatus = parada.envio.status;
+                let newEnvioStatus: string | null = parada.envio.status; // Keep current if no specific change
                 if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
                     newEnvioStatus = estadoEnvioEnum.Values.en_transito;
                 } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
@@ -228,7 +229,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         setIsReordering(null);
         return;
     }
-     if (currentIndex === 0 && direccion === 'up' && paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa) {
+     if (currentIndex === 0 && direccion === 'up' && (paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || paradaToMove.orden !== 0) ) {
          setIsReordering(null);
          return;
     }
@@ -267,16 +268,37 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     setSuggestedRoute(null);
     setAiCalculatedDistanceKm(null);
 
-    const stopsInput: OptimizeRouteStopInput[] = getParadasMapaInfo(reparto.paradas, reparto.empresas)
-      .map(p => ({ id: p.id, label: p.label || 'Parada', lat: p.lat, lng: p.lng, type: p.id.startsWith('empresa-') ? 'pickup' : 'delivery' }));
+    const validStops: OptimizeRouteStopInput[] = reparto.paradas.reduce((acc, parada) => {
+        if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
+            if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
+                acc.push({
+                    id: `empresa-${reparto.empresas.id}`,
+                    label: reparto.empresas.nombre || 'Punto de Retiro',
+                    lat: reparto.empresas.latitud,
+                    lng: reparto.empresas.longitud,
+                    type: 'pickup'
+                });
+            }
+        } else if (parada.envio?.latitud != null && parada.envio?.longitud != null) {
+            acc.push({
+                id: parada.id, 
+                label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Entrega Cliente',
+                lat: parada.envio.latitud,
+                lng: parada.envio.longitud,
+                type: 'delivery'
+            });
+        }
+        return acc;
+    }, [] as OptimizeRouteStopInput[]);
 
-    if (stopsInput.length < 2) {
+
+    if (validStops.length < 2) {
       toast({ title: "Optimización de Ruta", description: "Se necesitan al menos dos paradas con coordenadas válidas para optimizar.", variant: "destructive" });
       setIsOptimizingRoute(false);
       return;
     }
 
-    const result = await optimizeRouteAction({ stops: stopsInput });
+    const result = await optimizeRouteAction({ stops: validStops });
     if (result && result.optimized_stop_ids) {
       setSuggestedRoute(result);
       toast({ title: "Ruta Optimizada Sugerida", description: "La IA ha sugerido un nuevo orden para las paradas." });
@@ -297,6 +319,12 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         .map(stopId => paradasInfoMap.get(stopId))
         .filter(p => p !== undefined) as ParadaMapaInfo[];
 
+    if (orderedStopsForAiRoute.length < 2) {
+        toast({ title: "Error de Cálculo", description: "No hay suficientes paradas válidas en la ruta sugerida para calcular la distancia.", variant: "destructive" });
+        setIsLoadingAiRouteDistance(false);
+        return;
+    }
+
     const distance = await calculateRouteDistance(orderedStopsForAiRoute);
     setAiCalculatedDistanceKm(distance);
     setIsLoadingAiRouteDistance(false);
@@ -311,7 +339,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
       if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && reparto.empresas) {
         map.set(`empresa-${reparto.empresas.id}`, { type: 'pickup', details: reparto.empresas });
       } else if (parada.envio) {
-        map.set(parada.id, parada);
+        map.set(parada.id, parada); 
       }
     });
     return map;
@@ -442,7 +470,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                                     variant="ghost" 
                                     size="icon" 
                                     onClick={() => handleReorderParada(parada.id, 'up')}
-                                    disabled={(parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && parada.orden === 0) || (index === 0 && parada.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa) || isReordering === parada.id}
+                                    disabled={(parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && parada.orden === 0) || (index === 0 && (parada.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || parada.orden !== 0) ) || isReordering === parada.id}
                                     title="Mover arriba"
                                 >
                                     {isReordering === parada.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}

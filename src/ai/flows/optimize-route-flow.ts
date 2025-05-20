@@ -76,13 +76,24 @@ const optimizeRouteFlow = ai.defineFlow(
       throw new Error("AI did not return an output for route optimization.");
     }
     
+    // Validate that the AI output contains all original stop IDs and no duplicates
     const originalIds = new Set(input.stops.map(s => s.id));
     const optimizedIds = new Set(output.optimized_stop_ids);
+
     if (originalIds.size !== optimizedIds.size || !Array.from(originalIds).every(id => optimizedIds.has(id))) {
-        console.warn("AI route optimization output is missing some original stop IDs or has duplicates.", {original: input.stops, optimized: output.optimized_stop_ids});
+        console.warn(
+            "AI route optimization output is missing some original stop IDs, has duplicates, or returned a different number of stops.", 
+            { 
+                originalStopCount: input.stops.length,
+                optimizedStopCount: output.optimized_stop_ids.length,
+                originalStopIds: Array.from(originalIds),
+                optimizedStopIdsFromAI: output.optimized_stop_ids 
+            }
+        );
+        // Potentially throw an error or adjust the output if strict adherence is required
+        // For now, we'll return what the AI gave but log a warning.
     }
 
     return output;
   }
 );
-
