@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, PackageSearch, Bike, Building2, Route, Warehouse } from "lucide-react"; // Added Warehouse icon
+import { Users, PackageSearch, Bike, Building2, Route, Warehouse, MapPin } from "lucide-react"; 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -13,7 +13,8 @@ const navItems = [
   { href: "/envios", label: "Envíos", icon: PackageSearch },
   { href: "/repartidores", label: "Repartidores", icon: Bike },
   { href: "/repartos", label: "Repartos", icon: Route },
-  { href: "/repartos/lote/nuevo", label: "Repartos Lote", icon: Warehouse }, // New Item
+  { href: "/repartos/lote/nuevo", label: "Repartos Lote", icon: Warehouse },
+  { href: "/mapa-envios", label: "Mapa Envíos", icon: MapPin },
 ];
 
 interface MainNavProps extends React.HTMLAttributes<HTMLElement> {
@@ -41,7 +42,7 @@ export function MainNav({ className, onItemClick, direction = "horizontal", ...p
           size={direction === "horizontal" ? "sm" : "default"}
           className={cn(
             "justify-start text-base font-medium",
-            pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) // More robust active check
+            pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) 
               ? "bg-accent text-accent-foreground hover:bg-accent/90"
               : "hover:bg-accent/80 hover:text-accent-foreground",
             direction === "horizontal" ? "px-3 py-2" : "w-full px-3 py-2 text-left"

@@ -21,8 +21,8 @@ export interface Database {
           notas: string | null
         }
         Insert: {
-          id?: string // Usually auto-generated
-          created_at?: string // Default value
+          id?: string
+          created_at?: string
           nombre: string
           direccion?: string | null
           telefono?: string | null
@@ -52,8 +52,8 @@ export interface Database {
           empresa_id: string | null
         }
         Insert: {
-          id?: string // Usually auto-generated
-          created_at?: string // Default value
+          id?: string
+          created_at?: string
           nombre: string
           apellido: string
           direccion: string
@@ -82,10 +82,10 @@ export interface Database {
           estado: boolean
         }
         Insert: {
-          id?: string // Usually auto-generated
-          created_at?: string // Default value
+          id?: string
+          created_at?: string
           nombre: string
-          estado: boolean // Has default in DB, but often good to be explicit
+          estado?: boolean
         }
         Update: {
           id?: string
@@ -98,15 +98,15 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string // DATE type from DB comes as string
+          fecha_reparto: string
           repartidor_id: string | null
-          estado: string // TEXT, constrained by Zod schema
-          tipo_reparto: string // TEXT, constrained by Zod schema
+          estado: string
+          tipo_reparto: string
           empresa_id: string | null
         }
         Insert: {
-          id?: string // Usually auto-generated
-          created_at?: string // Default value
+          id?: string
+          created_at?: string
           fecha_reparto: string
           repartidor_id?: string | null
           estado: string
@@ -130,25 +130,29 @@ export interface Database {
           cliente_id: string | null
           nombre_cliente_temporal: string | null
           client_location: string
-          package_size: string // TEXT, constrained by Zod schema
-          package_weight: number // float4
-          status: string // TEXT, constrained by Zod schema
+          package_size: string
+          package_weight: number
+          status: string
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
+          latitud: number | null // Added
+          longitud: number | null // Added
         }
         Insert: {
-          id?: string // Usually auto-generated
-          created_at?: string // Default value
+          id?: string
+          created_at?: string
           cliente_id?: string | null
           nombre_cliente_temporal?: string | null
           client_location: string
-          package_size: string
-          package_weight: number
+          package_size?: string
+          package_weight?: number
           status: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
+          latitud?: number | null // Added
+          longitud?: number | null // Added
         }
         Update: {
           id?: string
@@ -162,6 +166,8 @@ export interface Database {
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
+          latitud?: number | null // Added
+          longitud?: number | null // Added
         }
       }
       paradas_reparto: {
@@ -169,15 +175,15 @@ export interface Database {
           id: string
           reparto_id: string
           envio_id: string
-          orden: number // int4
+          orden: number
           created_at: string
         }
         Insert: {
-          id?: string // Usually auto-generated
+          id?: string
           reparto_id: string
           envio_id: string
           orden: number
-          created_at?: string // Default value
+          created_at?: string
         }
         Update: {
           id?: string
@@ -195,7 +201,7 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-       [_ in never]: never // Your schema uses TEXT for enum-like fields, validated by Zod
+       [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -229,7 +235,7 @@ export type EnvioConCliente = Envio & {
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente;
+  envio: EnvioConCliente; // Nested Envio with its Cliente
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -239,3 +245,15 @@ export type RepartoCompleto = RepartoConDetalles & {
 export type ClienteWithEmpresa = Cliente & {
   empresa: Pick<Empresa, 'id' | 'nombre'> | null;
 };
+
+// Type for map markers
+export interface EnvioMapa {
+  id: string;
+  latitud: number;
+  longitud: number;
+  status: string;
+  nombre_cliente: string | null; // Combined from cliente or nombre_cliente_temporal
+  client_location: string;
+  package_size: string;
+  package_weight: number;
+}
