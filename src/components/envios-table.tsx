@@ -96,7 +96,7 @@ export function EnviosTable({
       params.delete('search');
     }
     startTransition(() => {
-      router.push(\`\${pathname}?\${params.toString()}\`, { scroll: false });
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
     });
   };
 
@@ -159,7 +159,7 @@ export function EnviosTable({
                     <TableCell>
                       <div className="font-medium flex items-center gap-1">
                         <User className="h-3.5 w-3.5 text-muted-foreground"/> 
-                        {envio.clientes ? \`\${envio.clientes.nombre} \${envio.clientes.apellido}\` : envio.nombre_cliente_temporal || "N/A"}
+                        {envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.nombre_cliente_temporal || "N/A"}
                       </div>
                       <div className="text-sm text-muted-foreground md:hidden mt-1 flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5"/> {envio.client_location}
@@ -178,7 +178,7 @@ export function EnviosTable({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={\`\${getEstadoEnvioBadgeColor(envio.status)} capitalize\`}>
+                      <Badge className={`${getEstadoEnvioBadgeColor(envio.status)} capitalize`}>
                         {envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}
                       </Badge>
                     </TableCell>
@@ -188,13 +188,13 @@ export function EnviosTable({
                     <TableCell>
                       <div className="flex gap-1 sm:gap-2">
                         {/* Placeholder for future actions */}
-                        <Button variant="ghost" size="icon" onClick={() => alert(\`Ver Detalle: \${envio.id}\`)} title="Ver Detalle del Envío">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Ver Detalle: ${envio.id}`)} title="Ver Detalle del Envío">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => alert(\`Editar: \${envio.id}\`)} title="Editar Envío">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Editar: ${envio.id}`)} title="Editar Envío">
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => alert(\`Eliminar: \${envio.id}\`)} title="Eliminar Envío">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Eliminar: ${envio.id}`)} title="Eliminar Envío">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -231,3 +231,4 @@ export function EnviosTable({
     </div>
   );
 }
+

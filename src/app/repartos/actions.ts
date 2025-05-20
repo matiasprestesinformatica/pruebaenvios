@@ -6,13 +6,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RepartoCreationFormData, EstadoReparto } from "@/lib/schemas";
 import { repartoCreationSchema, estadoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
 import type { Database, Reparto, RepartoConDetalles, EnvioConCliente, RepartoCompleto } from "@/types/supabase";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 
 type Repartidores = Database['public']['Tables']['repartidores']['Row'];
 type Empresas = Database['public']['Tables']['empresas']['Row'];
-type Envios = Database['public']['Tables']['envios']['Row'];
-type Clientes = Database['public']['Tables']['clientes']['Row'];
 
 
 export async function getRepartidoresActivosAction(): Promise<Pick<Repartidores, 'id' | 'nombre'>[]> {
@@ -108,6 +105,7 @@ export async function createRepartoAction(
     return {
       success: false,
       error: "Error de validación: " + JSON.stringify(validatedFields.error.flatten().fieldErrors),
+      data: null,
     };
   }
   
@@ -131,11 +129,11 @@ export async function createRepartoAction(
 
   if (repartoError) {
     console.error("Error creating reparto:", repartoError);
-    return { success: false, error: `No se pudo crear el reparto: ${repartoError.message}` };
+    return { success: false, error: `No se pudo crear el reparto: ${repartoError.message}`, data: null };
   }
 
   if (!nuevoReparto) {
-    return { success: false, error: "No se pudo crear el reparto, no se obtuvo respuesta." };
+    return { success: false, error: "No se pudo crear el reparto, no se obtuvo respuesta.", data: null };
   }
 
   const { error: enviosError } = await supabase
@@ -145,23 +143,24 @@ export async function createRepartoAction(
 
   if (enviosError) {
     console.error("Error updating envios for reparto:", enviosError);
-    return { success: false, error: `Reparto creado, pero falló la asignación de envíos: ${enviosError.message}. Considere usar una función RPC para atomicidad.` };
+    // Consider a transaction or rollback mechanism here in a real scenario
+    return { success: false, error: `Reparto creado, pero falló la asignación de envíos: ${enviosError.message}. Considere usar una función RPC para atomicidad.`, data: nuevoReparto };
   }
 
   revalidatePath("/repartos");
   revalidatePath("/repartos/nuevo");
   revalidatePath("/envios"); 
-  return { success: true, data: nuevoReparto };
+  return { success: true, data: nuevoReparto, error: null };
 }
 
-export async function getRepartosListAction(page = 1, pageSize = 10, searchTerm?: string) {
+export async function getRepartosListAction(page = 1, pageSize = 10, searchTerm?: string): Promise<{data: RepartoConDetalles[], count: number, error: string | null}> {
   const supabase = createSupabaseServerClient();
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
   let query = supabase
     .from("repartos")
-    .select("*, repartidores (id, nombre), empresas (id, nombre)", { count: "exact" }) // Adjusted alias
+    .select("*, repartidores (id, nombre), empresas (id, nombre)", { count: "exact" }) 
     .order("fecha_reparto", { ascending: false })
     .order("created_at", { ascending: false })
     .range(from, to);
@@ -251,3 +250,4 @@ export async function updateRepartoEstadoAction(
   revalidatePath("/repartos");
   return { success: true, error: null };
 }
+

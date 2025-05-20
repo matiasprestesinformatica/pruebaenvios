@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { RepartoCompleto, EnvioConCliente } from "@/types/supabase";
+import type { RepartoCompleto } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
 import { estadoRepartoEnum, estadoEnvioEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Package, MapPin, Weight, AlertTriangle, Loader2 } from "lucide-react";
+import { User, CalendarDays, Truck, Building, Loader2 } from "lucide-react";
 
 interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
@@ -79,11 +79,11 @@ function getEstadoEnvioBadgeColor(estado: string) {
 export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }: RepartoDetailViewProps) {
   const [reparto, setReparto] = useState<RepartoCompleto>(initialReparto);
   const [selectedStatus, setSelectedStatus] = useState<EstadoReparto>(reparto.estado as EstadoReparto);
-  const [isUpdating, setIsUpdating] = useTransition();
+  const [isUpdating, startUpdatingTransition] = useTransition();
   const { toast } = useToast();
 
   const handleStatusChange = async () => {
-    setIsUpdating(async () => {
+    startUpdatingTransition(async () => {
         const envioIds = reparto.envios_asignados.map(envio => envio.id);
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
         if (result.success) {
@@ -214,3 +214,4 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction }:
     </div>
   );
 }
+
