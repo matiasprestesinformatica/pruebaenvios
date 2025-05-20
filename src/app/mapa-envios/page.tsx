@@ -55,7 +55,13 @@ async function MapaEnviosPageContent({ selectedRepartoId, repartosParaFiltro }: 
 }
 
 export default async function MapaEnviosPage({ searchParams }: MapaEnviosPageProps) {
-  const selectedRepartoId = searchParams?.repartoId || "all";
+  let rawRepartoId = searchParams?.repartoId || "all";
+  if (rawRepartoId && rawRepartoId !== "all" && rawRepartoId !== "unassigned") {
+    // Strip any query parameters from the UUID
+    rawRepartoId = rawRepartoId.split('?')[0];
+  }
+  const selectedRepartoId = rawRepartoId;
+  
   const { data: repartosParaFiltro, error: repartosError } = await getRepartosForMapFilterAction();
 
   if (repartosError) {
