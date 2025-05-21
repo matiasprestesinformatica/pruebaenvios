@@ -21,7 +21,8 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { EditShipmentDialog } from "./edit-shipment-dialog"; // Import the dialog
+import { EditShipmentDialog } from "./edit-shipment-dialog"; 
+import { EnvioDetailDialog } from "./envio-detail-dialog"; // Import the new detail dialog
 
 interface EnviosTableProps {
   initialEnvios: EnvioConCliente[];
@@ -51,16 +52,16 @@ function ClientSideFormattedDate({ dateString }: { dateString: string }) {
 
 function getEstadoEnvioBadgeColor(estado: string | null): string {
   if (!estado) return 'bg-gray-400 text-white';
-  switch (estado) {
-    case estadoEnvioEnum.Values.pending: return 'bg-yellow-500 text-black';
-    case estadoEnvioEnum.Values.suggested: return 'bg-purple-500 text-white';
-    case estadoEnvioEnum.Values.asignado_a_reparto: return 'bg-blue-500 text-white';
-    case estadoEnvioEnum.Values.en_transito: return 'bg-orange-500 text-white';
-    case estadoEnvioEnum.Values.entregado: return 'bg-green-500 text-white';
-    case estadoEnvioEnum.Values.cancelado: return 'bg-red-500 text-white';
-    case estadoEnvioEnum.Values.problema_entrega: return 'bg-pink-600 text-white';
-    default: return 'bg-gray-500 text-white';
-  }
+  const estadoMap: Record<string, string> = {
+      pending: 'bg-yellow-500 text-black',
+      suggested: 'bg-purple-500 text-white',
+      asignado_a_reparto: 'bg-blue-500 text-white',
+      en_transito: 'bg-orange-500 text-white',
+      entregado: 'bg-green-500 text-white',
+      cancelado: 'bg-red-500 text-white',
+      problema_entrega: 'bg-pink-600 text-white',
+    };
+  return estadoMap[estado] || 'bg-gray-500 text-white';
 }
 
 
@@ -82,6 +83,10 @@ export function EnviosTable({
 
   const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  const [viewingShipmentId, setViewingShipmentId] = useState<string | null>(null);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+
 
   useEffect(() => {
     setEnvios(initialEnvios);
@@ -127,9 +132,18 @@ export function EnviosTable({
   const handleCloseEditDialog = () => {
     setIsEditDialogOpen(false);
     setEditingShipmentId(null);
-    // Optionally force re-fetch data or rely on revalidatePath from updateShipmentAction
-    // For now, revalidation from action should suffice.
   };
+
+  const handleOpenDetailDialog = (shipmentId: string) => {
+    setViewingShipmentId(shipmentId);
+    setIsDetailDialogOpen(true);
+  };
+
+  const handleCloseDetailDialog = () => {
+    setIsDetailDialogOpen(false);
+    setViewingShipmentId(null);
+  };
+
 
   return (
     <div className="space-y-4">
@@ -203,7 +217,7 @@ export function EnviosTable({
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 sm:gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Ver Detalle (ID: ${envio.id}) no implementado.`)} title="Ver Detalle del Envío">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenDetailDialog(envio.id)} title="Ver Detalle del Envío">
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(envio.id)} title="Editar Envío">
@@ -249,6 +263,14 @@ export function EnviosTable({
           shipmentId={editingShipmentId}
           isOpen={isEditDialogOpen}
           onOpenChange={handleCloseEditDialog}
+        />
+      )}
+
+      {isDetailDialogOpen && viewingShipmentId && (
+        <EnvioDetailDialog
+          envioId={viewingShipmentId}
+          isOpen={isDetailDialogOpen}
+          onOpenChange={handleCloseDetailDialog}
         />
       )}
     </div>
