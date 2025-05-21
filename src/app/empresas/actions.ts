@@ -8,7 +8,6 @@ import { empresaSchema } from "@/lib/schemas";
 import type { Empresa, NuevaEmpresa, UpdateEmpresa } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 
-// Helper function to geocode address and validate if it's in Mar del Plata
 async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: number; lng: number } | null> {
   const apiKey = process.env.GOOGLE_GEOCODING_API_KEY;
   if (!apiKey) {
@@ -56,7 +55,7 @@ export async function addEmpresaAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    let processedData: Partial<NuevaEmpresa> = { 
+    const processedDataForValidation: Partial<NuevaEmpresa> = { 
       ...data,
       telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
       email: data.email === "" || data.email === null ? null : data.email,
@@ -67,21 +66,21 @@ export async function addEmpresaAction(
     };
 
     if (data.latitud != null && data.longitud != null) {
-      processedData.latitud = data.latitud;
-      processedData.longitud = data.longitud;
+      processedDataForValidation.latitud = data.latitud;
+      processedDataForValidation.longitud = data.longitud;
       geocodingInfo = "Coordenadas manuales utilizadas.";
-    } else if (data.direccion) { // Direccion is now required by schema
+    } else if (data.direccion) { 
       const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
       if (coordinates) {
-        processedData.latitud = coordinates.lat;
-        processedData.longitud = coordinates.lng;
+        processedDataForValidation.latitud = coordinates.lat;
+        processedDataForValidation.longitud = coordinates.lng;
         geocodingInfo = "Dirección de empresa geocodificada y validada en Mar del Plata.";
       } else {
         geocodingInfo = "No se pudo geocodificar la dirección de la empresa o está fuera de Mar del Plata. Coordenadas no guardadas.";
       }
     }
     
-    const validatedFields = empresaSchema.safeParse(processedData);
+    const validatedFields = empresaSchema.safeParse(processedDataForValidation);
     if (!validatedFields.success) {
       return {
         success: false,
@@ -101,8 +100,8 @@ export async function addEmpresaAction(
       const pgError = error as PostgrestError;
       console.error("Supabase error object while inserting empresa:", JSON.stringify(pgError, null, 2));
       let errorMessage = "No se pudo guardar la empresa.";
-      if (pgError.code === '23505' && pgError.constraint === 'empresas_email_key') {
-          errorMessage = "Ya existe una empresa con este email.";
+      if (pgError.code === '23505' && (pgError.constraint === 'empresas_email_key' || pgError.constraint === 'empresas_nombre_key')) { // Assuming nombre is also unique
+          errorMessage = pgError.constraint === 'empresas_email_key' ? "Ya existe una empresa con este email." : "Ya existe una empresa con este nombre.";
       } else if (pgError.message) {
           errorMessage = pgError.message;
       } else if (Object.keys(pgError).length === 0 && typeof pgError === 'object') {
@@ -132,6 +131,114 @@ export async function addEmpresaAction(
     };
   }
 }
+
+export async function updateEmpresaAction(
+  empresaId: string,
+  data: EmpresaFormData
+): Promise<{ success: boolean; error?: string | null; data?: Empresa | null, info?: string | null }> {
+  let geocodingInfo: string | null = null;
+  try {
+    const supabase = createSupabaseServerClient();
+
+    const processedDataForValidation: Partial<UpdateEmpresa> = {
+      ...data,
+      telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
+      email: data.email === "" || data.email === null ? null : data.email,
+      notas: data.notas === "" || data.notas === null ? null : data.notas,
+      // estado is already boolean from form
+    };
+
+    if (data.latitud != null && data.longitud != null) {
+        processedDataForValidation.latitud = data.latitud;
+        processedDataForValidation.longitud = data.longitud;
+        geocodingInfo = "Coordenadas manuales utilizadas.";
+    } else if (data.direccion) {
+        const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
+        if (coordinates) {
+            processedDataForValidation.latitud = coordinates.lat;
+            processedDataForValidation.longitud = coordinates.lng;
+            geocodingInfo = "Dirección de empresa geocodificada y validada en Mar del Plata.";
+        } else {
+            processedDataForValidation.latitud = null;
+            processedDataForValidation.longitud = null;
+            geocodingInfo = "No se pudo geocodificar la nueva dirección de la empresa o está fuera de Mar del Plata. Coordenadas no actualizadas por geocodificación.";
+        }
+    } else {
+        processedDataForValidation.latitud = null;
+        processedDataForValidation.longitud = null;
+    }
+
+    const validatedFields = empresaSchema.safeParse(processedDataForValidation);
+    if (!validatedFields.success) {
+      return {
+        success: false,
+        error: "Error de validación al actualizar empresa: " + JSON.stringify(validatedFields.error.flatten().fieldErrors),
+        data: null,
+        info: geocodingInfo,
+      };
+    }
+
+    const { data: updatedEmpresa, error: dbError } = await supabase
+      .from("empresas")
+      .update(validatedFields.data as UpdateEmpresa)
+      .eq("id", empresaId)
+      .select()
+      .single();
+
+    if (dbError) {
+      const pgError = dbError as PostgrestError;
+      console.error("Supabase error object while updating empresa:", JSON.stringify(pgError, null, 2));
+      let errorMessage = "No se pudo actualizar la empresa.";
+      if (pgError.code === '23505' && (pgError.constraint === 'empresas_email_key' || pgError.constraint === 'empresas_nombre_key')) {
+          errorMessage = pgError.constraint === 'empresas_email_key' ? "Ya existe otra empresa con este email." : "Ya existe otra empresa con este nombre.";
+      } else if (pgError.message) {
+        errorMessage = pgError.message;
+      }
+      return { success: false, error: errorMessage, data: null, info: geocodingInfo };
+    }
+
+    revalidatePath("/empresas");
+    revalidatePath(`/empresas/${empresaId}`); // If you have a detail page
+    revalidatePath("/clientes"); // In case company name changed and is displayed for clients
+    return { success: true, data: updatedEmpresa, error: null, info: geocodingInfo };
+
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in updateEmpresaAction:", err);
+    return {
+      success: false,
+      error: err.message || 'Error desconocido del servidor al actualizar empresa.',
+      data: null,
+      info: geocodingInfo,
+    };
+  }
+}
+
+export async function getEmpresaByIdAction(empresaId: string): Promise<{ data: Empresa | null; error: string | null }> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("empresas")
+      .select("*")
+      .eq("id", empresaId)
+      .single();
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error("Supabase error fetching empresa by ID:", JSON.stringify(pgError, null, 2));
+      if (pgError.code === 'PGRST116') {
+        return { data: null, error: "Empresa no encontrada." };
+      }
+      return { data: null, error: pgError.message || "Error al obtener datos de la empresa." };
+    }
+    return { data, error: null };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in getEmpresaByIdAction:", err.message);
+    return { data: null, error: err.message || "Error desconocido del servidor." };
+  }
+}
+
 
 export async function getEmpresasAction(page = 1, pageSize = 10, searchTerm?: string): Promise<{data: Empresa[], count: number, error: string | null}> {
   try {
@@ -227,3 +334,5 @@ export async function updateEmpresaEstadoAction(
     return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
+
+    

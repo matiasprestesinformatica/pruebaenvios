@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { ClienteWithEmpresa } from "@/types/supabase";
+import type { ClienteWithEmpresa, Cliente } from "@/types/supabase";
 import {
   Table,
   TableBody,
@@ -22,8 +22,8 @@ import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { updateClientEstadoAction } from "@/app/clientes/actions";
-
+import { updateClientEstadoAction, updateClientAction } from "@/app/clientes/actions"; // updateClientAction for EditClientDialog
+import { EditClientDialog } from "./edit-client-dialog"; // Import the new dialog
 
 interface ClientsTableProps {
   initialClients: ClienteWithEmpresa[];
@@ -69,6 +69,8 @@ export function ClientsTable({
   const [isPending, startTransition] = useTransition();
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     setClients(initialClients);
@@ -127,6 +129,16 @@ export function ClientsTable({
     }
   };
 
+  const handleOpenEditDialog = (clientId: string) => {
+    setEditingClientId(clientId);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingClientId(null);
+    // Optionally re-fetch data or rely on revalidatePath from updateClientAction
+  };
 
   return (
     <div className="space-y-4">
@@ -172,15 +184,15 @@ export function ClientsTable({
                   <TableRow key={client.id}>
                     <TableCell>
                       <div className="font-medium">{client.nombre} {client.apellido}</div>
-                      <div className="text-sm text-muted-foreground md:hidden">{client.email}</div>
+                      <div className="text-sm text-muted-foreground md:hidden">{client.email ?? '-'}</div>
                       {client.empresa && (
                         <Badge variant="secondary" className="mt-1 md:hidden flex items-center gap-1 w-fit">
                            <Building2 className="h-3 w-3" /> {client.empresa.nombre}
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">{client.email}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{client.telefono}</TableCell>
+                    <TableCell className="hidden md:table-cell">{client.email ?? '-'}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{client.telefono ?? '-'}</TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {client.empresa ? (
                          <Badge variant="outline" className="flex items-center gap-1 w-fit">
@@ -209,10 +221,10 @@ export function ClientsTable({
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Editar: ${client.id}`)} title="Editar Cliente">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(client.id)} title="Editar Cliente">
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Eliminar: ${client.id}`)} title="Eliminar Cliente">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Funcionalidad "Eliminar Cliente ${client.nombre}" no implementada aún.`)} title="Eliminar Cliente">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -246,6 +258,17 @@ export function ClientsTable({
           </Button>
         </div>
       )}
+
+      {isEditDialogOpen && editingClientId && (
+        <EditClientDialog
+          clientId={editingClientId}
+          isOpen={isEditDialogOpen}
+          onOpenChange={handleCloseEditDialog}
+          updateClientAction={updateClientAction}
+        />
+      )}
     </div>
   );
 }
+
+    

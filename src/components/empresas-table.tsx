@@ -22,8 +22,8 @@ import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { updateEmpresaEstadoAction } from "@/app/empresas/actions";
-
+import { updateEmpresaEstadoAction, updateEmpresaAction } from "@/app/empresas/actions"; // updateEmpresaAction for EditEmpresaDialog
+import { EditEmpresaDialog } from "./edit-empresa-dialog"; // Import the new dialog
 
 interface EmpresasTableProps {
   initialEmpresas: Empresa[];
@@ -68,6 +68,9 @@ export function EmpresasTable({
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || "");
   const [isPending, startTransition] = useTransition();
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  const [editingEmpresaId, setEditingEmpresaId] = useState<string | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     setEmpresas(initialEmpresas);
@@ -125,6 +128,18 @@ export function EmpresasTable({
       });
     }
   };
+
+  const handleOpenEditDialog = (empresaId: string) => {
+    setEditingEmpresaId(empresaId);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingEmpresaId(null);
+    // Optionally re-fetch data or rely on revalidatePath from updateEmpresaAction
+  };
+
 
   return (
     <div className="space-y-4">
@@ -192,7 +207,7 @@ export function EmpresasTable({
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Funcionalidad "Editar Empresa ${empresa.nombre}" no implementada aún.`)} title="Editar Empresa">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(empresa.id)} title="Editar Empresa">
                           <Edit3 className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => alert(`Funcionalidad "Eliminar Empresa ${empresa.nombre}" no implementada aún.`)} title="Eliminar Empresa">
@@ -229,6 +244,17 @@ export function EmpresasTable({
           </Button>
         </div>
       )}
+
+      {isEditDialogOpen && editingEmpresaId && (
+        <EditEmpresaDialog
+          empresaId={editingEmpresaId}
+          isOpen={isEditDialogOpen}
+          onOpenChange={handleCloseEditDialog}
+          updateEmpresaAction={updateEmpresaAction}
+        />
+      )}
     </div>
   );
 }
+
+    

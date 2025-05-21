@@ -5,10 +5,9 @@ import { revalidatePath } from "next/cache";
 import type { ClientFormData } from "@/lib/schemas";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { clientSchema } from "@/lib/schemas";
-import type { Cliente, Empresa, ClienteWithEmpresa, NuevoCliente } from "@/types/supabase";
+import type { Cliente, Empresa, ClienteWithEmpresa, NuevoCliente, UpdateCliente } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 
-// Helper function to geocode address and validate if it's in Mar del Plata
 async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: number; lng: number } | null> {
   const apiKey = process.env.GOOGLE_GEOCODING_API_KEY;
   if (!apiKey) {
@@ -56,34 +55,33 @@ export async function addClientAction(
   try {
     const supabase = createSupabaseServerClient();
 
-    let processedData: Partial<NuevoCliente> = {
+    const processedDataForValidation: Partial<NuevoCliente> = {
       ...data,
       telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
       email: data.email === "" || data.email === null ? null : data.email,
       notas: data.notas === "" || data.notas === null ? null : data.notas,
       empresa_id: data.empresa_id === "" || data.empresa_id === null ? null : data.empresa_id,
       estado: data.estado === undefined ? true : data.estado,
-      latitud: null, // Initialize
-      longitud: null, // Initialize
+      latitud: null, 
+      longitud: null,
     };
-
+    
     if (data.latitud != null && data.longitud != null) {
-      processedData.latitud = data.latitud;
-      processedData.longitud = data.longitud;
+      processedDataForValidation.latitud = data.latitud;
+      processedDataForValidation.longitud = data.longitud;
       geocodingInfo = "Coordenadas manuales utilizadas.";
     } else if (data.direccion) {
       const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
       if (coordinates) {
-        processedData.latitud = coordinates.lat;
-        processedData.longitud = coordinates.lng;
+        processedDataForValidation.latitud = coordinates.lat;
+        processedDataForValidation.longitud = coordinates.lng;
         geocodingInfo = "Dirección geocodificada y validada en Mar del Plata.";
       } else {
         geocodingInfo = "No se pudo geocodificar la dirección o está fuera de Mar del Plata. Coordenadas no guardadas.";
       }
     }
 
-
-    const validatedFields = clientSchema.safeParse(processedData);
+    const validatedFields = clientSchema.safeParse(processedDataForValidation);
     if (!validatedFields.success) {
       return {
         success: false,
@@ -134,6 +132,119 @@ export async function addClientAction(
     };
   }
 }
+
+export async function updateClientAction(
+  clientId: string,
+  data: ClientFormData
+): Promise<{ success: boolean; error?: string | null; data?: Cliente | null, info?: string | null }> {
+  let geocodingInfo: string | null = null;
+  try {
+    const supabase = createSupabaseServerClient();
+
+    const processedDataForValidation: Partial<UpdateCliente> = {
+      ...data,
+      telefono: data.telefono === "" || data.telefono === null ? null : data.telefono,
+      email: data.email === "" || data.email === null ? null : data.email,
+      notas: data.notas === "" || data.notas === null ? null : data.notas,
+      empresa_id: data.empresa_id === "" || data.empresa_id === null ? null : data.empresa_id,
+      // estado is already boolean from form
+    };
+    
+    if (data.latitud != null && data.longitud != null) {
+      processedDataForValidation.latitud = data.latitud;
+      processedDataForValidation.longitud = data.longitud;
+      geocodingInfo = "Coordenadas manuales utilizadas.";
+    } else if (data.direccion) {
+        // Consider fetching the current client to see if address changed before re-geocoding
+        // For now, simple approach: re-geocode if address is present and no manual coords
+        const coordinates = await geocodeAddressInMarDelPlata(data.direccion);
+        if (coordinates) {
+            processedDataForValidation.latitud = coordinates.lat;
+            processedDataForValidation.longitud = coordinates.lng;
+            geocodingInfo = "Dirección geocodificada y validada en Mar del Plata.";
+        } else {
+            processedDataForValidation.latitud = null; // Ensure it's nulled if geocoding fails
+            processedDataForValidation.longitud = null;
+            geocodingInfo = "No se pudo geocodificar la nueva dirección o está fuera de Mar del Plata. Coordenadas no actualizadas por geocodificación.";
+        }
+    } else {
+        // If no address and no manual coords, ensure lat/lng are nulled
+        processedDataForValidation.latitud = null;
+        processedDataForValidation.longitud = null;
+    }
+
+
+    const validatedFields = clientSchema.safeParse(processedDataForValidation);
+    if (!validatedFields.success) {
+      return {
+        success: false,
+        error: "Error de validación al actualizar: " + JSON.stringify(validatedFields.error.flatten().fieldErrors),
+        data: null,
+        info: geocodingInfo,
+      };
+    }
+
+    const { data: updatedClient, error: dbError } = await supabase
+      .from("clientes")
+      .update(validatedFields.data as UpdateCliente)
+      .eq("id", clientId)
+      .select()
+      .single();
+
+    if (dbError) {
+      const pgError = dbError as PostgrestError;
+      console.error("Supabase error object while updating client:", JSON.stringify(pgError, null, 2));
+      let errorMessage = "No se pudo actualizar el cliente.";
+      if (pgError.code === '23505' && pgError.constraint === 'clientes_email_key') {
+          errorMessage = "Ya existe otro cliente con este email.";
+      } else if (pgError.message) {
+        errorMessage = pgError.message;
+      }
+      return { success: false, error: errorMessage, data: null, info: geocodingInfo };
+    }
+
+    revalidatePath("/clientes");
+    revalidatePath(`/clientes/${clientId}`); // If you have a detail page
+    return { success: true, data: updatedClient, error: null, info: geocodingInfo };
+
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in updateClientAction:", err);
+    return {
+      success: false,
+      error: err.message || 'Error desconocido del servidor al actualizar cliente.',
+      data: null,
+      info: geocodingInfo,
+    };
+  }
+}
+
+
+export async function getClientByIdAction(clientId: string): Promise<{ data: Cliente | null; error: string | null }> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("*, empresa:empresas (id, nombre)") // Fetch related company too if needed by form
+      .eq("id", clientId)
+      .single();
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error("Supabase error fetching client by ID:", JSON.stringify(pgError, null, 2));
+      if (pgError.code === 'PGRST116') { // "JSON object requested, multiple (or no) rows returned"
+        return { data: null, error: "Cliente no encontrado." };
+      }
+      return { data: null, error: pgError.message || "Error al obtener datos del cliente." };
+    }
+    return { data, error: null };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in getClientByIdAction:", err.message);
+    return { data: null, error: err.message || "Error desconocido del servidor." };
+  }
+}
+
 
 export async function getClientsAction(page = 1, pageSize = 10, searchTerm?: string): Promise<{ data: ClienteWithEmpresa[]; count: number; error: string | null }> {
   try {
@@ -196,7 +307,7 @@ export async function getEmpresasForClientFormAction(): Promise<Pick<Empresa, 'i
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Unexpected error in getEmpresasForClientFormAction:", err.message);
-    throw err; // Re-throw to be caught by calling component
+    throw err; 
   }
 }
 
@@ -229,3 +340,6 @@ export async function updateClientEstadoAction(
     return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
+
+
+    
