@@ -1,5 +1,5 @@
 
-"use server"; // This page is a Server Component
+// No "use server"; directive at the top
 
 import { PageHeader } from "@/components/page-header";
 import { RepartoLoteCreateForm } from "@/components/reparto-lote-create-form";
@@ -8,15 +8,16 @@ import {
     getEmpresasForRepartoAction,
     getClientesByEmpresaAction,
     createRepartoLoteAction
-} from "../actions"; // Corrected path
-import { getTiposServicioActivosAction } from "@/app/configuracion/actions"; // Import for service types
+} from "../../actions"; // Corrected path
+import { getTiposServicioActivosAction } from "@/app/configuracion/actions";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { Repartidor, Empresa, TipoServicio } from "@/types/supabase";
 
 interface NuevoRepartoLotePageContentProps {
-  repartidores: Awaited<ReturnType<typeof getRepartidoresActivosAction>>;
-  empresas: Awaited<ReturnType<typeof getEmpresasForRepartoAction>>;
-  tiposServicio: Awaited<ReturnType<typeof getTiposServicioActivosAction>>;
+  repartidores: Pick<Repartidor, 'id' | 'nombre'>[];
+  empresas: Pick<Empresa, 'id' | 'nombre'>[];
+  tiposServicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[];
 }
 
 async function NuevoRepartoLotePageContent({ repartidores, empresas, tiposServicio }: NuevoRepartoLotePageContentProps) {
@@ -24,7 +25,7 @@ async function NuevoRepartoLotePageContent({ repartidores, empresas, tiposServic
     <RepartoLoteCreateForm
       repartidores={repartidores}
       empresas={empresas}
-      tiposServicio={tiposServicio} // Pass service types to the form
+      tiposServicio={tiposServicio}
       getClientesByEmpresaAction={getClientesByEmpresaAction}
       createRepartoLoteAction={createRepartoLoteAction}
     />
@@ -32,10 +33,11 @@ async function NuevoRepartoLotePageContent({ repartidores, empresas, tiposServic
 }
 
 export default async function NuevoRepartoLotePage() {
+  // Fetch initial data needed for the form on the server
   const [repartidores, empresas, tiposServicio] = await Promise.all([
     getRepartidoresActivosAction(),
     getEmpresasForRepartoAction(),
-    getTiposServicioActivosAction() // Fetch active service types
+    getTiposServicioActivosAction()
   ]);
 
   return (
@@ -45,7 +47,11 @@ export default async function NuevoRepartoLotePage() {
         description="Seleccione una empresa y sus clientes para generar un reparto por lote, asignando un valor de servicio a cada envío."
       />
       <Suspense fallback={<RepartoLoteFormSkeleton />}>
-        <NuevoRepartoLotePageContent repartidores={repartidores} empresas={empresas} tiposServicio={tiposServicio} />
+        <NuevoRepartoLotePageContent
+            repartidores={repartidores || []} // Provide default empty array if fetch fails
+            empresas={empresas || []}       // Provide default empty array if fetch fails
+            tiposServicio={tiposServicio || []} // Provide default empty array if fetch fails
+        />
       </Suspense>
     </>
   );
