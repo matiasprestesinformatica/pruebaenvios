@@ -2,7 +2,7 @@
 "use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro, Envio, Cliente, Empresa } from "@/types/supabase"; // Added Empresa
+import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro, Envio, Cliente, ParadaReparto, Database, TipoParadaEnum as TipoParadaEnumTypeFromDB, Empresa } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,11 +17,11 @@ const MDP_BOUNDS = {
 };
 
 type EnvioConClienteParaMapa = Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null };
-type ParadaConEnvioYClienteParaMapa = Database['public']['Tables']['paradas_reparto']['Row'] & {
-    envio: (Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null }) | null;
-};
-type RepartoConEmpresa = Reparto & { empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null };
 
+type ParadaConDetalles = ParadaReparto & {
+  envio: (Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null }) | null;
+  repartos: (Reparto & { empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null }) | null;
+};
 
 export async function getEnviosGeolocalizadosAction(
   repartoId?: string | null
@@ -31,21 +31,6 @@ export async function getEnviosGeolocalizadosAction(
     let enviosMapa: EnvioMapa[] = [];
 
     if (repartoId && repartoId !== "all" && repartoId !== "unassigned") {
-      // Fetch the reparto to get empresa details if it's a lote/empresa type
-      const { data: repartoData, error: repartoError } = await supabase
-        .from('repartos')
-        .select('*, empresas (id, nombre, direccion, latitud, longitud)')
-        .eq('id', repartoId)
-        .single();
-
-      if (repartoError || !repartoData) {
-        console.error("Error fetching reparto for map view or reparto not found:", repartoError);
-        return { data: [], error: "No se pudo encontrar el reparto especificado." };
-      }
-      const typedRepartoData = repartoData as RepartoConEmpresa;
-
-
-      // Fetch ordered paradas for the specific reparto
       const { data: paradasData, error: paradasError } = await supabase
         .from("paradas_reparto")
         .select(`
@@ -65,6 +50,11 @@ export async function getEnviosGeolocalizadosAction(
             status,
             reparto_id,
             clientes (id, nombre, apellido)
+          ),
+          repartos (
+            id,
+            empresa_id,
+            empresas (id, nombre, direccion, latitud, longitud)
           )
         `)
         .eq("reparto_id", repartoId)
@@ -75,26 +65,27 @@ export async function getEnviosGeolocalizadosAction(
         console.error("Error fetching paradas_reparto for map:", JSON.stringify(pgError, null, 2));
         return { data: [], error: `Error al cargar paradas del reparto: ${pgError.message}` };
       }
-
-      enviosMapa = (paradasData as ParadaConEnvioYClienteParaMapa[] || []).map(parada => {
-        if (parada.tipo_parada === tipoParadaEnum.Values.retiro_empresa && typedRepartoData.empresas && typedRepartoData.empresas.latitud && typedRepartoData.empresas.longitud) {
-          // This is the company pickup point
-          return {
-            id: `pickup-${typedRepartoData.empresas.id}-${parada.id}`, // Unique ID for the pickup point marker
-            latitud: typedRepartoData.empresas.latitud,
-            longitud: typedRepartoData.empresas.longitud,
-            status: 'pickup', // Special status for map differentiation
-            nombre_cliente: typedRepartoData.empresas.nombre,
-            client_location: typedRepartoData.empresas.direccion || 'Dirección de empresa no disponible',
-            package_size: null,
-            package_weight: null,
-            orden: parada.orden,
-            tipo_parada: tipoParadaEnum.Values.retiro_empresa,
-          };
-        } else if (parada.envio && parada.envio.latitud && parada.envio.longitud &&
+      
+      enviosMapa = (paradasData as ParadaConDetalles[] || []).map(parada => {
+        if (parada.tipo_parada === tipoParadaEnum.Values.retiro_empresa) {
+          const empresa = parada.repartos?.empresas;
+          if (empresa?.latitud != null && empresa?.longitud != null) {
+            return {
+              id: `pickup-${empresa.id}-${parada.id}`,
+              latitud: empresa.latitud,
+              longitud: empresa.longitud,
+              status: 'pickup',
+              nombre_cliente: empresa.nombre || 'Punto de Retiro',
+              client_location: empresa.direccion || 'Dirección de empresa no disponible',
+              package_size: null,
+              package_weight: null,
+              orden: parada.orden,
+              tipo_parada: tipoParadaEnum.Values.retiro_empresa,
+            };
+          }
+        } else if (parada.envio?.latitud != null && parada.envio?.longitud != null &&
                    parada.envio.latitud >= MDP_BOUNDS.minLat && parada.envio.latitud <= MDP_BOUNDS.maxLat &&
                    parada.envio.longitud >= MDP_BOUNDS.minLng && parada.envio.longitud <= MDP_BOUNDS.maxLng) {
-          // This is a regular client delivery
           const envioData = parada.envio as EnvioConClienteParaMapa;
           return {
               id: envioData.id,
@@ -109,10 +100,10 @@ export async function getEnviosGeolocalizadosAction(
               tipo_parada: tipoParadaEnum.Values.entrega_cliente,
           };
         }
-        return null; // Exclude paradas that don't fit criteria (e.g., pickup point for company without coords, or envio outside MDP)
+        return null;
       }).filter(Boolean) as EnvioMapa[];
 
-    } else { // "all" or "unassigned"
+    } else { 
       let query = supabase
         .from("envios")
         .select("*, clientes (id, nombre, apellido)") 
@@ -135,7 +126,7 @@ export async function getEnviosGeolocalizadosAction(
         console.error("Error fetching envios for map:", JSON.stringify(pgError, null, 2));
         let errorMessage = "Ocurrió un error al cargar los envíos para el mapa.";
         if (Object.keys(pgError).length === 0 && typeof pgError === 'object') {
-          errorMessage = "Error de conexión o configuración con Supabase al obtener envíos geolocalizados. Verifique RLS.";
+          errorMessage = "Error de conexión o configuración con Supabase. Verifique RLS.";
         } else if (pgError.message) {
           errorMessage = pgError.message;
         }
@@ -151,8 +142,8 @@ export async function getEnviosGeolocalizadosAction(
         client_location: envio.client_location,
         package_size: envio.package_size,
         package_weight: envio.package_weight,
-        orden: null,
-        tipo_parada: tipoParadaEnum.Values.entrega_cliente, // Assume entrega_cliente for these general queries
+        orden: null, 
+        tipo_parada: tipoParadaEnum.Values.entrega_cliente,
       }));
     }
     return { data: enviosMapa, error: null };
@@ -165,12 +156,12 @@ export async function getEnviosGeolocalizadosAction(
 }
 
 
-export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data: EnvioMapa[]; error: string | null }> {
+export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data: EnvioMapa[]; count: number; error: string | null }> {
   try {
     const supabase = createSupabaseServerClient();
     let query = supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido)")
+      .select("*, clientes (id, nombre, apellido)", { count: "exact" })
       .is("reparto_id", null)
       .not("latitud", "is", null)
       .not("longitud", "is", null)
@@ -180,12 +171,12 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
       .lte("longitud", MDP_BOUNDS.maxLng)
       .order("created_at", { ascending: false });
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) {
       const pgError = error as PostgrestError;
       console.error("Error fetching unassigned geolocated envios:", JSON.stringify(pgError, null, 2));
-      return { data: [], error: `Error al cargar envíos no asignados: ${pgError.message}` };
+      return { data: [], count: 0, error: `Error al cargar envíos no asignados: ${pgError.message}` };
     }
 
     const enviosMapa: EnvioMapa[] = (data as EnvioConClienteParaMapa[] || []).map(envio => ({
@@ -198,19 +189,20 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
       package_size: envio.package_size,
       package_weight: envio.package_weight,
       orden: null, 
-      tipo_parada: tipoParadaEnum.Values.entrega_cliente, // Default for unassigned
+      tipo_parada: tipoParadaEnum.Values.entrega_cliente, 
     }));
 
-    return { data: enviosMapa, error: null };
+    return { data: enviosMapa, count: count || 0, error: null };
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Unexpected error in getEnviosNoAsignadosGeolocalizadosAction:", err.message);
-    return { data: [], error: "Error inesperado al obtener envíos no asignados." };
+    return { data: [], count: 0, error: "Error inesperado al obtener envíos no asignados." };
   }
 }
 
-type RepartoDataForFilter = Pick<Reparto, 'id' | 'fecha_reparto'> & {
+type RepartoDataForFilter = Pick<Reparto, 'id' | 'fecha_reparto' | 'tipo_reparto'> & {
   repartidores: Pick<Repartidor, 'nombre'> | null;
+  empresas: Pick<Empresa, 'id' | 'nombre'> | null; // Added empresa
 };
 
 export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoParaFiltro[]; error: string | null }> {
@@ -218,7 +210,7 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("repartos")
-      .select("id, fecha_reparto, repartidores (nombre)") 
+      .select("id, fecha_reparto, tipo_reparto, repartidores (nombre), empresas (id, nombre)") // Added empresas(id, nombre)
       .order("fecha_reparto", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(20); 
@@ -236,9 +228,16 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
       if (r.repartidores?.nombre) {
         label += ` - ${r.repartidores.nombre}`;
       }
+      if ((r.tipo_reparto === tipoParadaEnum.Values.retiro_empresa || r.tipo_reparto === 'viaje_empresa_lote' || r.tipo_reparto === 'viaje_empresa') && r.empresas?.nombre) {
+        label += ` (${r.empresas.nombre})`;
+      }
       return {
         id: r.id,
-        label: label
+        label: label,
+        // Store empresa details if needed by summary component
+        empresa_id: r.empresas?.id || null,
+        empresa_nombre: r.empresas?.nombre || null,
+        tipo_reparto: r.tipo_reparto as TipoParadaEnumType | null, // Cast for clarity
       };
     });
 
@@ -249,4 +248,3 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     return { data: [], error: "Error inesperado al obtener repartos para el filtro." };
   }
 }
-

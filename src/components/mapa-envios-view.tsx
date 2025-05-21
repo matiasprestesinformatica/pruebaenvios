@@ -4,10 +4,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { EnvioMapa, TipoParadaEnum as TipoParadaEnumType } from '@/types/supabase';
 import { estadoEnvioEnum, tipoParadaEnum } from '@/lib/schemas';
-import { Loader2, AlertTriangle, Info, Home } from 'lucide-react';
+import { Loader2, AlertTriangle, Info } from 'lucide-react';
 
 interface MapaEnviosViewProps {
   envios: EnvioMapa[];
+  isFilteredByReparto: boolean; // New prop to know if we should draw a route
 }
 
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
@@ -18,25 +19,26 @@ const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script';
 let loadGoogleMapsPromise: Promise<void> | null = null;
 
 function getEnvioMarkerColorHex(status: string | null, tipoParada?: TipoParadaEnumType | null ): string {
-  if (tipoParada === tipoParadaEnum.Values.retiro_empresa) return '#4A90E2'; // Distinct color for pickup, e.g., blue
+  if (tipoParada === tipoParadaEnum.Values.retiro_empresa) return '#007bff'; // Blue for pickup
   if (!status) return '#A9A9A9'; 
   switch (status) {
-    case estadoEnvioEnum.Values.pending: return '#FF0000'; 
-    case estadoEnvioEnum.Values.suggested: return '#800080'; 
-    case estadoEnvioEnum.Values.asignado_a_reparto: return '#0000FF'; 
-    case estadoEnvioEnum.Values.en_transito: return '#FFA500'; 
-    case estadoEnvioEnum.Values.entregado: return '#008000'; 
-    case estadoEnvioEnum.Values.cancelado: return '#696969'; 
-    case estadoEnvioEnum.Values.problema_entrega: return '#FF69B4'; 
-    default: return '#A9A9A9'; 
+    case estadoEnvioEnum.Values.pending: return '#FF0000'; // Red
+    case estadoEnvioEnum.Values.suggested: return '#800080'; // Purple
+    case estadoEnvioEnum.Values.asignado_a_reparto: return '#0000FF'; // Blue (can be same as pickup or slightly different)
+    case estadoEnvioEnum.Values.en_transito: return '#FFA500'; // Orange
+    case estadoEnvioEnum.Values.entregado: return '#008000'; // Green
+    case estadoEnvioEnum.Values.cancelado: return '#696969'; // Dark Gray
+    case estadoEnvioEnum.Values.problema_entrega: return '#FF69B4'; // Hot Pink
+    default: return '#A9A9A9'; // Light Gray for unknown
   }
 }
 
-export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
+export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [infoWindow, setInfoWindow] = useState<google.maps.InfoWindow | null>(null);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
+  const [currentPolyline, setCurrentPolyline] = useState<google.maps.Polyline | null>(null);
   const [isLoadingApi, setIsLoadingApi] = useState(true);
   const [errorLoadingApi, setErrorLoadingApi] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
@@ -88,10 +90,9 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
           };
 
           if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
-             // Script already exists, assume it's loading or loaded
             if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
-                resolve(); // Already loaded
-            } // else, it's loading, the callback will resolve it
+                resolve(); 
+            }
             return;
           }
 
@@ -137,23 +138,36 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
 
   useEffect(() => {
     if (map && infoWindow && envios) {
-      markers.forEach(marker => marker.setMap(null));
+      markers.forEach(marker => marker.setMap(null)); // Clear existing markers
+      if (currentPolyline) {
+        currentPolyline.setMap(null); // Clear existing polyline
+        setCurrentPolyline(null);
+      }
+
       const newMarkers: google.maps.Marker[] = [];
+      const bounds = new google.maps.LatLngBounds();
+      let hasValidPointsForRoute = false;
 
       envios.forEach(envio => {
         if (envio.latitud != null && envio.longitud != null) {
+          hasValidPointsForRoute = true;
+          const position = { lat: envio.latitud, lng: envio.longitud };
+          bounds.extend(position);
+
           const markerColor = getEnvioMarkerColorHex(envio.status, envio.tipo_parada);
           let markerLabel: google.maps.MarkerLabel | undefined = undefined;
           let zIndex = 1;
+          let iconScale = 7;
 
           if (envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa) {
             markerLabel = {
-                text: 'R', // For "Retiro"
+                text: 'R',
                 color: 'white',
                 fontWeight: 'bold',
                 fontSize: '12px',
             };
-            zIndex = 10; // Make pickup point stand out
+            zIndex = 10;
+            iconScale = 9;
           } else if (envio.orden !== null && envio.orden !== undefined) {
             markerLabel = {
               text: (envio.orden + 1).toString(),
@@ -161,19 +175,20 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
               fontWeight: 'bold',
               fontSize: '11px',
             };
-            zIndex = 2; // Regular stops
+            zIndex = 2;
+            iconScale = 9;
           }
 
           const marker = new google.maps.Marker({
-            position: { lat: envio.latitud, lng: envio.longitud },
-            map: map,
+            position,
+            map,
             icon: {
               path: google.maps.SymbolPath.CIRCLE,
               fillColor: markerColor,
               fillOpacity: 0.9,
               strokeColor: '#ffffff',
               strokeWeight: 1.5,
-              scale: (envio.orden !== null && envio.orden !== undefined) || envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 9 : 7,
+              scale: iconScale,
             },
             label: markerLabel,
             title: envio.nombre_cliente || envio.client_location,
@@ -183,7 +198,7 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
           marker.addListener('click', () => {
             let orderInfo = '';
             if (envio.orden !== null && envio.orden !== undefined) {
-              orderInfo = `<p style="margin: 2px 0;"><strong>Orden:</strong> ${envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro (0)' : envio.orden + 1}</p>`;
+              orderInfo = `<p style="margin: 2px 0;"><strong>Orden:</strong> ${envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro (Punto de Partida)' : envio.orden + 1}</p>`;
             }
             const packageInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente 
                 ? `<p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.package_size || '-'}, ${envio.package_weight || '-'}kg</p>`
@@ -208,9 +223,55 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
         }
       });
       setMarkers(newMarkers);
+
+      if (hasValidPointsForRoute && newMarkers.length > 0) {
+        if (newMarkers.length === 1 && envios.length === 1) { // Only one point, center on it
+             map.setCenter(newMarkers[0].getPosition()!);
+             map.setZoom(15);
+        } else if (newMarkers.length > 1) { // Multiple points, fit bounds
+            map.fitBounds(bounds);
+            // Prevent overly zoomed in state if fitBounds results in very high zoom
+            const listener = google.maps.event.addListener(map, "idle", function() {
+              if (map.getZoom()! > 16) map.setZoom(16);
+              google.maps.event.removeListener(listener);
+            });
+        }
+      } else if (envios.length === 0) {
+         map.setCenter(MAR_DEL_PLATA_CENTER);
+         map.setZoom(INITIAL_ZOOM);
+      }
+
+      // Draw polyline if it's a filtered reparto with ordered stops
+      if (isFilteredByReparto && envios.length >= 2) {
+        const routePath = envios
+          .filter(envio => envio.latitud != null && envio.longitud != null)
+          .sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity)) // Ensure correct order
+          .map(envio => ({ lat: envio.latitud!, lng: envio.longitud! }));
+
+        if (routePath.length >= 2) {
+          const poly = new google.maps.Polyline({
+            path: routePath,
+            geodesic: true,
+            strokeColor: '#4285F4', // Google Blue
+            strokeOpacity: 0.8,
+            strokeWeight: 4,
+            icons: [{
+                icon: {
+                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                    scale: 3,
+                    strokeColor: '#4285F4'
+                },
+                offset: '100%',
+                repeat: '75px' // Adjust for density of arrows
+            }]
+          });
+          poly.setMap(map);
+          setCurrentPolyline(poly);
+        }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, infoWindow, envios]);
+  }, [map, infoWindow, envios, isFilteredByReparto]); // isFilteredByReparto added to dependencies
 
   if (isLoadingApi) {
     return (
@@ -244,3 +305,4 @@ export function MapaEnviosView({ envios }: MapaEnviosViewProps) {
 
   return <div ref={mapRef} style={{ height: 'calc(100vh - 300px)', width: '100%' }} className="rounded-lg shadow-md border" />;
 }
+
