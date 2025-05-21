@@ -25,14 +25,14 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Lightbulb, Send, Info } from "lucide-react";
-import type { Cliente } from "@/types/supabase";
+import type { Cliente } from "@/types/supabase"; // Keep full Cliente type for flexibility if needed elsewhere
 import type { SuggestDeliveryOptionsOutput } from "@/ai/flows/suggest-delivery-options";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
 interface ShipmentFormProps {
-  clientes: Cliente[]; 
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'email' | 'direccion'>[]; // Updated prop type
   onSuggestOptions: (data: ShipmentFormData) => Promise<SuggestDeliveryOptionsOutput | null>;
   onSubmitShipment: (data: ShipmentFormData, aiSuggestions?: SuggestDeliveryOptionsOutput) => Promise<{success: boolean, error?: string | null}>;
 }
@@ -50,7 +50,7 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
   const form = useForm<ShipmentFormData>({
     resolver: zodResolver(shipmentSchema),
     defaultValues: {
-      cliente_id: null, // Default to null for better control
+      cliente_id: null,
       nombre_cliente_temporal: "",
       client_location: "",
       package_size: undefined,
@@ -61,22 +61,25 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
   const selectedClientId = form.watch("cliente_id");
 
   useEffect(() => {
-    if (selectedClientId) {
+    if (selectedClientId && selectedClientId !== NULL_VALUE_PLACEHOLDER) {
       const client = clientes.find(c => c.id === selectedClientId);
       if (client && client.direccion) {
         form.setValue("client_location", client.direccion, { shouldValidate: true });
-        form.setValue("nombre_cliente_temporal", "", { shouldValidate: true });
+        form.setValue("nombre_cliente_temporal", "", { shouldValidate: true }); // Clear temporal name
         setSelectedClientAddress(client.direccion);
       } else {
-        form.setValue("client_location", "", { shouldValidate: true }); 
+        form.setValue("client_location", "", { shouldValidate: true });
         setSelectedClientAddress(null);
         if(client && !client.direccion) {
             toast({title: "Advertencia", description: "El cliente seleccionado no tiene una dirección registrada. Por favor, actualice los datos del cliente o ingrese la dirección manualmente.", variant: "destructive", duration: 7000});
         }
       }
     } else {
+      // If "Ninguno" is selected or cliente_id is null/undefined, clear the address and allow manual input
+      if (selectedClientId === NULL_VALUE_PLACEHOLDER) {
+        form.setValue("client_location", "", { shouldValidate: true }); // Clear location for manual input
+      }
       setSelectedClientAddress(null);
-      // Do not clear client_location here to allow manual input if cliente_id is deselected
     }
   }, [selectedClientId, clientes, form, toast]);
 
@@ -113,8 +116,14 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
         const result = await onSubmitShipment(data, aiSuggestions ?? undefined);
         if (result.success) {
             toast({ title: "Envío Creado", description: "El envío ha sido registrado exitosamente." });
-            router.push("/envios"); 
-            form.reset();
+            router.push("/envios");
+            form.reset({
+              cliente_id: null,
+              nombre_cliente_temporal: "",
+              client_location: "",
+              package_size: undefined,
+              package_weight: 0.1,
+            });
             setAiSuggestions(null);
             setSelectedClientAddress(null);
         } else {
@@ -127,7 +136,7 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
         setIsSubmitting(false);
     }
   };
-  
+
 
   return (
     <Form {...form}>
@@ -144,10 +153,10 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Cliente Existente (Opcional)</FormLabel>
-                  <Select 
+                  <Select
                     onValueChange={(value) => {
                       field.onChange(value === NULL_VALUE_PLACEHOLDER ? null : value);
-                    }} 
+                    }}
                     value={field.value === null || field.value === undefined ? NULL_VALUE_PLACEHOLDER : field.value}
                   >
                     <FormControl>
@@ -168,13 +177,13 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                 </FormItem>
               )}
             />
-             {!selectedClientId && (
+             {(!selectedClientId || selectedClientId === NULL_VALUE_PLACEHOLDER) && (
                 <FormField
                 control={form.control}
                 name="nombre_cliente_temporal"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Nombre Cliente (para nuevo envío)</FormLabel>
+                    <FormLabel>Nombre Cliente (para envío temporal)</FormLabel>
                     <FormControl>
                         <Input placeholder="Nombre del destinatario si no es cliente existente" {...field} value={field.value || ""} />
                     </FormControl>
@@ -184,13 +193,14 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                 />
             )}
 
-            {selectedClientId && selectedClientAddress ? (
+            {selectedClientId && selectedClientId !== NULL_VALUE_PLACEHOLDER && selectedClientAddress ? (
                 <FormItem>
                     <FormLabel>Ubicación del Cliente (Automático)</FormLabel>
                     <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 text-sm">
                       <Info className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span>{selectedClientAddress}</span>
                     </div>
+                    {/* Hidden input to ensure client_location is submitted with form data */}
                     <FormField
                         control={form.control}
                         name="client_location"
@@ -203,7 +213,7 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                 name="client_location"
                 render={({ field }) => (
                     <FormItem>
-                    <FormLabel>Ubicación del Cliente/Destino</FormLabel>
+                    <FormLabel>Ubicación del Cliente/Destino Manual</FormLabel>
                     <FormControl>
                         <Input placeholder="Ciudad, Provincia o Dirección completa" {...field} value={field.value || ""}/>
                     </FormControl>
@@ -244,8 +254,8 @@ export function ShipmentForm({ clientes, onSuggestOptions, onSubmitShipment }: S
                   <FormItem>
                     <FormLabel>Peso del Paquete (kg)</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.1" min="0.1" placeholder="Ej: 1.5" {...field} 
-                      onChange={event => field.onChange(+event.target.value)} 
+                      <Input type="number" step="0.1" min="0.1" placeholder="Ej: 1.5" {...field}
+                      onChange={event => field.onChange(+event.target.value)}
                       />
                     </FormControl>
                     <FormMessage />

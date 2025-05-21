@@ -15,12 +15,12 @@ export async function suggestDeliveryOptionsAction(
   const validatedFields = shipmentSchema.safeParse(data);
   if (!validatedFields.success) {
     console.error("Validation error for AI suggestion:", validatedFields.error.flatten().fieldErrors);
-    return null; 
+    return null;
   }
 
   try {
     const aiInput = {
-      clientLocation: validatedFields.data.client_location,
+      clientLocation: validatedFields.data.client_location || "", // Ensure client_location is not null/undefined
       packageSize: validatedFields.data.package_size,
       packageWeight: validatedFields.data.package_weight,
     };
@@ -28,7 +28,7 @@ export async function suggestDeliveryOptionsAction(
     return suggestions;
   } catch (error) {
     console.error("Error calling suggestDeliveryOptions AI flow:", error);
-    return null; 
+    return null;
   }
 }
 
@@ -51,14 +51,15 @@ export async function createShipmentAction(
   const shipmentData: NuevoEnvio = {
     cliente_id: validatedFields.data.cliente_id || null,
     nombre_cliente_temporal: validatedFields.data.nombre_cliente_temporal || null,
-    client_location: validatedFields.data.client_location,
+    client_location: validatedFields.data.client_location || "", // Ensure client_location is not null/undefined
     package_size: validatedFields.data.package_size,
     package_weight: validatedFields.data.package_weight,
-    status: aiSuggestions ? estadoEnvioEnum.Values.suggested : estadoEnvioEnum.Values.pending, 
+    status: aiSuggestions ? estadoEnvioEnum.Values.suggested : estadoEnvioEnum.Values.pending,
     suggested_options: aiSuggestions ? aiSuggestions.suggestedOptions : null,
     reasoning: aiSuggestions ? aiSuggestions.reasoning : null,
+    // latitud and longitud will be null by default if not geocoded here
   };
-  
+
   try {
     const { data: newShipment, error } = await supabase
       .from("envios")
@@ -76,7 +77,7 @@ export async function createShipmentAction(
       return { success: false, error: errorMessage, data: null };
     }
 
-    revalidatePath("/envios"); 
+    revalidatePath("/envios");
     revalidatePath("/envios/nuevo");
     return { success: true, data: newShipment, error: null };
   } catch (e: unknown) {
@@ -90,14 +91,15 @@ export async function createShipmentAction(
   }
 }
 
-export async function getClientesForShipmentFormAction(): Promise<Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'email'>[]> {
+export async function getClientesForShipmentFormAction(): Promise<Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'email' | 'direccion'>[]> {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nombre, apellido, email")
+      .select("id, nombre, apellido, email, direccion") // Added 'direccion'
+      .eq("estado", true) // Fetch only active clients
       .order("apellido", { ascending: true })
       .order("nombre", { ascending: true });
-  
+
     if (error) {
       console.error("Error fetching clients for shipment form:", error);
       return [];
@@ -118,25 +120,19 @@ export async function getEnviosAction(page = 1, pageSize = 10, searchTerm?: stri
       .range(from, to);
 
     if (searchTerm) {
-      // Simplified search: removed filtering on clientes.nombre and clientes.apellido
-      // This is a diagnostic step. If it resolves the ISE, a more robust search on related fields will be needed.
       const searchConditions = [
         `client_location.ilike.%${searchTerm}%`,
         `nombre_cliente_temporal.ilike.%${searchTerm}%`,
         `status.ilike.%${searchTerm}%`
       ];
-      // Only add client-related search if we can confirm cliente_id is being used for search
-      // For now, keeping it simple to avoid ISE.
-      // A more complex solution would involve checking if searchTerm can be parsed as UUID for cliente_id
-      // or dynamically building the OR query based on client table structure.
-      
-      // If you want to re-enable search on client fields, you'd add:
-      // `clientes.nombre.ilike.%${searchTerm}%`,
-      // `clientes.apellido.ilike.%${searchTerm}%`
-      // to the OR condition, but ensure this is handled robustly if `clientes` can be null.
+      // To search by client name if cliente_id is present, a more complex query or view might be needed
+      // if Supabase RLS prevents direct filtering on joined tables easily.
+      // For now, we'll stick to direct fields of 'envios'.
+      // If you want to search by client name:
+      // query = query.or(`clientes.nombre.ilike.%${searchTerm}%,clientes.apellido.ilike.%${searchTerm}%,${searchConditions.join(',')}`);
       query = query.or(searchConditions.join(','));
     }
-    
+
     const { data, error, count } = await query;
 
     if (error) {
