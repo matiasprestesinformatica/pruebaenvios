@@ -37,7 +37,7 @@ export async function getEmpresasForRepartoAction(): Promise<Pick<Empresa, 'id' 
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("empresas")
-      .select("id, nombre, direccion, latitud, longitud")
+      .select("id, nombre, direccion, latitud, longitud") // Added direccion, latitud, longitud
       .eq("estado", true)
       .order("nombre", { ascending: true });
     if (error) {
@@ -183,7 +183,6 @@ export async function createRepartoAction(
     if (paradasError) {
       const pgParadasError = paradasError as PostgrestError;
       console.error("Error creating paradas_reparto:", JSON.stringify(pgParadasError, null, 2));
-      // Even if paradas fail, the reparto and envios linkage was successful, so treat as partial success
       return { success: true, error: `Reparto y envíos actualizados, pero falló la creación de paradas: ${pgParadasError.message}.`, data: nuevoReparto };
     }
   }
@@ -240,24 +239,31 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
       const pgError = repartoError as PostgrestError;
       console.error(`Error fetching reparto details for ID ${repartoId}:`, JSON.stringify(pgError, null, 2));
       let errorMessage = `Error al cargar detalles del reparto: ${pgError.message || "Error desconocido"}`;
-      if (Object.keys(pgError).length === 0 && typeof pgError === 'object') { // Check for empty error object
+      if (Object.keys(pgError).length === 0 && typeof pgError === 'object') {
         errorMessage = "Error de conexión o configuración con Supabase al obtener detalles del reparto. Verifique RLS para la tabla 'repartos'.";
       }
       return { data: null, error: errorMessage };
     }
-
+    
     if (!repartoArray || repartoArray.length === 0) {
         return { data: null, error: "Reparto no encontrado." };
     }
     if (repartoArray.length > 1) {
-        // This case should ideally not happen if 'id' is a unique primary key
         console.warn(`Multiple repartos found for ID ${repartoId}. Using the first one.`);
     }
     const repartoData = repartoArray[0] as RepartoConDetalles;
 
+    // Fetch paradas including envio details and associated tipo_servicio
     const { data: paradasData, error: paradasError } = await supabase
       .from("paradas_reparto")
-      .select("*, envio:envios!left(*, clientes!left(*), tipos_servicio!left(nombre))")
+      .select(`
+        *, 
+        envio:envios!left(
+          *, 
+          clientes!left(*), 
+          tipos_servicio!left(nombre, precio_base)
+        )
+      `)
       .eq("reparto_id", repartoId)
       .order("orden", { ascending: true });
 
@@ -265,7 +271,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
       const pgError = paradasError as PostgrestError;
       console.error(`Error fetching paradas for reparto ID ${repartoId}:`, JSON.stringify(pgError, null, 2));
       let errorMessage = `Error al cargar paradas del reparto: ${pgError.message || "Error desconocido"}`;
-       if (Object.keys(pgError).length === 0 && typeof pgError === 'object') { // Check for empty error object
+       if (Object.keys(pgError).length === 0 && typeof pgError === 'object') {
         errorMessage = "Error de conexión o configuración con Supabase al obtener paradas. Verifique RLS para la tabla 'paradas_reparto'.";
       }
       return { data: null, error: errorMessage };
@@ -274,7 +280,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
     const paradasConEnvioYCliente: ParadaConEnvioYCliente[] = (paradasData || []).map(p => ({
       ...p,
       envio_id: p.envio_id,
-      tipo_parada: p.tipo_parada as Database['public']['Enums']['tipoparadaenum'] | null, // Ensure correct enum type or null
+      tipo_parada: p.tipo_parada as Database['public']['Enums']['tipoparadaenum'] | null,
       envio: p.envio ? (p.envio as EnvioParaDetalleReparto) : null
     }));
 
@@ -383,15 +389,15 @@ export async function reorderParadasAction(
 
     if (direccion === 'up') {
       if (paradaToMove.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && paradaToMove.orden === 0) {
-         return { success: true, error: null }; // Cannot move pickup point up if it's already first
+         return { success: true, error: null }; 
       }
-      if (currentIndex === 0) {
-        return { success: true, error: null }; // Cannot move first item up
+      if (currentIndex === 0 && (paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || paradaToMove.orden !== 0)) {
+         return { success: true, error: null };
       }
       paradaToSwapWith = paradas[currentIndex - 1];
-    } else { // direction 'down'
+    } else { 
       if (currentIndex === paradas.length - 1) {
-        return { success: true, error: null }; // Cannot move last item down
+        return { success: true, error: null };
       }
       paradaToSwapWith = paradas[currentIndex + 1];
     }
@@ -423,10 +429,9 @@ export async function reorderParadasAction(
     if (updateError2) {
       const pgError2 = updateError2 as PostgrestError;
       console.error("Error updating orden for swapped parada, attempting rollback:", JSON.stringify(pgError2, null, 2));
-      // Attempt rollback for the first update
       await supabase
         .from('paradas_reparto')
-        .update({ orden: paradaToMove.orden }) // Revert to original orden
+        .update({ orden: paradaToMove.orden }) 
         .eq('id', paradaToMove.id);
       return { success: false, error: `Error al actualizar orden (2): ${pgError2.message}` };
     }
@@ -437,7 +442,7 @@ export async function reorderParadasAction(
 
   } catch (e: unknown) {
     const err = e as Error;
-    const pgError = err as PostgrestError; // It might not always be a PostgrestError if the catch is for something else
+    const pgError = err as PostgrestError; 
     console.error("Unexpected error in reorderParadasAction:", pgError?.message || err.message);
     return { success: false, error: `Error inesperado en el servidor: ${pgError?.message || err.message}` };
   }
@@ -535,11 +540,10 @@ export async function createRepartoLoteAction(
   const paradasParaInsertar: NuevaParadaReparto[] = [];
   let currentOrder = 0;
 
-  // Add pickup point from company if it has coordinates
   if (empresaData.latitud != null && empresaData.longitud != null && empresaData.direccion != null) {
     paradasParaInsertar.push({
       reparto_id: nuevoReparto.id,
-      envio_id: null, // No envio_id for company pickup
+      envio_id: null, 
       tipo_parada: tipoParadaSchemaEnum.Values.retiro_empresa,
       orden: currentOrder++,
     });
@@ -547,7 +551,6 @@ export async function createRepartoLoteAction(
     console.warn(`Empresa ${empresaData.nombre || ''} (ID: ${empresaData.id}) no tiene coordenadas o dirección. No se creará parada de retiro para el reparto ${nuevoReparto.id}.`);
   }
 
-  // Create shipments for selected clients and their stops
   if (clientes_con_servicio && clientes_con_servicio.length > 0) {
     const clienteIdsParaConsulta = clientes_con_servicio.map(c => c.cliente_id);
     const { data: clientesDataDb, error: clientesError } = await supabase
@@ -582,10 +585,10 @@ export async function createRepartoLoteAction(
           const envioParaInsertar: NuevoEnvio = {
             cliente_id: cliente.id,
             client_location: cliente.direccion,
-            latitud: cliente.latitud, // Inherit from client
-            longitud: cliente.longitud, // Inherit from client
-            package_size: 'medium', // Default
-            package_weight: 1,    // Default
+            latitud: cliente.latitud,
+            longitud: cliente.longitud,
+            package_size: 'medium', 
+            package_weight: 1,   
             status: estadoEnvioEnum.Values.asignado_a_reparto,
             reparto_id: nuevoReparto.id,
             tipo_servicio_id: clienteServicio.tipo_servicio_id_lote || null,
@@ -601,7 +604,7 @@ export async function createRepartoLoteAction(
           if (envioInsertError || !nuevoEnvioData) {
             const pgEnvioError = envioInsertError as PostgrestError | null;
             console.error(`Error auto-generating shipment for client ${cliente.id} in reparto ${nuevoReparto.id}:`, JSON.stringify(pgEnvioError, null, 2));
-            continue; // Skip creating parada for this failed envio
+            continue; 
           }
 
           paradasParaInsertar.push({
@@ -664,7 +667,7 @@ export async function applyOptimizedRouteOrderAction(
   try {
     const { data: repartoData, error: repartoFetchError } = await supabase
       .from('repartos')
-      .select('id, empresa_id, tipo_reparto') // Select empresa_id for matching
+      .select('id, empresa_id, tipo_reparto')
       .eq('id', repartoId)
       .single();
 
@@ -674,26 +677,23 @@ export async function applyOptimizedRouteOrderAction(
       return { success: false, error: pgError?.message || 'No se pudo encontrar el reparto.' };
     }
 
-    const empresaIdDelReparto = repartoData.empresa_id; // Get the empresa_id of the current reparto
+    const empresaIdDelReparto = repartoData.empresa_id;
 
     const updates = orderedStopInputIds.map(async (stopInputId, index) => {
-      // Check if the stopInputId is for the company pickup point
       if (stopInputId.startsWith('empresa-') && empresaIdDelReparto && stopInputId === `empresa-${empresaIdDelReparto}`) {
-        // This is the company pickup stop
         const { error: updateError } = await supabase
           .from('paradas_reparto')
           .update({ orden: index })
           .eq('reparto_id', repartoId)
           .eq('tipo_parada', tipoParadaSchemaEnum.Values.retiro_empresa)
-          .is('envio_id', null); // Ensure we're updating the correct company pickup parada
+          .is('envio_id', null);
         if (updateError) throw updateError;
       } else {
-        // This is a regular delivery stop (envio_id)
         const { error: updateError } = await supabase
           .from('paradas_reparto')
           .update({ orden: index })
           .eq('reparto_id', repartoId)
-          .eq('id', stopInputId); // Match by parada.id, which is the envio_id for delivery stops
+          .eq('id', stopInputId); 
         if (updateError) throw updateError;
       }
     });
@@ -701,16 +701,13 @@ export async function applyOptimizedRouteOrderAction(
     await Promise.all(updates);
 
     revalidatePath(`/repartos/${repartoId}`);
-    revalidatePath("/mapa-envios"); // Also revalidate map page as route order changes
+    revalidatePath("/mapa-envios");
     return { success: true, error: null };
 
   } catch (e: unknown) {
     const err = e as Error;
-    const pgError = err as PostgrestError; // It might not always be a PostgrestError
+    const pgError = err as PostgrestError; 
     console.error("Error applying optimized route order:", JSON.stringify(err, null, 2));
     return { success: false, error: pgError?.message || `Error inesperado al aplicar el orden optimizado: ${err.message}` };
   }
 }
-
-// The closing triple backticks were removed from here
-// ``` removed

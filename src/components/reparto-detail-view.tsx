@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, ParadaReparto, TipoParadaEnum as TipoParadaEnumTypeFromDB } from "@/types/supabase";
+import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, ParadaReparto, TipoParadaEnum as TipoParadaEnumType } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
 import { estadoRepartoEnum, estadoEnvioEnum, tipoRepartoEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle, CheckCircle } from "lucide-react";
+import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle, CheckCircle, DollarSign } from "lucide-react";
 import type { OptimizeRouteInput, OptimizeRouteOutput, OptimizeRouteStopInput } from "@/ai/flows/optimize-route-flow";
 
 interface RepartoDetailViewProps {
@@ -88,7 +88,20 @@ function getEstadoEnvioBadgeColor(estado?: string | null) {
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, reorderParadasAction, optimizeRouteAction, applyOptimizedRouteOrderAction }: RepartoDetailViewProps) {
+function formatCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  return `$ ${value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export function RepartoDetailView({ 
+    initialReparto, 
+    updateRepartoStatusAction, 
+    reorderParadasAction, 
+    optimizeRouteAction,
+    applyOptimizedRouteOrderAction
+}: RepartoDetailViewProps) {
   const [reparto, setReparto] = useState<RepartoCompleto>(initialReparto);
   const [selectedStatus, setSelectedStatus] = useState<EstadoReparto>(reparto.estado as EstadoReparto);
   const [isUpdatingStatus, startUpdatingStatusTransition] = useTransition();
@@ -113,10 +126,8 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   useEffect(() => {
     setReparto(initialReparto);
     setSelectedStatus(initialReparto.estado as EstadoReparto);
-    // No limpiar suggestedRoute aquí para que el usuario pueda verlo incluso si navega y vuelve
-    // setSuggestedRoute(null); 
-    setCurrentRouteDistanceKm(null); // Recalcular al cambiar reparto
-    setAiCalculatedDistanceKm(null); // Recalcular al cambiar reparto
+    setCurrentRouteDistanceKm(null); 
+    setAiCalculatedDistanceKm(null); 
   }, [initialReparto]);
 
   const getParadasMapaInfo = useCallback((paradas: ParadaConEnvioYCliente[], empresa?: Empresa | null): ParadaMapaInfo[] => {
@@ -204,22 +215,20 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
 
         if (result.success) {
-            const updatedParadas = reparto.paradas.map(parada => {
-                if (!parada.envio) return parada;
-                let newEnvioStatus: string | null = parada.envio.status; 
-                if (selectedStatus === estadoRepartoEnum.Values.en_curso) {
-                    newEnvioStatus = estadoEnvioEnum.Values.en_transito;
-                } else if (selectedStatus === estadoRepartoEnum.Values.completado) {
-                    newEnvioStatus = estadoEnvioEnum.Values.entregado;
-                } else if (selectedStatus === estadoRepartoEnum.Values.asignado) {
-                    newEnvioStatus = estadoEnvioEnum.Values.asignado_a_reparto;
-                }
-                return {
-                    ...parada,
-                    envio: { ...parada.envio, status: newEnvioStatus }
-                };
-            });
-            setReparto(prev => ({ ...prev, estado: selectedStatus, paradas: updatedParadas }));
+            let newEnvioStatusForOptimisticUpdate: string | null = null;
+            if (selectedStatus === estadoRepartoEnum.Values.en_curso) newEnvioStatusForOptimisticUpdate = estadoEnvioEnum.Values.en_transito;
+            else if (selectedStatus === estadoRepartoEnum.Values.completado) newEnvioStatusForOptimisticUpdate = estadoEnvioEnum.Values.entregado;
+            else if (selectedStatus === estadoRepartoEnum.Values.asignado) newEnvioStatusForOptimisticUpdate = estadoEnvioEnum.Values.asignado_a_reparto;
+            
+            setReparto(prev => ({ 
+                ...prev, 
+                estado: selectedStatus,
+                paradas: prev.paradas.map(p => 
+                    p.envio && newEnvioStatusForOptimisticUpdate 
+                    ? { ...p, envio: { ...p.envio, status: newEnvioStatusForOptimisticUpdate } } 
+                    : p
+                )
+            }));
             toast({ title: "Estado Actualizado", description: "El estado del reparto y envíos asociados ha sido actualizado." });
         } else {
             toast({ title: "Error", description: result.error || "No se pudo actualizar el estado.", variant: "destructive" });
@@ -241,8 +250,8 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     const paradaToMove = newParadasOptimistic[currentIndex];
 
     if (paradaToMove.orden === 0 && direccion === 'up' && paradaToMove.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
-        setIsReordering(null);
-        return;
+         setIsReordering(null);
+         return;
     }
      if (currentIndex === 0 && direccion === 'up' && (paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || paradaToMove.orden !== 0) ) {
          setIsReordering(null);
@@ -318,7 +327,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
       setSuggestedRoute(result.data);
       toast({ title: "Ruta Optimizada Sugerida", description: "La IA ha sugerido un nuevo orden para las paradas." });
       if (result.data.estimated_total_distance_km === undefined) {
-        handleCalculateAiRouteDistance(result.data, validStops); 
+         handleCalculateAiRouteDistance(result.data, validStops);
       }
     } else {
       toast({ title: "Error de Optimización", description: result.error || "No se pudo obtener una ruta optimizada de la IA.", variant: "destructive" });
@@ -362,13 +371,22 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     const result = await applyOptimizedRouteOrderAction(reparto.id, suggestedRoute.optimized_stop_ids);
     if (result.success) {
       toast({ title: "Ruta Aplicada", description: "El orden de las paradas ha sido actualizado. La página se refrescará." });
-      setSuggestedRoute(null); // Clear the suggestion after applying
-      // Revalidation from action will trigger data refresh for 'initialReparto' prop
+      setSuggestedRoute(null); 
     } else {
       toast({ title: "Error al Aplicar Ruta", description: result.error || "No se pudo aplicar el nuevo orden.", variant: "destructive" });
     }
     setIsApplyingRouteOrder(false);
   };
+
+  const totalRepartoValue = useMemo(() => {
+    if (!reparto || !reparto.paradas) return 0;
+    return reparto.paradas.reduce((sum, parada) => {
+      if (parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio?.precio_servicio_final != null) {
+        return sum + parada.envio.precio_servicio_final;
+      }
+      return sum;
+    }, 0);
+  }, [reparto.paradas]);
 
 
   const isViajeEmpresaType = reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa || reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa_lote;
@@ -378,7 +396,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     reparto.paradas.forEach(parada => {
       if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && reparto.empresas) {
         map.set(`empresa-${reparto.empresas.id}`, { type: 'pickup', details: reparto.empresas });
-      } else if (parada.id) { // Check if parada.id is defined (it's parada_reparto.id for deliveries)
+      } else if (parada.id) { 
         map.set(parada.id, parada); 
       }
     });
@@ -439,6 +457,13 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                 </div>
             </div>
           )}
+          <div className="flex items-center gap-2 p-3 border rounded-md bg-accent/20 text-accent-foreground">
+            <DollarSign className="h-5 w-5 text-accent" />
+            <div>
+              <p className="text-sm text-muted-foreground">Valor Total del Reparto</p>
+              <p className="font-semibold text-lg">{formatCurrency(totalRepartoValue)}</p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -475,7 +500,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                 {isLoadingCurrentRouteDistance && <Loader2 className="ml-2 h-4 w-4 animate-spin inline-block" />}
                 {currentRouteDistanceKm !== null && !isLoadingCurrentRouteDistance && (
                     <span className="text-sm font-normal text-muted-foreground ml-2">
-                        (Total Aprox: {currentRouteDistanceKm.toFixed(1)} km)
+                        (Ruta Actual Aprox: {currentRouteDistanceKm.toFixed(1)} km)
                     </span>
                 )}
             </CardTitle>
@@ -498,6 +523,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                         <TableHead>Ubicación</TableHead>
                         <TableHead>Paquete</TableHead>
                         <TableHead>Estado Envío</TableHead>
+                        <TableHead className="text-right">Valor Servicio</TableHead>
                     </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -556,6 +582,21 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                                 </Badge>
                             ) : <span className="text-muted-foreground">-</span>}
                         </TableCell>
+                        <TableCell className="text-right">
+                            {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio
+                                ? (
+                                    <>
+                                        {formatCurrency(parada.envio.precio_servicio_final)}
+                                        {parada.envio.tipos_servicio?.nombre && (
+                                            <div className="text-xs text-muted-foreground truncate">
+                                            ({parada.envio.tipos_servicio.nombre})
+                                            </div>
+                                        )}
+                                    </>
+                                  )
+                                : <span className="text-muted-foreground">-</span>
+                            }
+                        </TableCell>
                         </TableRow>
                     ))}
                     </TableBody>
@@ -575,12 +616,12 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
               Ruta Optimizada Sugerida (IA)
               {suggestedRoute.estimated_total_distance_km !== undefined && (
                 <span className="text-sm font-normal text-muted-foreground ml-2">
-                    (Total IA Aprox: {suggestedRoute.estimated_total_distance_km.toFixed(1)} km)
+                    (IA Aprox: {suggestedRoute.estimated_total_distance_km.toFixed(1)} km)
                 </span>
               )}
               {suggestedRoute.estimated_total_distance_km === undefined && aiCalculatedDistanceKm !== null && !isLoadingAiRouteDistance && (
                  <span className="text-sm font-normal text-muted-foreground ml-2">
-                    (Total Calculado Aprox: {aiCalculatedDistanceKm.toFixed(1)} km)
+                    (Calculado Aprox: {aiCalculatedDistanceKm.toFixed(1)} km)
                 </span>
               )}
             </CardTitle>
@@ -590,13 +631,13 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             {suggestedRoute.estimated_total_distance_km === undefined && (
                  <Button 
                     onClick={() => {
-                      const originalValidStopsForThisSuggestion: OptimizeRouteStopInput[] = reparto.paradas.reduce((acc, parada) => {
-                          if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
+                      const originalValidStopsForThisSuggestion: OptimizeRouteStopInput[] = reparto.paradas.reduce((acc, p) => {
+                          if (p.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
                               if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
                                   acc.push({ id: `empresa-${reparto.empresas.id}`, label: reparto.empresas.nombre || 'Punto de Retiro', lat: reparto.empresas.latitud, lng: reparto.empresas.longitud, type: 'pickup'});
                               }
-                          } else if (parada.envio?.latitud != null && parada.envio?.longitud != null) {
-                              acc.push({ id: parada.id, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Entrega Cliente', lat: parada.envio.latitud, lng: parada.envio.longitud, type: 'delivery' });
+                          } else if (p.envio?.latitud != null && p.envio?.longitud != null) {
+                              acc.push({ id: p.id, label: p.envio.clientes?.nombre || p.envio.nombre_cliente_temporal || 'Entrega Cliente', lat: p.envio.latitud, lng: p.envio.longitud, type: 'delivery' });
                           }
                           return acc;
                       }, [] as OptimizeRouteStopInput[]);
@@ -681,5 +722,3 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     </div>
   );
 }
-
-    
