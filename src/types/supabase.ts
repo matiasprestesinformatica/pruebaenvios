@@ -15,7 +15,7 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string
+          direccion: string 
           latitud: number | null
           longitud: number | null
           telefono: string | null
@@ -27,7 +27,7 @@ export interface Database {
           id?: string
           created_at?: string
           nombre: string
-          direccion: string
+          direccion: string 
           latitud?: number | null
           longitud?: number | null
           telefono?: string | null
@@ -165,10 +165,10 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string
+          fecha_reparto: string 
           repartidor_id: string | null
-          estado: string
-          tipo_reparto: string
+          estado: string 
+          tipo_reparto: string 
           empresa_id: string | null
         }
         Insert: {
@@ -199,14 +199,14 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          package_size: string
+          package_size: string 
           package_weight: number
-          status: string
+          status: string 
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
-          tipo_servicio_id: string | null
-          precio_servicio_final: number | null
+          tipo_servicio_id: string | null 
+          precio_servicio_final: number | null 
         }
         Insert: {
           id?: string
@@ -247,7 +247,7 @@ export interface Database {
         Row: {
           id: string
           reparto_id: string
-          envio_id: string | null
+          envio_id: string | null 
           tipo_parada: Enums<"tipoparadaenum"> | null
           orden: number
           created_at: string
@@ -255,7 +255,7 @@ export interface Database {
         Insert: {
           id?: string
           reparto_id: string
-          envio_id?: string | null
+          envio_id?: string | null 
           tipo_parada?: Enums<"tipoparadaenum"> | null
           orden: number
           created_at?: string
@@ -263,7 +263,7 @@ export interface Database {
         Update: {
           id?: string
           reparto_id?: string
-          envio_id?: string | null
+          envio_id?: string | null 
           tipo_parada?: Enums<"tipoparadaenum"> | null
           orden?: number
           created_at?: string
@@ -323,17 +323,14 @@ export type EnvioConCliente = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud' | 'estado'> | null;
 };
 
-export type EnvioCompleto = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud'> | null;
-  repartos: (Pick<Reparto, 'id' | 'fecha_reparto'> & {
-    repartidores: Pick<Repartidor, 'nombre'> | null;
-  }) | null;
+// Type for Envios when fetched within a Parada, including its TipoServicio
+export type EnvioParaDetalleReparto = Envio & {
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono'> | null;
   tipos_servicio: Pick<TipoServicio, 'nombre'> | null;
 };
 
-
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioConCliente | null;
+  envio: EnvioParaDetalleReparto | null; // Use the more detailed Envio type here
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -345,15 +342,15 @@ export type ClienteWithEmpresa = Cliente & {
 };
 
 export interface EnvioMapa {
-  id: string; 
+  id: string;
   latitud: number;
   longitud: number;
   status: string | null;
-  nombre_cliente: string | null; 
+  nombre_cliente: string | null;
   client_location: string;
   package_size: string | null;
   package_weight: number | null;
-  orden?: number | null; 
+  orden?: number | null;
   tipo_parada?: TipoParadaEnum | null;
 }
 
@@ -366,4 +363,4 @@ export interface RepartoParaFiltro {
 }
 
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
-export type Enums<T extends keyof Database["public"]["Enums"]> = Database["public"]["Enums"][T];
+export type Enums<T extends keyof Database["public"]["Enums"]> = Database["public"]["Enums
