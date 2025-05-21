@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { EnvioConCliente } from "@/types/supabase";
+import type { EnvioConClienteYAjustes } from "@/types/supabase";
 import { estadoEnvioEnum } from "@/lib/schemas";
 import {
   Table,
@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Edit3, Trash2, Eye, User, MapPin, Package, Weight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Edit3, Trash2, Eye, User, MapPin, Box, Weight } from "lucide-react"; // Package replaced by Box
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,7 +25,7 @@ import { EditShipmentDialog } from "./edit-shipment-dialog";
 import { EnvioDetailDialog } from "./envio-detail-dialog"; 
 
 interface EnviosTableProps {
-  initialEnvios: EnvioConCliente[];
+  initialEnvios: EnvioConClienteYAjustes[];
   initialTotalCount: number;
   initialPage: number;
   pageSize?: number;
@@ -75,7 +75,7 @@ export function EnviosTable({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [envios, setEnvios] = useState<EnvioConCliente[]>(initialEnvios);
+  const [envios, setEnvios] = useState<EnvioConClienteYAjustes[]>(initialEnvios);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || "");
@@ -132,9 +132,6 @@ export function EnviosTable({
   const handleCloseEditDialog = () => {
     setIsEditDialogOpen(false);
     setEditingShipmentId(null);
-    // Optionally, re-fetch data or rely on revalidatePath from updateShipmentAction
-    // For simplicity, we'll rely on revalidatePath for now.
-    // Consider router.refresh() if more immediate feedback is needed and revalidatePath is not sufficient
   };
 
   const handleOpenDetailDialog = (shipmentId: string) => {
@@ -198,14 +195,14 @@ export function EnviosTable({
                         <MapPin className="h-3.5 w-3.5"/> {envio.client_location}
                       </div>
                        <div className="text-sm text-muted-foreground sm:hidden mt-1 flex items-center gap-1">
-                         <Package className="h-3.5 w-3.5"/> 
+                         <Box className="h-3.5 w-3.5"/> 
                          {envio.tipos_paquete?.nombre || "N/A"}, {envio.package_weight}kg
                        </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{envio.client_location}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <div className="flex items-center gap-1">
-                        <Package className="h-4 w-4 text-muted-foreground"/> {envio.tipos_paquete?.nombre || "N/A"}
+                        <Box className="h-4 w-4 text-muted-foreground"/> {envio.tipos_paquete?.nombre || "N/A"}
                       </div>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                          <Weight className="h-3.5 w-3.5"/> {envio.package_weight}kg

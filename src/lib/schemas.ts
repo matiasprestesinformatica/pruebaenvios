@@ -34,8 +34,8 @@ export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(),
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Changed from package_size
-  package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."), // Min adjusted
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
+  package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
   tipo_servicio_id: z.string().uuid().optional().nullable(),
   precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
@@ -64,10 +64,12 @@ export const shipmentSchema = z.object({
       });
     }
   }
-  if (data.tipo_servicio_id && data.precio_servicio_final !== null && data.precio_servicio_final !== undefined) {
-    // This scenario is fine, user might have selected a service then overridden price.
-  } else if (!data.tipo_servicio_id && (data.precio_servicio_final === null || data.precio_servicio_final === undefined)) {
-    // This is also fine, no service and no manual price
+  if (!data.tipo_paquete_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un tipo de paquete.",
+      path: ["tipo_paquete_id"],
+    });
   }
 });
 export type ShipmentFormData = z.infer<typeof shipmentSchema>;
@@ -83,6 +85,9 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
+
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
@@ -123,9 +128,6 @@ export const repartoLoteCreationSchema = z.object({
   clientes_con_servicio: z.array(clienteConServicioLoteSchema).min(1, "Debe seleccionar al menos un cliente y configurar su servicio."),
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
-
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const tipoPaqueteSchema = z.object({
   nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),

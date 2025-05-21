@@ -34,7 +34,7 @@ interface EditShipmentDialogProps {
 
 export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShipmentDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [shipmentData, setShipmentData] = useState<Partial<ShipmentFormData> | null>(null);
+  const [initialShipmentData, setInitialShipmentData] = useState<Partial<ShipmentFormData> | null>(null);
   const [clientes, setClientes] = useState<Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'email' | 'direccion' | 'latitud' | 'longitud'>[]>([]);
   const [tiposPaquete, setTiposPaquete] = useState<Pick<TipoPaquete, 'id' | 'nombre'>[]>([]);
   const [tiposServicio, setTiposServicio] = useState<Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[]>([]);
@@ -60,12 +60,12 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
               nombre_cliente_temporal: currentShipment.nombre_cliente_temporal || "",
               client_location: currentShipment.client_location,
               tipo_paquete_id: currentShipment.tipo_paquete_id,
-              package_weight: currentShipment.package_weight,
+              package_weight: currentShipment.package_weight || 0.1,
               status: currentShipment.status as ShipmentFormData['status'],
               tipo_servicio_id: currentShipment.tipo_servicio_id,
               precio_servicio_final: currentShipment.precio_servicio_final,
             };
-            setShipmentData(formData);
+            setInitialShipmentData(formData);
           } else {
             toast({ title: "Error", description: shipmentResult.error || "No se pudo cargar el envío.", variant: "destructive" });
             onOpenChange(false);
@@ -83,7 +83,7 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
       };
       fetchShipmentRelatedData();
     } else if (!isOpen) {
-      setShipmentData(null); // Clear data when dialog closes
+      setInitialShipmentData(null); 
     }
   }, [isOpen, shipmentId, onOpenChange, toast]);
 
@@ -116,7 +116,6 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
   };
   
   const handleSuggestOptions = async (data: Pick<ShipmentFormData, 'client_location' | 'package_weight' | 'tipo_paquete_id'>) => {
-    // Suggest options might not be as relevant in edit mode, but can be kept if needed
     if (!suggestDeliveryOptionsAction) return null;
     return suggestDeliveryOptionsAction(data);
   };
@@ -138,16 +137,19 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
+                 <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
             </div>
-        ) : shipmentData ? (
+        ) : initialShipmentData ? (
             <ShipmentForm 
                 onSubmitShipment={handleSubmit} 
-                initialData={shipmentData}
+                initialData={initialShipmentData}
                 clientes={clientes}
                 tiposPaquete={tiposPaquete}
                 tiposServicio={tiposServicio}
                 isEditMode={true}
-                onSuggestOptions={onSuggestOptions ? handleSuggestOptions : undefined}
+                onSuggestOptions={onSuggestOptions ? handleSuggestOptions : undefined} // onSuggestOptions may not be defined, check prop
+                onOpenChange={onOpenChange} // Pass onOpenChange to ShipmentForm
             />
         ) : (
             <p className="py-4 text-muted-foreground">Cargando datos del envío...</p>

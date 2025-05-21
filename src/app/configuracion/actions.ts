@@ -139,6 +139,8 @@ export async function updateTipoPaqueteAction(
       return { success: false, error: errorMessage, data: null };
     }
     revalidatePath("/configuracion");
+    revalidatePath("/envios"); // Revalidate envios page as package types might affect display
+    revalidatePath("/envios/nuevo");
     return { success: true, data: updatedTipoPaquete, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -162,6 +164,7 @@ export async function updateTipoPaqueteEstadoAction(
       return { success: false, error: pgError.message || "Error al actualizar estado." };
     }
     revalidatePath("/configuracion");
+    revalidatePath("/envios/nuevo"); // Revalidate new shipment page as active package types list might change
     return { success: true, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -323,6 +326,8 @@ export async function updateTipoServicioAction(
       return { success: false, error: errorMessage, data: null };
     }
     revalidatePath("/configuracion");
+    revalidatePath("/envios"); // Revalidate envios page as service types/prices might affect display
+    revalidatePath("/envios/nuevo");
     return { success: true, data: updatedTipoServicio, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -346,6 +351,7 @@ export async function updateTipoServicioEstadoAction(
       return { success: false, error: pgError.message || "Error al actualizar estado." };
     }
     revalidatePath("/configuracion");
+    revalidatePath("/envios/nuevo"); // Revalidate new shipment page as active service types list might change
     return { success: true, error: null };
   } catch (e: unknown) {
     const err = e as Error;

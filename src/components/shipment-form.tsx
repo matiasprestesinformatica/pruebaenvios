@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Lightbulb, Send, Info, Package, DollarSign } from "lucide-react";
+import { Loader2, Lightbulb, Send, Info, DollarSign, Box } from "lucide-react"; // Package replaced by Box
 import type { Cliente, TipoPaquete, TipoServicio } from "@/types/supabase";
 import type { SuggestDeliveryOptionsOutput } from "@/ai/flows/suggest-delivery-options";
 import { useState, useEffect } from "react";
@@ -58,7 +58,7 @@ export function ShipmentForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<SuggestDeliveryOptionsOutput | null>(null);
   const [selectedClientAddress, setSelectedClientAddress] = useState<string | null>(initialData?.client_location || null);
-  const [showManualPrice, setShowManualPrice] = useState(!!(initialData?.tipo_servicio_id === null && initialData?.precio_servicio_final !== null));
+  const [showManualPrice, setShowManualPrice] = useState(!!(initialData?.tipo_servicio_id === null && initialData?.precio_servicio_final !== null && initialData.precio_servicio_final !== undefined));
   const { toast } = useToast();
   const router = useRouter();
 
@@ -78,17 +78,25 @@ export function ShipmentForm({
 
   const selectedClientId = form.watch("cliente_id");
   const selectedTipoServicioId = form.watch("tipo_servicio_id");
-
+  
   useEffect(() => {
     if (initialData) {
-      form.reset(initialData); // Ensure form is reset with initialData on edit mode or data change
+      const currentTipoPaqueteId = initialData.tipo_paquete_id === "" ? null : initialData.tipo_paquete_id;
+      const currentTipoServicioId = initialData.tipo_servicio_id === "" ? null : initialData.tipo_servicio_id;
+
+      form.reset({
+        ...initialData,
+        tipo_paquete_id: currentTipoPaqueteId,
+        tipo_servicio_id: currentTipoServicioId,
+        precio_servicio_final: initialData.precio_servicio_final === undefined ? null : initialData.precio_servicio_final,
+      });
       if (initialData.cliente_id) {
         const client = clientes.find(c => c.id === initialData.cliente_id);
         setSelectedClientAddress(client?.direccion || initialData.client_location || null);
       } else {
         setSelectedClientAddress(initialData.client_location || null);
       }
-      setShowManualPrice(initialData.tipo_servicio_id === null && initialData.precio_servicio_final !== null && initialData.precio_servicio_final !== undefined);
+      setShowManualPrice(currentTipoServicioId === null && initialData.precio_servicio_final !== null && initialData.precio_servicio_final !== undefined);
     }
   }, [initialData, form, clientes]);
 
@@ -101,8 +109,12 @@ export function ShipmentForm({
         form.setValue("nombre_cliente_temporal", "", { shouldValidate: true });
         setSelectedClientAddress(client.direccion);
       } else {
-        form.setValue("client_location", isEditMode && initialData?.client_location ? initialData.client_location : "", { shouldValidate: true });
-        setSelectedClientAddress(isEditMode && initialData?.client_location ? initialData.client_location : null);
+        // Keep form value if editing, or clear if creating and client has no address
+        const currentLocation = form.getValues("client_location");
+        if (!isEditMode || (isEditMode && initialData?.cliente_id !== selectedClientId) || !currentLocation) {
+            form.setValue("client_location", "", { shouldValidate: true });
+            setSelectedClientAddress(null);
+        }
         if(client && !client.direccion && !isEditMode) {
             toast({title: "Advertencia", description: "El cliente seleccionado no tiene una dirección registrada. Por favor, actualice los datos del cliente o ingrese la dirección manualmente.", variant: "destructive", duration: 7000});
         }
@@ -116,17 +128,12 @@ export function ShipmentForm({
   useEffect(() => {
     if(selectedTipoServicioId === MANUAL_SERVICE_ID_PLACEHOLDER){
       setShowManualPrice(true);
-      form.setValue("tipo_servicio_id", null); // Clear actual service ID if manual
-      // Do not clear precio_servicio_final, let user input or keep previous manual
+      form.setValue("tipo_servicio_id", null); 
     } else if (selectedTipoServicioId && selectedTipoServicioId !== NULL_VALUE_PLACEHOLDER) {
       const servicio = tiposServicio.find(s => s.id === selectedTipoServicioId);
-      if (servicio && servicio.precio_base !== null && servicio.precio_base !== undefined) {
-        form.setValue("precio_servicio_final", servicio.precio_base);
-      } else {
-        form.setValue("precio_servicio_final", null); // Or some other default if service has no base price
-      }
+      form.setValue("precio_servicio_final", servicio?.precio_base ?? null);
       setShowManualPrice(false);
-    } else { // NULL_VALUE_PLACEHOLDER or empty
+    } else { 
       form.setValue("precio_servicio_final", null);
       setShowManualPrice(false);
     }
@@ -153,10 +160,10 @@ export function ShipmentForm({
         setAiSuggestions(suggestions);
         toast({ title: "Sugerencias Recibidas"});
       } else {
-        toast({ title: "Error de Sugerencia", variant: "destructive"});
+        toast({ title: "Error de Sugerencia", description: "La IA no pudo generar sugerencias esta vez.", variant: "destructive"});
       }
     } catch (error) {
-      toast({ title: "Error Inesperado", variant: "destructive"});
+      toast({ title: "Error Inesperado en Sugerencias", description: (error as Error).message, variant: "destructive"});
     } finally {
       setIsSuggesting(false);
     }
@@ -164,9 +171,9 @@ export function ShipmentForm({
 
   const handleFormSubmit = async (data: ShipmentFormData) => {
     setIsSubmitting(true);
-    // Ensure correct nulls for DB
-    const submissionData = {
+    const submissionData: ShipmentFormData = {
         ...data,
+        cliente_id: data.cliente_id === NULL_VALUE_PLACEHOLDER ? null : data.cliente_id,
         tipo_paquete_id: data.tipo_paquete_id === NULL_VALUE_PLACEHOLDER ? null : data.tipo_paquete_id,
         tipo_servicio_id: data.tipo_servicio_id === NULL_VALUE_PLACEHOLDER || data.tipo_servicio_id === MANUAL_SERVICE_ID_PLACEHOLDER ? null : data.tipo_servicio_id,
         precio_servicio_final: data.precio_servicio_final === undefined ? null : data.precio_servicio_final,
@@ -185,7 +192,8 @@ export function ShipmentForm({
                 });
                 setAiSuggestions(null); setSelectedClientAddress(null); setShowManualPrice(false);
             } else {
-               router.refresh(); // Refresh data on edit page
+               if(onOpenChange) onOpenChange(false); // Close dialog if in edit mode from a dialog
+               router.refresh(); 
             }
         } else {
             toast({ title: isEditMode ? "Error al Actualizar" : "Error al Crear Envío", description: result.error || "Error desconocido.", variant: "destructive" });
@@ -196,6 +204,13 @@ export function ShipmentForm({
         setIsSubmitting(false);
     }
   };
+  
+  // Prop for EditShipmentDialog to close itself
+  let onOpenChange: ((open: boolean) => void) | undefined;
+  if (isEditMode && (props as any).onOpenChange) {
+    onOpenChange = (props as any).onOpenChange;
+  }
+
 
   return (
     <Form {...form}>
@@ -214,12 +229,12 @@ export function ShipmentForm({
                   <FormLabel>Cliente Existente (Opcional)</FormLabel>
                   <Select
                     onValueChange={(value) => field.onChange(value === NULL_VALUE_PLACEHOLDER ? null : value)}
-                    value={field.value === null || field.value === undefined ? NULL_VALUE_PLACEHOLDER : field.value}
+                    value={field.value || NULL_VALUE_PLACEHOLDER}
                   >
                     <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar un cliente" /></SelectTrigger></FormControl>
                     <SelectContent>
                       <SelectItem value={NULL_VALUE_PLACEHOLDER}>Ninguno / Envío Temporal</SelectItem>
-                      {clientes.map((cliente) => (<SelectItem key={cliente.id} value={cliente.id}>{cliente.nombre} {cliente.apellido} ({cliente.email})</SelectItem>))}
+                      {clientes.map((cliente) => (<SelectItem key={cliente.id} value={cliente.id}>{cliente.nombre} {cliente.apellido} ({cliente.email || 'Sin email'})</SelectItem>))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -230,7 +245,7 @@ export function ShipmentForm({
                 <FormField control={form.control} name="nombre_cliente_temporal" render={({ field }) => (<FormItem><FormLabel>Nombre Cliente (Temporal)</FormLabel><FormControl><Input placeholder="Nombre del destinatario" {...field} value={field.value || ""} /></FormControl><FormMessage /></FormItem>)} />
             )}
             {selectedClientId && selectedClientId !== NULL_VALUE_PLACEHOLDER && selectedClientAddress ? (
-                <FormItem><FormLabel>Ubicación del Cliente (Automático)</FormLabel><div className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 text-sm"><Info className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>{selectedClientAddress}</span></div><FormField control={form.control} name="client_location" render={({ field }) => <Input type="hidden" {...field} />} /></FormItem>
+                <FormItem><FormLabel>Ubicación del Cliente (Automático)</FormLabel><div className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 text-sm"><Info className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>{selectedClientAddress}</span></div><FormField control={form.control} name="client_location" render={({ field }) => <Input type="hidden" {...field} value={selectedClientAddress || ""} />} /></FormItem>
             ) : (
                 <FormField control={form.control} name="client_location" render={({ field }) => (<FormItem><FormLabel>Ubicación Manual</FormLabel><FormControl><Input placeholder="Dirección completa" {...field} value={field.value || ""}/></FormControl><FormMessage /></FormItem>)} />
             )}
@@ -276,8 +291,17 @@ export function ShipmentForm({
                             <FormLabel>Tipo de Servicio</FormLabel>
                              <Select 
                                 onValueChange={(value) => {
-                                    field.onChange(value === NULL_VALUE_PLACEHOLDER || value === MANUAL_SERVICE_ID_PLACEHOLDER ? value : value);
-                                    // Logic to set price based on service or enable manual is in useEffect
+                                    field.onChange(value === NULL_VALUE_PLACEHOLDER || value === MANUAL_SERVICE_ID_PLACEHOLDER ? null : value);
+                                    if (value === MANUAL_SERVICE_ID_PLACEHOLDER) {
+                                      setShowManualPrice(true);
+                                    } else if (value && value !== NULL_VALUE_PLACEHOLDER) {
+                                      const servicio = tiposServicio.find(s => s.id === value);
+                                      form.setValue("precio_servicio_final", servicio?.precio_base ?? null);
+                                      setShowManualPrice(false);
+                                    } else {
+                                      form.setValue("precio_servicio_final", null);
+                                      setShowManualPrice(false);
+                                    }
                                 }} 
                                 value={field.value ? field.value : (showManualPrice ? MANUAL_SERVICE_ID_PLACEHOLDER : NULL_VALUE_PLACEHOLDER)}
                             >

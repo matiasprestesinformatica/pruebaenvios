@@ -28,7 +28,6 @@ import {
     MapPin, 
     Mail, 
     Phone, 
-    Package, 
     Weight, 
     Info, 
     CalendarDays, 
@@ -37,11 +36,11 @@ import {
     DollarSign,
     Lightbulb,
     HelpCircle,
-    Box as BoxIcon, // Renamed to avoid conflict with local Box
+    Box as BoxIcon,
     Hash
 } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/utils"; // Import cn utility
+import { cn } from "@/lib/utils"; 
 
 interface EnvioDetailDialogProps {
   envioId: string | null;
@@ -197,8 +196,8 @@ export function EnvioDetailDialog({ envioId, isOpen, onOpenChange }: EnvioDetail
             <Card className="shadow-sm">
               <CardHeader><CardTitle className="text-base flex items-center gap-2"><BoxIcon className="h-5 w-5 text-primary" />Detalles del Paquete</CardTitle></CardHeader>
               <CardContent className="pt-0"><Table><TableBody>
-                        {renderDetailRow(<Package className="h-4 w-4" />, "Tipo de Paquete", envio.tipos_paquete?.nombre || "No especificado")}
-                        {renderDetailRow(<Weight className="h-4 w-4" />, "Peso", `${envio.package_weight} kg`)}
+                        {renderDetailRow(<BoxIcon className="h-4 w-4" />, "Tipo de Paquete", envio.tipos_paquete?.nombre || "No especificado")}
+                        {renderDetailRow(<Weight className="h-4 w-4" />, "Peso", `${envio.package_weight || '-'} kg`)}
               </TableBody></Table></CardContent>
             </Card>
             

@@ -77,6 +77,13 @@ function ShipmentFormSkeleton() {
          <Skeleton className="h-10 w-full" /> 
          <Skeleton className="h-10 w-full" />
       </div>
+       <Card>
+        <CardHeader><Skeleton className="h-8 w-1/2" /></CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
       <Skeleton className="h-10 w-full sm:w-72" />
       <Skeleton className="h-10 w-full sm:w-48" />
     </div>
