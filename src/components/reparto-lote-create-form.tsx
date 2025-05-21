@@ -40,13 +40,15 @@ import { es } from 'date-fns/locale';
 
 interface RepartoLoteCreateFormProps {
   repartidores: Pick<Repartidor, 'id' | 'nombre'>[];
-  empresas: Pick<Empresa, 'id' | 'nombre'>[];
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'>[];
   tiposServicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[];
   getClientesByEmpresaAction: (empresaId: string) => Promise<Cliente[]>;
   createRepartoLoteAction: (data: RepartoLoteCreationFormData) => Promise<{ success: boolean; error?: string | null; data?: Reparto | null }>;
 }
 
 const MANUAL_SERVICE_ID_PLACEHOLDER = "_MANUAL_";
+const NULL_SERVICE_OPTION_VALUE = "_NULL_SERVICE_";
+
 
 export function RepartoLoteCreateForm({
   repartidores,
@@ -67,12 +69,19 @@ export function RepartoLoteCreateForm({
   const form = useForm<RepartoLoteCreationFormData>({
     resolver: zodResolver(repartoLoteCreationSchema),
     defaultValues: {
-      fecha_reparto: new Date(),
+      fecha_reparto: undefined,
       repartidor_id: undefined,
       empresa_id: undefined,
       clientes_con_servicio: [],
     },
   });
+
+  useEffect(() => {
+    if (!form.getValues("fecha_reparto")) {
+      form.setValue("fecha_reparto", new Date());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.setValue]);
 
   const { fields, append, remove, update } = useFieldArray({
     control: form.control,
@@ -83,7 +92,7 @@ export function RepartoLoteCreateForm({
   const selectedEmpresaId = form.watch("empresa_id");
 
   const fetchClientes = useCallback(async (empresaId: string | undefined) => {
-    form.setValue("clientes_con_servicio", []); // Clear existing selections
+    form.setValue("clientes_con_servicio", []); 
     setShowManualPrice({});
     if (!empresaId) {
       setClientesDeEmpresa([]);
@@ -126,29 +135,40 @@ export function RepartoLoteCreateForm({
       append({ cliente_id: clienteId, tipo_servicio_id_lote: null, precio_manual_lote: null });
     } else if (!checked && existingIndex !== -1) {
       remove(existingIndex);
-      setShowManualPrice(prev => ({...prev, [clienteId]: false}));
+      setShowManualPrice(prev => {
+        const newState = {...prev};
+        delete newState[clienteId];
+        return newState;
+      });
     }
   };
 
-  const handleTipoServicioChange = (clienteId: string, index: number, tipoServicioId: string | null) => {
-    let precioManual = form.getValues(`clientes_con_servicio.${index}.precio_manual_lote`);
-    
-    if (tipoServicioId && tipoServicioId !== MANUAL_SERVICE_ID_PLACEHOLDER) {
-      const servicioSeleccionado = tiposServicio.find(ts => ts.id === tipoServicioId);
-      precioManual = servicioSeleccionado?.precio_base ?? null;
-      setShowManualPrice(prev => ({...prev, [clienteId]: false}));
-    } else if (tipoServicioId === MANUAL_SERVICE_ID_PLACEHOLDER) {
-      precioManual = null; // Clear manual price if switching to manual, let user enter
-      setShowManualPrice(prev => ({...prev, [clienteId]: true}));
-    } else { // "Ninguno" selected
-      precioManual = null;
-      setShowManualPrice(prev => ({...prev, [clienteId]: false}));
+  const handleTipoServicioChange = (clienteId: string, index: number, selectedValue: string | null) => {
+    let precioManualValue: number | null = form.getValues(`clientes_con_servicio.${index}.precio_manual_lote`);
+    let finalTipoServicioId: string | null = null;
+    let shouldShowManualPrice = false;
+
+    if (selectedValue === MANUAL_SERVICE_ID_PLACEHOLDER) {
+      finalTipoServicioId = null; 
+      // precioManualValue = null; // No limpiar el precio, permitir que el usuario ingrese o mantenga el anterior si lo desea
+      shouldShowManualPrice = true;
+    } else if (selectedValue === NULL_SERVICE_OPTION_VALUE || selectedValue === null || selectedValue === "") {
+      finalTipoServicioId = null;
+      precioManualValue = null;
+      shouldShowManualPrice = false;
+    } else { 
+      finalTipoServicioId = selectedValue;
+      const servicioSeleccionado = tiposServicio.find(ts => ts.id === selectedValue);
+      precioManualValue = servicioSeleccionado?.precio_base ?? null;
+      shouldShowManualPrice = false; 
     }
+    
+    setShowManualPrice(prev => ({...prev, [clienteId]: shouldShowManualPrice}));
     
     update(index, {
       cliente_id: clienteId,
-      tipo_servicio_id_lote: tipoServicioId === MANUAL_SERVICE_ID_PLACEHOLDER ? null : tipoServicioId,
-      precio_manual_lote: precioManual
+      tipo_servicio_id_lote: finalTipoServicioId,
+      precio_manual_lote: precioManualValue
     });
   };
   
@@ -159,7 +179,7 @@ export function RepartoLoteCreateForm({
         <Card>
           <CardHeader>
             <CardTitle>Detalles del Reparto por Lote</CardTitle>
-            <CardDescription>Configure la fecha, repartidor y empresa. Se generarán envíos para los clientes seleccionados, asignando un valor de servicio.</CardDescription>
+            <CardDescription>Configure fecha, repartidor y empresa. Los envíos se generarán automáticamente para los clientes seleccionados.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -257,13 +277,13 @@ export function RepartoLoteCreateForm({
           <Card>
             <CardHeader>
               <CardTitle>Selección de Clientes y Configuración de Servicio</CardTitle>
-              <CardDescription>Seleccione los clientes y configure el valor del servicio para cada uno.</CardDescription>
+              <CardDescription>Seleccione los clientes de la empresa para incluir en el reparto por lote y configure el valor del servicio para cada uno.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
                 <Input 
                   type="text"
-                  placeholder="Buscar clientes..."
+                  placeholder="Buscar clientes de la empresa..."
                   value={searchTermClientes}
                   onChange={(e) => setSearchTermClientes(e.target.value)}
                   className="max-w-sm"
@@ -279,7 +299,7 @@ export function RepartoLoteCreateForm({
                 <FormField
                   control={form.control}
                   name="clientes_con_servicio"
-                  render={() => ( // field prop is not directly used here as we manage array fields
+                  render={() => ( 
                     <FormItem>
                       <ScrollArea className="h-96 w-full rounded-md border">
                         <Table>
@@ -288,7 +308,7 @@ export function RepartoLoteCreateForm({
                               <TableHead className="w-[50px]"></TableHead>
                               <TableHead>Nombre Cliente</TableHead>
                               <TableHead className="w-[250px]">Tipo de Servicio</TableHead>
-                              <TableHead className="w-[150px]">Precio Manual</TableHead>
+                              <TableHead className="w-[150px]">Precio Servicio</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -297,12 +317,17 @@ export function RepartoLoteCreateForm({
                               const isSelected = fieldIndex !== -1;
                               const currentFieldData = isSelected ? fields[fieldIndex] : null;
                               
+                              const selectFieldValue = currentFieldData?.tipo_servicio_id_lote
+                                ? currentFieldData.tipo_servicio_id_lote
+                                : (showManualPrice[cliente.id] ? MANUAL_SERVICE_ID_PLACEHOLDER : NULL_SERVICE_OPTION_VALUE);
+
                               return (
                                 <TableRow key={cliente.id}>
                                   <TableCell>
                                     <Checkbox
                                       checked={isSelected}
                                       onCheckedChange={(checked) => handleClienteSelectionChange(cliente.id, !!checked)}
+                                      aria-label={`Seleccionar cliente ${cliente.nombre} ${cliente.apellido}`}
                                     />
                                   </TableCell>
                                   <TableCell>{cliente.nombre} {cliente.apellido}</TableCell>
@@ -313,14 +338,14 @@ export function RepartoLoteCreateForm({
                                         name={`clientes_con_servicio.${fieldIndex}.tipo_servicio_id_lote` as const}
                                         render={({ field: selectField }) => (
                                           <Select
-                                            onValueChange={(value) => handleTipoServicioChange(cliente.id, fieldIndex, value === "" ? null : value)}
-                                            value={selectField.value ?? ""}
+                                            onValueChange={(value) => handleTipoServicioChange(cliente.id, fieldIndex, value)}
+                                            value={selectFieldValue}
                                           >
                                             <SelectTrigger>
                                               <SelectValue placeholder="Seleccionar servicio" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                              <SelectItem value="">Ninguno</SelectItem>
+                                              <SelectItem value={NULL_SERVICE_OPTION_VALUE}>Ninguno</SelectItem>
                                               <SelectItem value={MANUAL_SERVICE_ID_PLACEHOLDER}>-- Ingreso Manual --</SelectItem>
                                               {tiposServicio.map(ts => (
                                                 <SelectItem key={ts.id} value={ts.id}>
@@ -346,7 +371,7 @@ export function RepartoLoteCreateForm({
                                             {...inputField}
                                             value={inputField.value ?? ""}
                                             onChange={(e) => inputField.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-                                            disabled={!showManualPrice[cliente.id] && (currentFieldData.tipo_servicio_id_lote !== null && currentFieldData.tipo_servicio_id_lote !== MANUAL_SERVICE_ID_PLACEHOLDER)}
+                                            disabled={!showManualPrice[cliente.id]}
                                           />
                                         )}
                                       />
@@ -384,3 +409,6 @@ export function RepartoLoteCreateForm({
     </Form>
   );
 }
+
+
+    
