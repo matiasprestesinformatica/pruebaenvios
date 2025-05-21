@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, PackageSearch, Bike, Building2, Route, Warehouse, MapPin } from "lucide-react"; 
+import { Users, PackageSearch, Bike, Building2, Route, Warehouse, MapPin, Settings } from "lucide-react"; 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +15,7 @@ const navItems = [
   { href: "/repartos", label: "Repartos", icon: Route },
   { href: "/repartos/lote/nuevo", label: "Repartos Lote", icon: Warehouse },
   { href: "/mapa-envios", label: "Mapa Envíos", icon: MapPin },
+  { href: "/configuracion", label: "Configuración", icon: Settings }, // Nuevo
 ];
 
 interface MainNavProps extends React.HTMLAttributes<HTMLElement> {
@@ -58,3 +59,5 @@ export function MainNav({ className, onItemClick, direction = "horizontal", ...p
     </nav>
   );
 }
+    
+    

@@ -32,7 +32,7 @@ export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(), 
-  package_size: z.enum(['small', 'medium', 'large'], {
+  package_size: z.enum(['small', 'medium', 'large'], { // Esto podría usar un enum de tipos_paquete en el futuro
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
@@ -76,6 +76,9 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
 
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
+
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
     required_error: "La fecha de reparto es obligatoria.",
@@ -98,7 +101,6 @@ export const repartoCreationSchema = z.object({
 });
 export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 
-
 export const repartoLoteCreationSchema = z.object({
   fecha_reparto: z.date({
     required_error: "La fecha de reparto es obligatoria.",
@@ -114,5 +116,20 @@ export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSche
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
+// Nuevos esquemas para Tipos de Paquete y Servicio
+export const tipoPaqueteSchema = z.object({
+  nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),
+  descripcion: z.string().optional().nullable(),
+  activo: z.boolean().default(true),
+});
+export type TipoPaqueteFormData = z.infer<typeof tipoPaqueteSchema>;
+
+export const tipoServicioSchema = z.object({
+  nombre: z.string().min(1, "El nombre del tipo de servicio es obligatorio."),
+  descripcion: z.string().optional().nullable(),
+  precio_base: z.coerce.number().min(0, "El precio base no puede ser negativo.").optional().nullable(),
+  activo: z.boolean().default(true),
+});
+export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
+    
+    
