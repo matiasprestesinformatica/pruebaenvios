@@ -5,7 +5,7 @@ import type { EnvioMapa } from "@/types/supabase";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { PackageSearch, MapPin, Package as PackageIcon, Weight, UserCircle } from "lucide-react";
+import { PackageSearch, MapPin, Box, Weight, UserCircle } from "lucide-react"; // Changed Package to Box
 import { estadoEnvioEnum } from "@/lib/schemas";
 
 interface EnviosNoAsignadosCardProps {
@@ -17,7 +17,7 @@ function getEstadoEnvioBadgeColor(estado: string | null): string {
     switch (estado) {
       case estadoEnvioEnum.Values.pending: return 'bg-yellow-500 text-black';
       case estadoEnvioEnum.Values.suggested: return 'bg-purple-500 text-white';
-      default: return 'bg-gray-500 text-white'; // Should mostly be pending or suggested if unassigned
+      default: return 'bg-gray-500 text-white'; 
     }
   }
 
@@ -48,7 +48,7 @@ export function EnviosNoAsignadosCard({ envios }: EnviosNoAsignadosCardProps) {
         <CardDescription>Envíos geolocalizados que aún no pertenecen a ningún reparto.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[300px] pr-3"> {/* Adjust height as needed */}
+        <ScrollArea className="h-[300px] pr-3">
           <div className="space-y-3">
             {envios.map((envio) => (
               <div key={envio.id} className="p-3 border rounded-md bg-muted/30 hover:shadow-md transition-shadow">
@@ -67,13 +67,12 @@ export function EnviosNoAsignadosCard({ envios }: EnviosNoAsignadosCardProps) {
                 </p>
                 <div className="text-xs text-muted-foreground flex items-center gap-3">
                     <span className="flex items-center gap-1">
-                        <PackageIcon className="h-3.5 w-3.5" /> {envio.package_size}
+                        <Box className="h-3.5 w-3.5" /> {envio.tipo_paquete_nombre || '-'}
                     </span>
                     <span className="flex items-center gap-1">
-                        <Weight className="h-3.5 w-3.5" /> {envio.package_weight}kg
+                        <Weight className="h-3.5 w-3.5" /> {envio.package_weight != null ? `${envio.package_weight}kg` : '-'}
                     </span>
                 </div>
-                {/* Future: Add a button to assign or view details */}
               </div>
             ))}
           </div>
@@ -82,3 +81,5 @@ export function EnviosNoAsignadosCard({ envios }: EnviosNoAsignadosCardProps) {
     </Card>
   );
 }
+
+    

@@ -3,18 +3,18 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import type { EnvioMapa, TipoParadaEnum as TipoParadaEnumType } from '@/types/supabase';
-import { estadoEnvioEnum, tipoParadaEnum } from '@/lib/schemas';
+import { estadoEnvioEnum, tipoParadaEnum } from "@/lib/schemas";
 import { Loader2, AlertTriangle, Info } from 'lucide-react';
 
 interface MapaEnviosViewProps {
   envios: EnvioMapa[];
-  isFilteredByReparto: boolean; // New prop to know if we should draw a route
+  isFilteredByReparto: boolean; 
 }
 
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 const INITIAL_ZOOM = 13;
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script';
+const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script-rumbos'; // Made ID more unique
 
 let loadGoogleMapsPromise: Promise<void> | null = null;
 
@@ -24,12 +24,12 @@ function getEnvioMarkerColorHex(status: string | null, tipoParada?: TipoParadaEn
   switch (status) {
     case estadoEnvioEnum.Values.pending: return '#FF0000'; // Red
     case estadoEnvioEnum.Values.suggested: return '#800080'; // Purple
-    case estadoEnvioEnum.Values.asignado_a_reparto: return '#0000FF'; // Blue (can be same as pickup or slightly different)
+    case estadoEnvioEnum.Values.asignado_a_reparto: return '#0000FF'; 
     case estadoEnvioEnum.Values.en_transito: return '#FFA500'; // Orange
     case estadoEnvioEnum.Values.entregado: return '#008000'; // Green
     case estadoEnvioEnum.Values.cancelado: return '#696969'; // Dark Gray
     case estadoEnvioEnum.Values.problema_entrega: return '#FF69B4'; // Hot Pink
-    default: return '#A9A9A9'; // Light Gray for unknown
+    default: return '#A9A9A9'; 
   }
 }
 
@@ -80,8 +80,9 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
 
       if (!loadGoogleMapsPromise) {
         loadGoogleMapsPromise = new Promise((resolve, reject) => {
-          (window as any).initGoogleMapsApiForRumbos = () => {
-            delete (window as any).initGoogleMapsApiForRumbos; 
+          const callbackName = 'initGoogleMapsApiForRumbos';
+          (window as any)[callbackName] = () => {
+            delete (window as any)[callbackName]; 
             if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
               resolve();
             } else {
@@ -90,19 +91,21 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
           };
 
           if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
+            // If script tag exists, and google.maps is available, resolve immediately.
+            // Otherwise, wait for the existing script's callback.
             if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
                 resolve(); 
             }
-            return;
+            return; 
           }
 
           const script = document.createElement('script');
           script.id = GOOGLE_MAPS_SCRIPT_ID;
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&callback=initGoogleMapsApiForRumbos`;
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&callback=${callbackName}`;
           script.async = true;
           script.defer = true;
           script.onerror = (err) => {
-            delete (window as any).initGoogleMapsApiForRumbos;
+            delete (window as any)[callbackName];
             document.getElementById(GOOGLE_MAPS_SCRIPT_ID)?.remove(); 
             loadGoogleMapsPromise = null; 
             reject(new Error(`No se pudo cargar el script de Google Maps. Error: ${err ? (err as Event).type : 'desconocido'}`));
@@ -138,9 +141,9 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
 
   useEffect(() => {
     if (map && infoWindow && envios) {
-      markers.forEach(marker => marker.setMap(null)); // Clear existing markers
+      markers.forEach(marker => marker.setMap(null)); 
       if (currentPolyline) {
-        currentPolyline.setMap(null); // Clear existing polyline
+        currentPolyline.setMap(null); 
         setCurrentPolyline(null);
       }
 
@@ -160,21 +163,11 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
           let iconScale = 7;
 
           if (envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa) {
-            markerLabel = {
-                text: 'R',
-                color: 'white',
-                fontWeight: 'bold',
-                fontSize: '12px',
-            };
+            markerLabel = { text: 'R', color: 'white', fontWeight: 'bold', fontSize: '12px' };
             zIndex = 10;
             iconScale = 9;
           } else if (envio.orden !== null && envio.orden !== undefined) {
-            markerLabel = {
-              text: (envio.orden + 1).toString(),
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: '11px',
-            };
+            markerLabel = { text: (envio.orden + 1).toString(), color: 'white', fontWeight: 'bold', fontSize: '11px' };
             zIndex = 2;
             iconScale = 9;
           }
@@ -201,7 +194,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
               orderInfo = `<p style="margin: 2px 0;"><strong>Orden:</strong> ${envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro (Punto de Partida)' : envio.orden + 1}</p>`;
             }
             const packageInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente 
-                ? `<p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.package_size || '-'}, ${envio.package_weight || '-'}kg</p>`
+                ? `<p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.tipo_paquete_nombre || '-'}, ${envio.package_weight || '-'}kg</p>`
                 : '';
             const statusInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente
                 ? `<p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</span></p>`
@@ -225,12 +218,11 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       setMarkers(newMarkers);
 
       if (hasValidPointsForRoute && newMarkers.length > 0) {
-        if (newMarkers.length === 1 && envios.length === 1) { // Only one point, center on it
+        if (newMarkers.length === 1 && envios.length === 1) { 
              map.setCenter(newMarkers[0].getPosition()!);
              map.setZoom(15);
-        } else if (newMarkers.length > 1) { // Multiple points, fit bounds
+        } else if (newMarkers.length > 1) { 
             map.fitBounds(bounds);
-            // Prevent overly zoomed in state if fitBounds results in very high zoom
             const listener = google.maps.event.addListener(map, "idle", function() {
               if (map.getZoom()! > 16) map.setZoom(16);
               google.maps.event.removeListener(listener);
@@ -241,18 +233,17 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
          map.setZoom(INITIAL_ZOOM);
       }
 
-      // Draw polyline if it's a filtered reparto with ordered stops
       if (isFilteredByReparto && envios.length >= 2) {
         const routePath = envios
           .filter(envio => envio.latitud != null && envio.longitud != null)
-          .sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity)) // Ensure correct order
+          .sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity)) 
           .map(envio => ({ lat: envio.latitud!, lng: envio.longitud! }));
 
         if (routePath.length >= 2) {
           const poly = new google.maps.Polyline({
             path: routePath,
             geodesic: true,
-            strokeColor: '#4285F4', // Google Blue
+            strokeColor: '#4285F4', 
             strokeOpacity: 0.8,
             strokeWeight: 4,
             icons: [{
@@ -262,7 +253,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
                     strokeColor: '#4285F4'
                 },
                 offset: '100%',
-                repeat: '75px' // Adjust for density of arrows
+                repeat: '75px' 
             }]
           });
           poly.setMap(map);
@@ -271,11 +262,11 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, infoWindow, envios, isFilteredByReparto]); // isFilteredByReparto added to dependencies
+  }, [map, infoWindow, envios, isFilteredByReparto]); 
 
   if (isLoadingApi) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-300px)] bg-muted/30 rounded-lg shadow">
+      <div className="flex items-center justify-center h-full bg-muted/30 rounded-lg shadow">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
         <p className="ml-4 text-lg text-muted-foreground">Cargando mapa...</p>
       </div>
@@ -284,7 +275,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
 
   if (errorLoadingApi) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-300px)] border-2 border-dashed border-destructive/50 bg-card p-8 rounded-lg shadow text-center">
+      <div className="flex flex-col items-center justify-center h-full border-2 border-dashed border-destructive/50 bg-card p-8 rounded-lg shadow text-center">
         <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
         <h3 className="text-xl font-semibold text-destructive mb-2">Error al Cargar el Mapa</h3>
         <p className="text-destructive/90 max-w-md">{errorLoadingApi}</p>
@@ -295,7 +286,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
   
   if(envios.length === 0 && !isLoadingApi && !errorLoadingApi){
     return (
-        <div className="flex flex-col items-center justify-center h-[calc(100vh-350px)] border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
+        <div className="flex flex-col items-center justify-center h-full border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
             <Info className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold text-muted-foreground mb-2">No hay Envíos para Mostrar</h3>
             <p className="text-muted-foreground max-w-md">Actualmente no hay envíos geolocalizados en Mar del Plata para mostrar en el mapa con el filtro actual.</p>
@@ -303,6 +294,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
     )
   }
 
-  return <div ref={mapRef} style={{ height: 'calc(100vh - 300px)', width: '100%' }} className="rounded-lg shadow-md border" />;
+  return <div ref={mapRef} style={{ height: '100%', width: '100%' }} className="rounded-lg shadow-md border" />;
 }
 
+    

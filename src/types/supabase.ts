@@ -15,7 +15,7 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string 
+          direccion: string
           latitud: number | null
           longitud: number | null
           telefono: string | null
@@ -199,8 +199,8 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null // Changed from package_size
-          package_weight: number
+          tipo_paquete_id: string | null
+          package_weight: number | null // Made nullable to align with general schema
           status: string
           suggested_options: Json | null
           reasoning: string | null
@@ -216,8 +216,8 @@ export interface Database {
           client_location: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null // Changed from package_size
-          package_weight?: number
+          tipo_paquete_id?: string | null
+          package_weight?: number | null
           status: string
           suggested_options?: Json | null
           reasoning?: string | null
@@ -233,8 +233,8 @@ export interface Database {
           client_location?: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null // Changed from package_size
-          package_weight?: number
+          tipo_paquete_id?: string | null
+          package_weight?: number | null
           status?: string
           suggested_options?: Json | null
           reasoning?: string | null
@@ -278,7 +278,6 @@ export interface Database {
     }
     Enums: {
       tipoparadaenum: "retiro_empresa" | "entrega_cliente"
-      // Other enums are handled by Zod at application level as columns are TEXT
     }
     CompositeTypes: {
       [_ in never]: never
@@ -320,20 +319,20 @@ export type RepartoConDetalles = Reparto & {
   empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null;
 };
 
-export type EnvioConCliente = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud' | 'estado'> | null;
-  tipos_paquete?: Pick<TipoPaquete, 'nombre'> | null; // For displaying tipo_paquete name
+export type EnvioConDetalles = Envio & {
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
+  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
 };
 
 export type EnvioParaDetalleReparto = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono'> | null;
-  tipos_servicio: Pick<TipoServicio, 'nombre' | 'precio_base'> | null; 
-  tipos_paquete: Pick<TipoPaquete, 'nombre'> | null; 
+  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null; 
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; 
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
   envio: EnvioParaDetalleReparto | null;
-  tipo_parada: Database['public']['Enums']['tipoparadaenum'] | null,
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -351,8 +350,7 @@ export interface EnvioMapa {
   status: string | null;
   nombre_cliente: string | null;
   client_location: string;
-  package_size: string | null; // Kept for compatibility, but should derive from tipo_paquete
-  tipo_paquete_nombre?: string | null; // New field for map
+  tipo_paquete_nombre?: string | null; // Replaced package_size
   package_weight: number | null;
   orden?: number | null;
   tipo_parada?: Database['public']['Enums']['tipoparadaenum'] | null;
@@ -368,13 +366,19 @@ export interface RepartoParaFiltro {
 
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
 
+// EnvioConClienteYAjustes used to be EnvioConCliente
+export type EnvioConClienteYAjustes = Envio & {
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
+};
+
 export type EnvioCompletoParaDialog = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud'> | null;
   repartos: (Pick<Reparto, 'id' | 'fecha_reparto'> & {
       repartidores: Pick<Repartidor, 'nombre'> | null;
   }) | null;
-  tipos_servicio: Pick<TipoServicio, 'nombre' | 'precio_base'> | null;
-  tipos_paquete: Pick<TipoPaquete, 'nombre'> | null; // For edit dialog
+  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id'| 'nombre'> | null; 
 };
 
-export { cn } from "@/lib/utils";
+    

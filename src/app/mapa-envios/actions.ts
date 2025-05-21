@@ -2,7 +2,7 @@
 "use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro, Envio, Cliente, ParadaReparto, Database, TipoParadaEnum as TipoParadaEnumTypeFromDB, Empresa } from "@/types/supabase";
+import type { EnvioMapa, Reparto, Repartidor, RepartoParaFiltro, Envio, Cliente, ParadaReparto, Database, TipoParadaEnum as TipoParadaEnumTypeFromDB, Empresa, TipoPaquete } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -16,11 +16,19 @@ const MDP_BOUNDS = {
   maxLng: -57.45, 
 };
 
-type EnvioConClienteParaMapa = Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null };
+type EnvioConClienteYTipoPaqueteParaMapa = Envio & { 
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
+};
 
-type ParadaConDetalles = ParadaReparto & {
-  envio: (Envio & { clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null }) | null;
-  repartos: (Reparto & { empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null }) | null;
+type ParadaConDetallesParaMapa = ParadaReparto & {
+  envio: (Envio & { 
+    clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null;
+    tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
+  }) | null;
+  repartos: (Reparto & { 
+    empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null 
+  }) | null;
 };
 
 export async function getEnviosGeolocalizadosAction(
@@ -31,6 +39,18 @@ export async function getEnviosGeolocalizadosAction(
     let enviosMapa: EnvioMapa[] = [];
 
     if (repartoId && repartoId !== "all" && repartoId !== "unassigned") {
+      const { data: repartoData, error: repartoError } = await supabase
+        .from("repartos")
+        .select("*, empresas (id, nombre, direccion, latitud, longitud)")
+        .eq("id", repartoId)
+        .single();
+
+      if (repartoError || !repartoData) {
+        const pgError = repartoError as PostgrestError | null;
+        console.error("Error fetching reparto details for map:", JSON.stringify(pgError, null, 2));
+        return { data: [], error: `Error al cargar detalles del reparto para el mapa: ${pgError?.message || 'Reparto no encontrado.'}` };
+      }
+      
       const { data: paradasData, error: paradasError } = await supabase
         .from("paradas_reparto")
         .select(`
@@ -45,16 +65,11 @@ export async function getEnviosGeolocalizadosAction(
             client_location,
             latitud,
             longitud,
-            package_size,
             package_weight,
             status,
             reparto_id,
-            clientes (id, nombre, apellido)
-          ),
-          repartos (
-            id,
-            empresa_id,
-            empresas (id, nombre, direccion, latitud, longitud)
+            clientes (id, nombre, apellido),
+            tipos_paquete!left(nombre) 
           )
         `)
         .eq("reparto_id", repartoId)
@@ -66,18 +81,18 @@ export async function getEnviosGeolocalizadosAction(
         return { data: [], error: `Error al cargar paradas del reparto: ${pgError.message}` };
       }
       
-      enviosMapa = (paradasData as ParadaConDetalles[] || []).map(parada => {
+      enviosMapa = (paradasData as ParadaConDetallesParaMapa[] || []).map(parada => {
         if (parada.tipo_parada === tipoParadaEnum.Values.retiro_empresa) {
-          const empresa = parada.repartos?.empresas;
+          const empresa = repartoData.empresas; // Use empresa from repartoData
           if (empresa?.latitud != null && empresa?.longitud != null) {
             return {
               id: `pickup-${empresa.id}-${parada.id}`,
               latitud: empresa.latitud,
               longitud: empresa.longitud,
-              status: 'pickup',
+              status: 'pickup', // Special status for map differentiation
               nombre_cliente: empresa.nombre || 'Punto de Retiro',
               client_location: empresa.direccion || 'Dirección de empresa no disponible',
-              package_size: null,
+              tipo_paquete_nombre: null,
               package_weight: null,
               orden: parada.orden,
               tipo_parada: tipoParadaEnum.Values.retiro_empresa,
@@ -86,7 +101,7 @@ export async function getEnviosGeolocalizadosAction(
         } else if (parada.envio?.latitud != null && parada.envio?.longitud != null &&
                    parada.envio.latitud >= MDP_BOUNDS.minLat && parada.envio.latitud <= MDP_BOUNDS.maxLat &&
                    parada.envio.longitud >= MDP_BOUNDS.minLng && parada.envio.longitud <= MDP_BOUNDS.maxLng) {
-          const envioData = parada.envio as EnvioConClienteParaMapa;
+          const envioData = parada.envio as EnvioConClienteYTipoPaqueteParaMapa;
           return {
               id: envioData.id,
               latitud: envioData.latitud as number,
@@ -94,7 +109,7 @@ export async function getEnviosGeolocalizadosAction(
               status: envioData.status,
               nombre_cliente: envioData.clientes ? `${envioData.clientes.nombre} ${envioData.clientes.apellido}` : envioData.nombre_cliente_temporal,
               client_location: envioData.client_location,
-              package_size: envioData.package_size,
+              tipo_paquete_nombre: envioData.tipos_paquete?.nombre,
               package_weight: envioData.package_weight,
               orden: parada.orden,
               tipo_parada: tipoParadaEnum.Values.entrega_cliente,
@@ -106,7 +121,7 @@ export async function getEnviosGeolocalizadosAction(
     } else { 
       let query = supabase
         .from("envios")
-        .select("*, clientes (id, nombre, apellido)") 
+        .select("*, clientes (id, nombre, apellido), tipos_paquete!left(nombre)") 
         .not("latitud", "is", null)
         .not("longitud", "is", null)
         .gte("latitud", MDP_BOUNDS.minLat)
@@ -133,17 +148,17 @@ export async function getEnviosGeolocalizadosAction(
         return { data: [], error: errorMessage };
       }
 
-      enviosMapa = (enviosData as EnvioConClienteParaMapa[] || []).map(envio => ({
+      enviosMapa = (enviosData as EnvioConClienteYTipoPaqueteParaMapa[] || []).map(envio => ({
         id: envio.id,
         latitud: envio.latitud as number, 
         longitud: envio.longitud as number, 
         status: envio.status,
         nombre_cliente: envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.nombre_cliente_temporal,
         client_location: envio.client_location,
-        package_size: envio.package_size,
+        tipo_paquete_nombre: envio.tipos_paquete?.nombre,
         package_weight: envio.package_weight,
         orden: null, 
-        tipo_parada: tipoParadaEnum.Values.entrega_cliente,
+        tipo_parada: tipoParadaEnum.Values.entrega_cliente, // Default for general envios
       }));
     }
     return { data: enviosMapa, error: null };
@@ -161,7 +176,7 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
     const supabase = createSupabaseServerClient();
     let query = supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido)", { count: "exact" })
+      .select("*, clientes (id, nombre, apellido), tipos_paquete!left(nombre)", { count: "exact" })
       .is("reparto_id", null)
       .not("latitud", "is", null)
       .not("longitud", "is", null)
@@ -179,14 +194,14 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
       return { data: [], count: 0, error: `Error al cargar envíos no asignados: ${pgError.message}` };
     }
 
-    const enviosMapa: EnvioMapa[] = (data as EnvioConClienteParaMapa[] || []).map(envio => ({
+    const enviosMapa: EnvioMapa[] = (data as EnvioConClienteYTipoPaqueteParaMapa[] || []).map(envio => ({
       id: envio.id,
       latitud: envio.latitud as number,
       longitud: envio.longitud as number,
       status: envio.status,
       nombre_cliente: envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.nombre_cliente_temporal,
       client_location: envio.client_location,
-      package_size: envio.package_size,
+      tipo_paquete_nombre: envio.tipos_paquete?.nombre,
       package_weight: envio.package_weight,
       orden: null, 
       tipo_parada: tipoParadaEnum.Values.entrega_cliente, 
@@ -202,7 +217,7 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
 
 type RepartoDataForFilter = Pick<Reparto, 'id' | 'fecha_reparto' | 'tipo_reparto'> & {
   repartidores: Pick<Repartidor, 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre'> | null; // Added empresa
+  empresas: Pick<Empresa, 'id' | 'nombre'> | null;
 };
 
 export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoParaFiltro[]; error: string | null }> {
@@ -210,7 +225,7 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("repartos")
-      .select("id, fecha_reparto, tipo_reparto, repartidores (nombre), empresas (id, nombre)") // Added empresas(id, nombre)
+      .select("id, fecha_reparto, tipo_reparto, repartidores (nombre), empresas (id, nombre)") 
       .order("fecha_reparto", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(20); 
@@ -234,10 +249,9 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
       return {
         id: r.id,
         label: label,
-        // Store empresa details if needed by summary component
         empresa_id: r.empresas?.id || null,
         empresa_nombre: r.empresas?.nombre || null,
-        tipo_reparto: r.tipo_reparto as TipoParadaEnumType | null, // Cast for clarity
+        tipo_reparto: r.tipo_reparto,
       };
     });
 
@@ -248,3 +262,6 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     return { data: [], error: "Error inesperado al obtener repartos para el filtro." };
   }
 }
+
+
+    
