@@ -27,29 +27,24 @@ export const clientSchema = z.object({
 });
 export type ClientFormData = z.infer<typeof clientSchema>;
 
-export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
-export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(), 
+  client_location: z.string().optional().nullable(),
   package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
-  status: estadoEnvioEnum.optional(), // Added for editing
+  status: z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']).optional(),
+  tipo_servicio_id: z.string().uuid().optional().nullable(), // Added for service type selection
+  precio_servicio_final: z.coerce.number().min(0).optional().nullable(), // Added for final service price
 }).superRefine((data, ctx) => {
   if (data.cliente_id) { 
     if (!data.client_location || data.client_location.trim() === "") {
-        // This validation might be too strict if client_location is auto-filled
-        // and not directly editable when a client is selected.
-        // Consider if this check is still needed or if it should be handled differently
-        // in the form logic based on whether client_location is derived or manually input.
-        // For now, keeping it to ensure location is always present one way or another.
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "La dirección del cliente seleccionada no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
+            message: "La dirección del cliente seleccionada no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrese la dirección manualmente deseleccionando el cliente.",
             path: ["client_location"],
           });
     }
@@ -84,9 +79,6 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
 
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
-
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
     required_error: "La fecha de reparto es obligatoria.",
@@ -109,6 +101,12 @@ export const repartoCreationSchema = z.object({
 });
 export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 
+const clienteConServicioLoteSchema = z.object({
+  cliente_id: z.string().uuid(),
+  tipo_servicio_id_lote: z.string().uuid().optional().nullable(),
+  precio_manual_lote: z.coerce.number().min(0).optional().nullable(),
+});
+export type ClienteConServicioLoteData = z.infer<typeof clienteConServicioLoteSchema>;
 
 export const repartoLoteCreationSchema = z.object({
   fecha_reparto: z.date({
@@ -117,10 +115,16 @@ export const repartoLoteCreationSchema = z.object({
   }),
   repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
   empresa_id: z.string().uuid("Debe seleccionar una empresa."),
-  cliente_ids: z.array(z.string().uuid()).min(1, "Debe seleccionar al menos un cliente de la empresa."),
+  clientes_con_servicio: z.array(clienteConServicioLoteSchema).min(1, "Debe seleccionar al menos un cliente y configurar su servicio."),
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
 
+
+export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
+export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
+
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const tipoPaqueteSchema = z.object({
   nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),

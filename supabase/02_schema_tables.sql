@@ -1,16 +1,13 @@
--- supabase/02_schema_tables.sql
--- Creación de la estructura de las tablas.
-
 -- Create Table for Empresas
 CREATE TABLE "public"."empresas" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    "nombre" TEXT NOT NULL UNIQUE,
+    "nombre" TEXT NOT NULL,
     "direccion" TEXT NOT NULL,
     "latitud" NUMERIC NULL,
     "longitud" NUMERIC NULL,
     "telefono" TEXT NULL,
-    "email" TEXT NULL UNIQUE,
+    "email" TEXT NULL,
     "notas" TEXT NULL,
     "estado" BOOLEAN NOT NULL DEFAULT TRUE
 );
@@ -26,10 +23,11 @@ CREATE TABLE "public"."clientes" (
     "latitud" NUMERIC NULL,
     "longitud" NUMERIC NULL,
     "telefono" TEXT NULL,
-    "email" TEXT NULL UNIQUE,
+    "email" TEXT NULL,
     "notas" TEXT NULL,
     "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL,
-    "estado" BOOLEAN NOT NULL DEFAULT TRUE
+    "estado" BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT clientes_email_key UNIQUE (email) -- Permite múltiples NULLs pero no emails duplicados
 );
 COMMENT ON TABLE "public"."clientes" IS 'Stores client information and their link to a company.';
 
@@ -57,11 +55,11 @@ CREATE TABLE "public"."tipos_servicio" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL UNIQUE,
     "descripcion" TEXT NULL,
-    "precio_base" NUMERIC NULL CHECK (precio_base >= 0),
+    "precio_base" NUMERIC(10, 2) NULL,
     "activo" BOOLEAN NOT NULL DEFAULT TRUE,
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
-COMMENT ON TABLE "public"."tipos_servicio" IS 'Defines different types of services offered and their base prices.';
+COMMENT ON TABLE "public"."tipos_servicio" IS 'Defines different types of services and their base prices.';
 
 -- Create Table for Repartos
 CREATE TABLE "public"."repartos" (
@@ -69,8 +67,8 @@ CREATE TABLE "public"."repartos" (
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     "fecha_reparto" DATE NOT NULL,
     "repartidor_id" UUID NULL REFERENCES "public"."repartidores"("id") ON DELETE SET NULL,
-    "estado" TEXT NOT NULL DEFAULT 'asignado', -- Validated by Zod: estadoRepartoEnum
-    "tipo_reparto" TEXT NOT NULL, -- Validated by Zod: tipoRepartoEnum
+    "estado" TEXT NOT NULL DEFAULT 'asignado', -- Validated by Zod: 'asignado', 'en_curso', 'completado'
+    "tipo_reparto" TEXT NOT NULL, -- Validated by Zod: 'individual', 'viaje_empresa', 'viaje_empresa_lote'
     "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL
 );
 COMMENT ON TABLE "public"."repartos" IS 'Stores delivery route information.';
@@ -84,14 +82,12 @@ CREATE TABLE "public"."envios" (
     "client_location" TEXT NOT NULL,
     "latitud" NUMERIC NULL,
     "longitud" NUMERIC NULL,
-    "package_size" TEXT NOT NULL, -- Validated by Zod: packageSizeEnum from schemas.ts
+    "package_size" TEXT NOT NULL, -- Validated by Zod: 'small', 'medium', 'large'
     "package_weight" NUMERIC NOT NULL DEFAULT 0.1,
-    "status" TEXT NOT NULL DEFAULT 'pending', -- Validated by Zod: estadoEnvioEnum
+    "status" TEXT NOT NULL DEFAULT 'pending', -- Validated by Zod: 'pending', 'suggested', etc.
     "suggested_options" JSON NULL,
     "reasoning" TEXT NULL,
     "reparto_id" UUID NULL REFERENCES "public"."repartos"("id") ON DELETE SET NULL
-    -- "tipo_paquete_id" UUID NULL REFERENCES "public"."tipos_paquete"("id") ON DELETE SET NULL, -- Future consideration
-    -- "tipo_servicio_id" UUID NULL REFERENCES "public"."tipos_servicio"("id") ON DELETE SET NULL  -- Future consideration
 );
 COMMENT ON TABLE "public"."envios" IS 'Stores individual shipment details.';
 COMMENT ON COLUMN "public"."envios"."reparto_id" IS 'Foreign key to the assigned reparto.';
@@ -103,10 +99,14 @@ CREATE TABLE "public"."paradas_reparto" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "reparto_id" UUID NOT NULL REFERENCES "public"."repartos"("id") ON DELETE CASCADE,
     "envio_id" UUID NULL REFERENCES "public"."envios"("id") ON DELETE CASCADE, -- Nullable for 'retiro_empresa'
-    "tipo_parada" public.tipoparadaenum NULL, -- Enum: 'retiro_empresa', 'entrega_cliente'
+    "tipo_parada" public.tipoparadaenum NULL, -- 'retiro_empresa', 'entrega_cliente'
     "orden" INTEGER NOT NULL,
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    CONSTRAINT uq_reparto_envio UNIQUE (reparto_id, envio_id) DEFERRABLE INITIALLY DEFERRED -- Allows NULLs in envio_id to not conflict immediately
-    -- CONSTRAINT uq_reparto_orden UNIQUE (reparto_id, orden) -- Removed as it caused issues with reordering
+    -- Unique (reparto_id, envio_id) if envio_id is NOT NULL.
+    -- PostgreSQL allows multiple NULLs in a unique constraint, so this works for retiro_empresa.
+    CONSTRAINT uq_reparto_envio UNIQUE (reparto_id, envio_id) DEFERRABLE INITIALLY DEFERRED
+    -- Removed: CONSTRAINT uq_reparto_orden UNIQUE (reparto_id, orden) 
 );
-COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence and type of stops within a delivery route.';
+COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence of stops (shipments or company pickup) within a delivery route.';
+COMMENT ON COLUMN "public"."paradas_reparto"."envio_id" IS 'FK to envios. Null if tipo_parada is retiro_empresa.';
+COMMENT ON COLUMN "public"."paradas_reparto"."tipo_parada" IS 'Type of stop: company pickup or client delivery.';

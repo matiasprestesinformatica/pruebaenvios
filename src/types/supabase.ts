@@ -205,6 +205,8 @@ export interface Database {
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
+          tipo_servicio_id: string | null // Added
+          precio_servicio_final: number | null // Added
         }
         Insert: {
           id?: string
@@ -220,6 +222,8 @@ export interface Database {
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
+          tipo_servicio_id?: string | null // Added
+          precio_servicio_final?: number | null // Added
         }
         Update: {
           id?: string
@@ -235,6 +239,8 @@ export interface Database {
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
+          tipo_servicio_id?: string | null // Added
+          precio_servicio_final?: number | null // Added
         }
       }
       paradas_reparto: {
@@ -272,9 +278,6 @@ export interface Database {
     }
     Enums: {
        tipoparadaenum: "retiro_empresa" | "entrega_cliente"
-       // Los otros enums como estadorepartoenum, tiporepartoenum, estadoenvioenum, packagesizeenum
-       // no se definen aquí si en la DB son TEXT y se validan con Zod en la aplicación.
-       // Si fueran tipos ENUM de PostgreSQL, se listarían aquí.
     }
     CompositeTypes: {
       [_ in never]: never
@@ -286,16 +289,19 @@ export interface Database {
 export type Empresa = Database['public']['Tables']['empresas']['Row'];
 export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
 export type UpdateEmpresa = Database['public']['Tables']['empresas']['Update'];
+
 export type Cliente = Database['public']['Tables']['clientes']['Row'];
 export type NuevoCliente = Database['public']['Tables']['clientes']['Insert'];
 export type UpdateCliente = Database['public']['Tables']['clientes']['Update'];
+
 export type Repartidor = Database['public']['Tables']['repartidores']['Row'];
-// export type NuevoRepartidor = Database['public']['Tables']['repartidores']['Insert']; // No la usas directamente
+
 export type Reparto = Database['public']['Tables']['repartos']['Row'];
-// export type NuevoReparto = Database['public']['Tables']['repartos']['Insert']; // No la usas directamente
+
 export type Envio = Database['public']['Tables']['envios']['Row'];
 export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
 export type UpdateEnvio = Database['public']['Tables']['envios']['Update'];
+
 export type ParadaReparto = Database['public']['Tables']['paradas_reparto']['Row'];
 export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']['Insert'];
 
@@ -348,7 +354,7 @@ export interface RepartoParaFiltro {
   label: string;
   empresa_id?: string | null;
   empresa_nombre?: string | null;
-  tipo_reparto?: string | null;
+  tipo_reparto?: string | null; // Podría ser tipoRepartoEnum si se usa consistentemente
 }
 
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];

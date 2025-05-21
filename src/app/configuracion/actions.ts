@@ -330,5 +330,25 @@ export async function updateTipoServicioEstadoAction(
     return { success: false, error: err.message || "Error desconocido del servidor." };
   }
 }
-    
-    
+
+export async function getTiposServicioActivosAction(): Promise<Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[]> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tipos_servicio")
+      .select("id, nombre, precio_base")
+      .eq("activo", true)
+      .order("nombre", { ascending: true });
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error("Error fetching active tipos_servicio:", JSON.stringify(pgError, null, 2));
+      return [];
+    }
+    return (data as Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[]) || [];
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in getTiposServicioActivosAction:", err.message);
+    return [];
+  }
+}
