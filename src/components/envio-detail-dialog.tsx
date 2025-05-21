@@ -11,13 +11,13 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Removed CardDescription from here
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { getEnvioByIdAction } from "@/app/envios/actions";
-import type { EnvioCompleto } from "@/types/supabase";
+import type { EnvioCompletoParaDialog } from "@/types/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -37,10 +37,11 @@ import {
     DollarSign,
     Lightbulb,
     HelpCircle,
-    Box, // Added Box for Shipment ID
-    Hash // Added Hash for Reparto ID
+    Box as BoxIcon, // Renamed to avoid conflict with local Box
+    Hash
 } from "lucide-react";
 import Link from "next/link";
+import { cn } from "@/lib/utils"; // Import cn utility
 
 interface EnvioDetailDialogProps {
   envioId: string | null;
@@ -63,7 +64,7 @@ function ClientSideFormattedDate({ dateString, formatString = "dd MMM yyyy, HH:m
         }
     }, [dateString, formatString]);
 
-    if (formattedDate === null) { // Show skeleton while loading/not yet formatted
+    if (formattedDate === null) {
         return <Skeleton className="h-4 w-28 inline-block" />;
     }
     return <>{formattedDate}</>;
@@ -83,8 +84,16 @@ function getEstadoEnvioBadgeColor(estado: string | null): string {
     return estadoMap[estado] || 'bg-gray-500 text-white';
 }
 
+function formatCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  return `$ ${value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+
 export function EnvioDetailDialog({ envioId, isOpen, onOpenChange }: EnvioDetailDialogProps) {
-  const [envio, setEnvio] = useState<EnvioCompleto | null>(null);
+  const [envio, setEnvio] = useState<EnvioCompletoParaDialog | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -94,7 +103,7 @@ export function EnvioDetailDialog({ envioId, isOpen, onOpenChange }: EnvioDetail
       const fetchEnvioDetails = async () => {
         setIsLoading(true);
         setError(null);
-        setEnvio(null); // Clear previous data
+        setEnvio(null); 
         try {
           const result = await getEnvioByIdAction(envioId);
           if (result.data) {
@@ -159,32 +168,16 @@ export function EnvioDetailDialog({ envioId, isOpen, onOpenChange }: EnvioDetail
         {!isLoading && !error && envio && (
           <div className="overflow-y-auto flex-grow px-6 pb-6 space-y-4">
             <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                    <Info className="h-5 w-5 text-primary" />
-                    Información Principal
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <Table>
-                  <TableBody>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Info className="h-5 w-5 text-primary" />Información Principal</CardTitle></CardHeader>
+              <CardContent className="pt-0"><Table><TableBody>
                     {renderDetailRow(<Info className="h-4 w-4" />, "Estado", <Badge className={`${getEstadoEnvioBadgeColor(envio.status)} capitalize px-2 py-1 text-xs`}>{envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</Badge>)}
                     {renderDetailRow(<CalendarDays className="h-4 w-4" />, "Fecha de Creación", <ClientSideFormattedDate dateString={envio.created_at} />)}
-                  </TableBody>
-                </Table>
-              </CardContent>
+              </TableBody></Table></CardContent>
             </Card>
             
             <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                    {envio.clientes ? <User className="h-5 w-5 text-primary" /> : <User className="h-5 w-5 text-muted-foreground"/>}
-                    {envio.clientes ? "Cliente Asociado" : "Destinatario Temporal"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <Table>
-                  <TableBody>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2">{envio.clientes ? <User className="h-5 w-5 text-primary" /> : <User className="h-5 w-5 text-muted-foreground"/>}{envio.clientes ? "Cliente Asociado" : "Destinatario Temporal"}</CardTitle></CardHeader>
+              <CardContent className="pt-0"><Table><TableBody>
                     {envio.clientes ? (
                         <>
                             {renderDetailRow(<User className="h-4 w-4" />, "Nombre", `${envio.clientes.nombre} ${envio.clientes.apellido}`)}
@@ -198,126 +191,59 @@ export function EnvioDetailDialog({ envioId, isOpen, onOpenChange }: EnvioDetail
                             {renderDetailRow(<MapPin className="h-4 w-4" />, "Ubicación", envio.client_location)}
                         </>
                     )}
-                  </TableBody>
-                </Table>
-              </CardContent>
+              </TableBody></Table></CardContent>
             </Card>
 
             <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                    <Box className="h-5 w-5 text-primary" />
-                    Detalles del Paquete
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                 <Table>
-                    <TableBody>
-                        {renderDetailRow(<Package className="h-4 w-4" />, "Tamaño", <span className="capitalize">{envio.package_size}</span>)}
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><BoxIcon className="h-5 w-5 text-primary" />Detalles del Paquete</CardTitle></CardHeader>
+              <CardContent className="pt-0"><Table><TableBody>
+                        {renderDetailRow(<Package className="h-4 w-4" />, "Tipo de Paquete", envio.tipos_paquete?.nombre || "No especificado")}
                         {renderDetailRow(<Weight className="h-4 w-4" />, "Peso", `${envio.package_weight} kg`)}
-                    </TableBody>
-                 </Table>
-              </CardContent>
+              </TableBody></Table></CardContent>
             </Card>
             
             {(envio.tipo_servicio_id || envio.precio_servicio_final !== null) && (
                 <Card className="shadow-sm">
-                    <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <DollarSign className="h-5 w-5 text-primary" />
-                            Servicio y Precio
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        <Table>
-                            <TableBody>
-                                {renderDetailRow(<Info className="h-4 w-4" />, "Tipo de Servicio", envio.tipos_servicio?.nombre)}
-                                {renderDetailRow(<DollarSign className="h-4 w-4" />, "Precio Final", envio.precio_servicio_final !== null ? `$${envio.precio_servicio_final.toFixed(2)}` : null, "font-semibold")}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
+                    <CardHeader><CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Servicio y Precio</CardTitle></CardHeader>
+                    <CardContent className="pt-0"><Table><TableBody>
+                        {renderDetailRow(<Info className="h-4 w-4" />, "Tipo de Servicio", envio.tipos_servicio?.nombre)}
+                        {renderDetailRow(<DollarSign className="h-4 w-4" />, "Precio Final", formatCurrency(envio.precio_servicio_final), "font-semibold")}
+                    </TableBody></Table></CardContent>
                 </Card>
             )}
 
             {envio.reparto_id && envio.repartos && (
               <Card className="shadow-sm">
-                <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                        <Truck className="h-5 w-5 text-primary" />
-                        Asignado a Reparto
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                    <Table>
-                        <TableBody>
-                            {renderDetailRow(<Hash className="h-4 w-4" />, "ID Reparto", 
-                                <Button variant="link" asChild className="p-0 h-auto text-primary hover:underline">
-                                    <Link href={`/repartos/${envio.reparto_id}`}>{envio.reparto_id}</Link>
-                                </Button>
-                            )}
-                            {renderDetailRow(<CalendarDays className="h-4 w-4" />, "Fecha Reparto", <ClientSideFormattedDate dateString={envio.repartos.fecha_reparto} formatString="PPP" />)}
-                            {renderDetailRow(<User className="h-4 w-4" />, "Repartidor", envio.repartos.repartidores?.nombre)}
-                        </TableBody>
-                    </Table>
-                </CardContent>
+                <CardHeader><CardTitle className="text-base flex items-center gap-2"><Truck className="h-5 w-5 text-primary" />Asignado a Reparto</CardTitle></CardHeader>
+                <CardContent className="pt-0"><Table><TableBody>
+                    {renderDetailRow(<Hash className="h-4 w-4" />, "ID Reparto", <Button variant="link" asChild className="p-0 h-auto text-primary hover:underline"><Link href={`/repartos/${envio.reparto_id}`}>{envio.reparto_id}</Link></Button>)}
+                    {renderDetailRow(<CalendarDays className="h-4 w-4" />, "Fecha Reparto", <ClientSideFormattedDate dateString={envio.repartos.fecha_reparto} formatString="PPP" />)}
+                    {renderDetailRow(<User className="h-4 w-4" />, "Repartidor", envio.repartos.repartidores?.nombre)}
+                </TableBody></Table></CardContent>
               </Card>
             )}
 
             {(envio.suggested_options || envio.reasoning) && (
                 <Card className="shadow-sm">
-                    <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Lightbulb className="h-5 w-5 text-yellow-400" />
-                            Sugerencias de IA
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                         <Accordion type="single" collapsible className="w-full">
-                            {envio.suggested_options && Array.isArray(envio.suggested_options) && (envio.suggested_options as string[]).length > 0 && (
-                                <AccordionItem value="options">
-                                    <AccordionTrigger>Opciones Sugeridas</AccordionTrigger>
-                                    <AccordionContent>
-                                        <ul className="list-disc pl-5 space-y-1 text-sm">
-                                            {(envio.suggested_options as string[]).map((opt, idx) => <li key={idx}>{opt}</li>)}
-                                        </ul>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            )}
-                             {envio.reasoning && (
-                                <AccordionItem value="reasoning">
-                                    <AccordionTrigger>Razonamiento</AccordionTrigger>
-                                    <AccordionContent className="text-sm whitespace-pre-wrap">
-                                        {envio.reasoning}
-                                    </AccordionContent>
-                                </AccordionItem>
-                            )}
-                        </Accordion>
-                    </CardContent>
+                    <CardHeader><CardTitle className="text-base flex items-center gap-2"><Lightbulb className="h-5 w-5 text-yellow-400" />Sugerencias de IA</CardTitle></CardHeader>
+                    <CardContent className="pt-0"><Accordion type="single" collapsible className="w-full">
+                        {envio.suggested_options && Array.isArray(envio.suggested_options) && (envio.suggested_options as string[]).length > 0 && (
+                            <AccordionItem value="options"><AccordionTrigger>Opciones Sugeridas</AccordionTrigger><AccordionContent><ul className="list-disc pl-5 space-y-1 text-sm">{(envio.suggested_options as string[]).map((opt, idx) => <li key={idx}>{opt}</li>)}</ul></AccordionContent></AccordionItem>
+                        )}
+                         {envio.reasoning && (
+                            <AccordionItem value="reasoning"><AccordionTrigger>Razonamiento</AccordionTrigger><AccordionContent className="text-sm whitespace-pre-wrap">{envio.reasoning}</AccordionContent></AccordionItem>
+                        )}
+                    </Accordion></CardContent>
                 </Card>
             )}
             
-            {/* Fallback for no extra details */}
             {!envio.reparto_id && !envio.tipo_servicio_id && !envio.suggested_options && !envio.reasoning && (
-                 <Card className="shadow-sm">
-                    <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <HelpCircle className="h-5 w-5 text-muted-foreground"/>
-                            Información Adicional
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        <p className="text-sm text-muted-foreground">No hay más detalles adicionales para este envío.</p>
-                    </CardContent>
-                 </Card>
+                 <Card className="shadow-sm"><CardHeader><CardTitle className="text-base flex items-center gap-2"><HelpCircle className="h-5 w-5 text-muted-foreground"/>Información Adicional</CardTitle></CardHeader><CardContent className="pt-0"><p className="text-sm text-muted-foreground">No hay más detalles adicionales para este envío.</p></CardContent></Card>
             )}
-
-
           </div>
         )}
         <div className="p-6 pt-4 border-t mt-auto">
-            <DialogClose asChild>
-                <Button type="button" variant="outline" className="w-full">Cerrar</Button>
-            </DialogClose>
+            <DialogClose asChild><Button type="button" variant="outline" className="w-full">Cerrar</Button></DialogClose>
         </div>
       </DialogContent>
     </Dialog>

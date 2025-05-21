@@ -6,7 +6,7 @@ import type { ShipmentFormData } from "@/lib/schemas";
 import { shipmentSchema, estadoEnvioEnum } from "@/lib/schemas";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { suggestDeliveryOptions, type SuggestDeliveryOptionsOutput } from "@/ai/flows/suggest-delivery-options";
-import type { NuevoEnvio, Envio, EnvioConCliente, Cliente, UpdateEnvio, EnvioCompleto } from "@/types/supabase";
+import type { NuevoEnvio, Envio, EnvioConCliente, Cliente, UpdateEnvio, EnvioCompletoParaDialog, TipoServicio } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: number; lng: number } | null> {
@@ -48,19 +48,24 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
 }
 
 export async function suggestDeliveryOptionsAction(
-  data: ShipmentFormData
+  data: Pick<ShipmentFormData, 'client_location' | 'package_weight' | 'tipo_paquete_id'> // Adjusted for tipo_paquete_id
 ): Promise<SuggestDeliveryOptionsOutput | null> {
-  const validatedFields = shipmentSchema.safeParse(data);
-  if (!validatedFields.success) {
-    console.error("Validation error for AI suggestion:", validatedFields.error.flatten().fieldErrors);
-    return null;
+  // We'd need to fetch tipo_paquete details if package_size for AI is derived from it.
+  // For now, let's assume package_size for AI can be a placeholder or a simplified mapping.
+  // This part might need further refinement based on how tipo_paquete maps to AI's concept of package_size.
+  // For this example, I'll send a generic 'medium' if tipo_paquete_id is present.
+  const packageSizeForAI = data.tipo_paquete_id ? 'medium' : 'small'; // Placeholder logic
+
+  if (!data.client_location || data.package_weight == null || !data.tipo_paquete_id) {
+     console.error("Validation error for AI suggestion: Missing required fields.");
+     return null;
   }
 
   try {
     const aiInput = {
-      clientLocation: validatedFields.data.client_location || "",
-      packageSize: validatedFields.data.package_size,
-      packageWeight: validatedFields.data.package_weight,
+      clientLocation: data.client_location,
+      packageSize: packageSizeForAI, // Use the derived or placeholder size
+      packageWeight: data.package_weight,
     };
     const suggestions = await suggestDeliveryOptions(aiInput);
     return suggestions;
@@ -88,11 +93,12 @@ export async function createShipmentAction(
     };
   }
 
-  const { cliente_id, nombre_cliente_temporal, client_location, package_size, package_weight, tipo_servicio_id, precio_servicio_final } = validatedFields.data;
+  const { cliente_id, nombre_cliente_temporal, client_location, tipo_paquete_id, package_weight, tipo_servicio_id, precio_servicio_final } = validatedFields.data;
   
   let lat: number | null = null;
   let lng: number | null = null;
   let finalClientLocation = client_location || "";
+  let finalPrecioServicio = precio_servicio_final;
 
   if (cliente_id) {
     const { data: clientData, error: clientError } = await supabase
@@ -101,48 +107,40 @@ export async function createShipmentAction(
       .eq('id', cliente_id)
       .single();
     if (clientError || !clientData) {
-      console.error("Error fetching client for shipment creation:", clientError);
-      geocodingInfo = "Error al obtener datos del cliente seleccionado. La ubicación podría no ser precisa.";
+      geocodingInfo = "Error al obtener datos del cliente. Usando dirección del formulario si existe.";
       if (finalClientLocation) {
         const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
-        if (coords) {
-            lat = coords.lat;
-            lng = coords.lng;
-            geocodingInfo = "Dirección del formulario geocodificada (cliente no encontrado o sin datos).";
-        } else if (geocodingInfo) {
-             geocodingInfo += " Además, falló el intento de geocodificar la dirección del formulario.";
-        } else {
-             geocodingInfo = "Error al obtener cliente Y al geocodificar dirección del formulario.";
-        }
+        if (coords) { lat = coords.lat; lng = coords.lng; geocodingInfo = "Dirección del formulario geocodificada (cliente no encontrado).";}
+        else { geocodingInfo += " Falló geocodificación de dirección del formulario.";}
       }
     } else {
-      finalClientLocation = clientData.direccion || finalClientLocation;
+      finalClientLocation = clientData.direccion || finalClientLocation; // Prioritize client's address
       lat = clientData.latitud;
       lng = clientData.longitud;
-      geocodingInfo = clientData.latitud ? "Coordenadas y ubicación del cliente utilizadas." : (clientData.direccion ? "Ubicación del cliente utilizada (sin geocodificación previa)." : "Cliente seleccionado no tiene dirección; usando ubicación del formulario si existe.");
-      if ((lat === null || lng === null) && finalClientLocation && (!client_location || client_location === clientData.direccion)) {
-          const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
-          if (coords) {
-              lat = coords.lat;
-              lng = coords.lng;
-              geocodingInfo = "Ubicación del cliente geocodificada.";
-          } else if (geocodingInfo) {
-              geocodingInfo += " Intento de geocodificación de dirección de cliente falló.";
-          } else {
-              geocodingInfo = "Dirección del cliente no pudo ser geocodificada.";
-          }
+      geocodingInfo = clientData.latitud ? "Coordenadas y ubicación del cliente utilizadas." : (finalClientLocation ? "Ubicación del cliente utilizada." : "Cliente sin dirección, usando ubicación del formulario si existe.");
+       if ((!lat || !lng) && finalClientLocation) {
+        const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
+        if (coords) { lat = coords.lat; lng = coords.lng; geocodingInfo = "Dirección del cliente geocodificada.";}
+        else { geocodingInfo += " Falló geocodificación de dirección de cliente.";}
       }
     }
   } else if (finalClientLocation) {
     const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
-    if (coords) {
-      lat = coords.lat;
-      lng = coords.lng;
-      geocodingInfo = "Dirección del formulario geocodificada exitosamente.";
-    } else {
-      geocodingInfo = "No se pudo geocodificar la dirección del formulario o está fuera de Mar del Plata.";
+    if (coords) { lat = coords.lat; lng = coords.lng; geocodingInfo = "Dirección del formulario geocodificada.";}
+    else { geocodingInfo = "No se pudo geocodificar dirección del formulario o está fuera de Mar del Plata.";}
+  }
+
+  if (tipo_servicio_id && (finalPrecioServicio === null || finalPrecioServicio === undefined)) {
+    const { data: servicioData } = await supabase
+        .from('tipos_servicio')
+        .select('precio_base')
+        .eq('id', tipo_servicio_id)
+        .single();
+    if (servicioData && servicioData.precio_base !== null) {
+        finalPrecioServicio = servicioData.precio_base;
     }
   }
+
 
   const shipmentData: NuevoEnvio = {
     cliente_id: cliente_id || null,
@@ -150,13 +148,13 @@ export async function createShipmentAction(
     client_location: finalClientLocation,
     latitud: lat,
     longitud: lng,
-    package_size: package_size,
+    tipo_paquete_id: tipo_paquete_id || null,
     package_weight: package_weight,
     status: aiSuggestions ? estadoEnvioEnum.Values.suggested : estadoEnvioEnum.Values.pending,
     suggested_options: aiSuggestions ? aiSuggestions.suggestedOptions : null,
     reasoning: aiSuggestions ? aiSuggestions.reasoning : null,
     tipo_servicio_id: tipo_servicio_id || null,
-    precio_servicio_final: precio_servicio_final || null,
+    precio_servicio_final: finalPrecioServicio,
   };
 
   try {
@@ -168,27 +166,15 @@ export async function createShipmentAction(
 
     if (error) {
       const pgError = error as PostgrestError;
-      console.error("Supabase error object while inserting shipment:", JSON.stringify(pgError, null, 2));
-      let errorMessage = "No se pudo registrar el envío.";
-      if (pgError.message) {
-          errorMessage = pgError.message;
-      }
-      return { success: false, error: errorMessage, data: null, info: geocodingInfo };
+      return { success: false, error: pgError.message || "No se pudo registrar el envío.", data: null, info: geocodingInfo };
     }
 
     revalidatePath("/envios");
-    revalidatePath("/envios/nuevo");
     revalidatePath("/mapa-envios");
     return { success: true, data: newShipment, error: null, info: geocodingInfo };
   } catch (e: unknown) {
     const err = e as Error;
-    console.error("Unexpected error in createShipmentAction:", err.message);
-    return {
-      success: false,
-      error: err.message || 'Error desconocido del servidor al crear el envío.',
-      data: null,
-      info: geocodingInfo,
-    };
+    return { success: false, error: err.message || 'Error desconocido del servidor.', data: null, info: geocodingInfo };
   }
 }
 
@@ -196,20 +182,19 @@ export async function getClientesForShipmentFormAction(): Promise<Pick<Cliente, 
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nombre, apellido, email, direccion, latitud, longitud")
+      .select("id, nombre, apellido, email, direccion, latitud, longitud") // Ensure latitud and longitud are selected
       .eq("estado", true) 
       .order("apellido", { ascending: true })
       .order("nombre", { ascending: true });
 
     if (error) {
-      const pgError = error as PostgrestError;
-      console.error("Error fetching clients for shipment form:", JSON.stringify(pgError, null, 2));
+      console.error("Error fetching clients for shipment form:", error);
       return [];
     }
     return data || [];
 }
 
-export async function getEnvioByIdAction(envioId: string): Promise<{ data: EnvioCompleto | null; error: string | null }> {
+export async function getEnvioByIdAction(envioId: string): Promise<{ data: EnvioCompletoParaDialog | null; error: string | null }> {
   try {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
@@ -218,7 +203,8 @@ export async function getEnvioByIdAction(envioId: string): Promise<{ data: Envio
         *,
         clientes (id, nombre, apellido, direccion, email, telefono, latitud, longitud),
         repartos (id, fecha_reparto, repartidores(nombre)),
-        tipos_servicio (nombre)
+        tipos_servicio (id, nombre, precio_base),
+        tipos_paquete (id, nombre) 
       `)
       .eq("id", envioId)
       .single();
@@ -228,10 +214,9 @@ export async function getEnvioByIdAction(envioId: string): Promise<{ data: Envio
       if (pgError.code === 'PGRST116') return { data: null, error: "Envío no encontrado." };
       return { data: null, error: pgError.message || "Error al obtener datos del envío." };
     }
-    return { data: data as EnvioCompleto, error: null };
+    return { data: data as EnvioCompletoParaDialog, error: null };
   } catch (e: unknown) {
     const err = e as Error;
-    console.error("Unexpected error in getEnvioByIdAction:", err.message);
     return { data: null, error: err.message || "Error desconocido del servidor." };
   }
 }
@@ -239,7 +224,7 @@ export async function getEnvioByIdAction(envioId: string): Promise<{ data: Envio
 export async function updateShipmentAction(
   envioId: string,
   formData: ShipmentFormData
-): Promise<{ success: boolean; error?: string | null; data?: EnvioCompleto | null; info?: string | null }> {
+): Promise<{ success: boolean; error?: string | null; data?: EnvioCompletoParaDialog | null; info?: string | null }> {
   const supabase = createSupabaseServerClient();
   let geocodingInfo: string | null = null;
 
@@ -248,18 +233,17 @@ export async function updateShipmentAction(
     return {
       success: false,
       error: "Error de validación: " + JSON.stringify(validatedFields.error.flatten().fieldErrors),
-      data: null,
     };
   }
 
-  const { cliente_id, nombre_cliente_temporal, client_location, package_size, package_weight, status, tipo_servicio_id, precio_servicio_final } = validatedFields.data;
+  const { cliente_id, nombre_cliente_temporal, client_location, tipo_paquete_id, package_weight, status, tipo_servicio_id, precio_servicio_final } = validatedFields.data;
   
   const updateData: Partial<UpdateEnvio> = {
-    package_size,
+    tipo_paquete_id: tipo_paquete_id || null,
     package_weight,
-    status: status || undefined,
-    tipo_servicio_id: tipo_servicio_id === "" ? null : (tipo_servicio_id || undefined),
-    precio_servicio_final: precio_servicio_final === undefined ? null : precio_servicio_final,
+    status: status || undefined, 
+    tipo_servicio_id: tipo_servicio_id || null,
+    precio_servicio_final: precio_servicio_final,
   };
   
   let lat: number | null = null;
@@ -269,80 +253,59 @@ export async function updateShipmentAction(
   if (cliente_id) {
     updateData.cliente_id = cliente_id;
     updateData.nombre_cliente_temporal = null; 
-    const { data: clientData, error: clientError } = await supabase
-      .from('clientes')
-      .select('direccion, latitud, longitud')
-      .eq('id', cliente_id)
-      .single();
-    if (clientError || !clientData) {
-        geocodingInfo = "Error al obtener datos del cliente seleccionado. La ubicación podría no actualizarse como se esperaba.";
-        updateData.client_location = finalClientLocation || undefined;
-        if (finalClientLocation) {
-            const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
-            if (coords) {
-                lat = coords.lat;
-                lng = coords.lng;
-                geocodingInfo = "Dirección del formulario geocodificada (cliente no encontrado o sin datos).";
-            } else if (geocodingInfo) {
-                geocodingInfo += " Además, falló el intento de geocodificar la dirección del formulario.";
-            } else {
-                geocodingInfo = "Error al obtener cliente Y al geocodificar dirección del formulario.";
-            }
-        }
-    } else {
-      updateData.client_location = clientData.direccion || finalClientLocation || undefined; 
-      lat = clientData.latitud; 
+    const { data: clientData } = await supabase.from('clientes').select('direccion, latitud, longitud').eq('id', cliente_id).single();
+    if (clientData) {
+      finalClientLocation = clientData.direccion || finalClientLocation;
+      lat = clientData.latitud;
       lng = clientData.longitud;
-      geocodingInfo = clientData.latitud ? "Coordenadas y ubicación del cliente utilizadas." : (clientData.direccion ? "Ubicación del cliente utilizada (sin geocodificación previa)." : "Cliente seleccionado no tiene dirección; usando ubicación del formulario si existe.");
-      if ((lat === null || lng === null) && updateData.client_location && (!client_location || client_location === clientData.direccion)) {
-          const coords = await geocodeAddressInMarDelPlata(updateData.client_location);
-          if (coords) {
-              lat = coords.lat;
-              lng = coords.lng;
-              geocodingInfo = "Ubicación del cliente geocodificada.";
-          } else if (geocodingInfo) {
-              geocodingInfo += " Intento de geocodificación de dirección de cliente falló.";
-          } else {
-              geocodingInfo = "Dirección del cliente no pudo ser geocodificada.";
-          }
+      geocodingInfo = clientData.latitud ? "Coordenadas del cliente usadas." : (finalClientLocation ? "Ubicación del cliente usada." : "Cliente sin dirección.");
+      if ((!lat || !lng) && finalClientLocation) {
+          const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
+          if (coords) { lat = coords.lat; lng = coords.lng; geocodingInfo = "Dirección del cliente geocodificada.";}
+          else { geocodingInfo += " Falló geocodificación de dirección de cliente.";}
+      }
+    } else {
+      geocodingInfo = "Cliente no encontrado. Usando dirección del formulario.";
+      if(finalClientLocation) {
+        const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
+        if (coords) { lat = coords.lat; lng = coords.lng; geocodingInfo = "Dirección del formulario geocodificada.";}
+        else { geocodingInfo += " Falló geocodificación de dirección del formulario.";}
       }
     }
   } else { 
     updateData.cliente_id = null;
     updateData.nombre_cliente_temporal = nombre_cliente_temporal || null;
-    updateData.client_location = finalClientLocation || undefined;
     if (finalClientLocation) {
       const coords = await geocodeAddressInMarDelPlata(finalClientLocation);
-      if (coords) {
-        lat = coords.lat;
-        lng = coords.lng;
-        geocodingInfo = "Dirección del formulario geocodificada exitosamente.";
-      } else {
-        geocodingInfo = "No se pudo geocodificar la dirección del formulario o está fuera de Mar del Plata.";
-      }
+      if (coords) { lat = coords.lat; lng = coords.lng; geocodingInfo = "Dirección del formulario geocodificada.";}
+      else { geocodingInfo = "No se pudo geocodificar la dirección del formulario.";}
     }
   }
+  updateData.client_location = finalClientLocation;
   updateData.latitud = lat;
   updateData.longitud = lng;
 
+  if (updateData.tipo_servicio_id && (updateData.precio_servicio_final === null || updateData.precio_servicio_final === undefined)) {
+    const { data: servicioData } = await supabase
+        .from('tipos_servicio')
+        .select('precio_base')
+        .eq('id', updateData.tipo_servicio_id)
+        .single();
+    if (servicioData && servicioData.precio_base !== null) {
+        updateData.precio_servicio_final = servicioData.precio_base;
+    }
+  }
 
   try {
     const { data: updatedShipmentData, error } = await supabase
       .from("envios")
       .update(updateData)
       .eq("id", envioId)
-      .select(`
-        *,
-        clientes (id, nombre, apellido, direccion, email, telefono, latitud, longitud),
-        repartos (id, fecha_reparto, repartidores(nombre)),
-        tipos_servicio (nombre)
-      `)
+      .select(`*, clientes (id, nombre, apellido, direccion, email, telefono, latitud, longitud), repartos (id, fecha_reparto, repartidores(nombre)), tipos_servicio (id, nombre, precio_base), tipos_paquete (id, nombre)`)
       .single();
 
     if (error) {
-      const pgError = error as PostgrestError;
-      console.error("Supabase error updating shipment:", JSON.stringify(pgError, null, 2));
-      return { success: false, error: pgError.message || "No se pudo actualizar el envío.", data: null, info: geocodingInfo };
+      return { success: false, error: (error as PostgrestError).message || "No se pudo actualizar el envío." };
     }
 
     revalidatePath("/envios");
@@ -353,16 +316,9 @@ export async function updateShipmentAction(
     }
     revalidatePath("/mapa-envios");
 
-    return { success: true, data: updatedShipmentData as EnvioCompleto, error: null, info: geocodingInfo };
+    return { success: true, data: updatedShipmentData as EnvioCompletoParaDialog, error: null, info: geocodingInfo };
   } catch (e: unknown) {
-    const err = e as Error;
-    console.error("Unexpected error in updateShipmentAction:", err.message);
-    return {
-      success: false,
-      error: err.message || 'Error desconocido del servidor al actualizar el envío.',
-      data: null,
-      info: geocodingInfo,
-    };
+    return { success: false, error: (e as Error).message || 'Error desconocido del servidor.' };
   }
 }
 
@@ -375,34 +331,23 @@ export async function getEnviosAction(page = 1, pageSize = 10, searchTerm?: stri
 
     let query = supabase
       .from("envios")
-      .select("*, clientes (id, nombre, apellido, direccion, email)", { count: "exact" })
+      .select("*, clientes (id, nombre, apellido, direccion, email), tipos_paquete (nombre)", { count: "exact" }) // Added tipos_paquete (nombre)
       .order("created_at", { ascending: false })
       .range(from, to);
 
     if (searchTerm) {
-      const searchConditions = [
-        `client_location.ilike.%${searchTerm}%`,
-        `nombre_cliente_temporal.ilike.%${searchTerm}%`,
-        `status.ilike.%${searchTerm}%`
-      ];
-      query = query.or(searchConditions.join(','));
+      // Simplified search for now, can be expanded
+      query = query.or(`client_location.ilike.%${searchTerm}%,nombre_cliente_temporal.ilike.%${searchTerm}%,status.ilike.%${searchTerm}%`);
     }
 
     const { data, error, count } = await query;
 
     if (error) {
       const pgError = error as PostgrestError;
-      console.error("Supabase error object while fetching envios:", JSON.stringify(pgError, null, 2));
-      let errorMessage = "Ocurrió un error al cargar los envíos.";
-      if (pgError.message) {
-        errorMessage = pgError.message;
-      }
-      return { data: [], count: 0, error: errorMessage };
+      return { data: [], count: 0, error: pgError.message || "Ocurrió un error al cargar los envíos." };
     }
     return { data: (data as EnvioConCliente[]) || [], count: count || 0, error: null };
   } catch (e: unknown) {
-    const err = e as Error;
-    console.error("Unexpected error in getEnviosAction:", err.message);
-    return { data: [], count: 0, error: err.message || 'Error desconocido del servidor al obtener envíos.' };
+    return { data: [], count: 0, error: (e as Error).message || 'Error desconocido del servidor.' };
   }
 }

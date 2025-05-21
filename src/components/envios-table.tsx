@@ -22,7 +22,7 @@ import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { EditShipmentDialog } from "./edit-shipment-dialog"; 
-import { EnvioDetailDialog } from "./envio-detail-dialog"; // Import the new detail dialog
+import { EnvioDetailDialog } from "./envio-detail-dialog"; 
 
 interface EnviosTableProps {
   initialEnvios: EnvioConCliente[];
@@ -132,6 +132,9 @@ export function EnviosTable({
   const handleCloseEditDialog = () => {
     setIsEditDialogOpen(false);
     setEditingShipmentId(null);
+    // Optionally, re-fetch data or rely on revalidatePath from updateShipmentAction
+    // For simplicity, we'll rely on revalidatePath for now.
+    // Consider router.refresh() if more immediate feedback is needed and revalidatePath is not sufficient
   };
 
   const handleOpenDetailDialog = (shipmentId: string) => {
@@ -195,13 +198,14 @@ export function EnviosTable({
                         <MapPin className="h-3.5 w-3.5"/> {envio.client_location}
                       </div>
                        <div className="text-sm text-muted-foreground sm:hidden mt-1 flex items-center gap-1">
-                         <Package className="h-3.5 w-3.5"/> {envio.package_size}, {envio.package_weight}kg
+                         <Package className="h-3.5 w-3.5"/> 
+                         {envio.tipos_paquete?.nombre || "N/A"}, {envio.package_weight}kg
                        </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{envio.client_location}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <div className="flex items-center gap-1">
-                        <Package className="h-4 w-4 text-muted-foreground"/> {envio.package_size}
+                        <Package className="h-4 w-4 text-muted-foreground"/> {envio.tipos_paquete?.nombre || "N/A"}
                       </div>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                          <Weight className="h-3.5 w-3.5"/> {envio.package_weight}kg

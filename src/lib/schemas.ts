@@ -27,18 +27,18 @@ export const clientSchema = z.object({
 });
 export type ClientFormData = z.infer<typeof clientSchema>;
 
+export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
+export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(),
-  package_size: z.enum(['small', 'medium', 'large'], {
-    errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
-  }),
-  package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
-  status: z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']).optional(),
-  tipo_servicio_id: z.string().uuid().optional().nullable(), // Added for service type selection
-  precio_servicio_final: z.coerce.number().min(0).optional().nullable(), // Added for final service price
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Changed from package_size
+  package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."), // Min adjusted
+  status: estadoEnvioEnum.optional(),
+  tipo_servicio_id: z.string().uuid().optional().nullable(),
+  precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) { 
     if (!data.client_location || data.client_location.trim() === "") {
@@ -63,6 +63,11 @@ export const shipmentSchema = z.object({
         path: ["client_location"],
       });
     }
+  }
+  if (data.tipo_servicio_id && data.precio_servicio_final !== null && data.precio_servicio_final !== undefined) {
+    // This scenario is fine, user might have selected a service then overridden price.
+  } else if (!data.tipo_servicio_id && (data.precio_servicio_final === null || data.precio_servicio_final === undefined)) {
+    // This is also fine, no service and no manual price
   }
 });
 export type ShipmentFormData = z.infer<typeof shipmentSchema>;
@@ -101,7 +106,7 @@ export const repartoCreationSchema = z.object({
 });
 export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 
-const clienteConServicioLoteSchema = z.object({
+export const clienteConServicioLoteSchema = z.object({
   cliente_id: z.string().uuid(),
   tipo_servicio_id_lote: z.string().uuid().optional().nullable(),
   precio_manual_lote: z.coerce.number().min(0).optional().nullable(),
@@ -118,10 +123,6 @@ export const repartoLoteCreationSchema = z.object({
   clientes_con_servicio: z.array(clienteConServicioLoteSchema).min(1, "Debe seleccionar al menos un cliente y configurar su servicio."),
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
-
-
-export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
-export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
 export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
 export type TipoParada = z.infer<typeof tipoParadaEnum>;

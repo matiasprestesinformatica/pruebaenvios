@@ -169,6 +169,28 @@ export async function updateTipoPaqueteEstadoAction(
   }
 }
 
+export async function getTiposPaqueteActivosAction(): Promise<Pick<TipoPaquete, 'id' | 'nombre'>[]> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tipos_paquete")
+      .select("id, nombre")
+      .eq("activo", true)
+      .order("nombre", { ascending: true });
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error("Error fetching active tipos_paquete:", JSON.stringify(pgError, null, 2));
+      return [];
+    }
+    return (data as Pick<TipoPaquete, 'id' | 'nombre'>[]) || [];
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in getTiposPaqueteActivosAction:", err.message);
+    return [];
+  }
+}
+
 
 // --- Tipos de Servicio Actions ---
 
