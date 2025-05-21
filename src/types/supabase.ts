@@ -15,7 +15,7 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string
+          direccion: string 
           latitud: number | null
           longitud: number | null
           telefono: string | null
@@ -112,7 +112,7 @@ export interface Database {
           estado?: boolean
         }
       }
-      tipos_paquete: { // Nuevo
+      tipos_paquete: {
         Row: {
           id: string
           nombre: string
@@ -135,7 +135,7 @@ export interface Database {
           created_at?: string
         }
       }
-      tipos_servicio: { // Nuevo
+      tipos_servicio: {
         Row: {
           id: string
           nombre: string
@@ -205,8 +205,6 @@ export interface Database {
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
-          // tipo_paquete_id: string | null // Futuro
-          // tipo_servicio_id: string | null // Futuro
         }
         Insert: {
           id?: string
@@ -222,8 +220,6 @@ export interface Database {
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
-          // tipo_paquete_id?: string | null
-          // tipo_servicio_id?: string | null
         }
         Update: {
           id?: string
@@ -239,8 +235,6 @@ export interface Database {
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
-          // tipo_paquete_id?: string | null
-          // tipo_servicio_id?: string | null
         }
       }
       paradas_reparto: {
@@ -278,6 +272,9 @@ export interface Database {
     }
     Enums: {
        tipoparadaenum: "retiro_empresa" | "entrega_cliente"
+       // Los otros enums como estadorepartoenum, tiporepartoenum, estadoenvioenum, packagesizeenum
+       // no se definen aquí si en la DB son TEXT y se validan con Zod en la aplicación.
+       // Si fueran tipos ENUM de PostgreSQL, se listarían aquí.
     }
     CompositeTypes: {
       [_ in never]: never
@@ -293,11 +290,12 @@ export type Cliente = Database['public']['Tables']['clientes']['Row'];
 export type NuevoCliente = Database['public']['Tables']['clientes']['Insert'];
 export type UpdateCliente = Database['public']['Tables']['clientes']['Update'];
 export type Repartidor = Database['public']['Tables']['repartidores']['Row'];
-export type NuevoRepartidor = Database['public']['Tables']['repartidores']['Insert'];
+// export type NuevoRepartidor = Database['public']['Tables']['repartidores']['Insert']; // No la usas directamente
 export type Reparto = Database['public']['Tables']['repartos']['Row'];
-export type NuevoReparto = Database['public']['Tables']['repartos']['Insert'];
+// export type NuevoReparto = Database['public']['Tables']['repartos']['Insert']; // No la usas directamente
 export type Envio = Database['public']['Tables']['envios']['Row'];
 export type NuevoEnvio = Database['public']['Tables']['envios']['Insert'];
+export type UpdateEnvio = Database['public']['Tables']['envios']['Update'];
 export type ParadaReparto = Database['public']['Tables']['paradas_reparto']['Row'];
 export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']['Insert'];
 
@@ -321,7 +319,7 @@ export type EnvioConCliente = Envio & {
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
   envio: EnvioConCliente | null;
-  tipo_parada: Database['public']['Enums']['tipoparadaenum'] | null;
+  tipo_parada: Enums<"tipoparadaenum"> | null;
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -342,21 +340,16 @@ export interface EnvioMapa {
   package_size: string | null;
   package_weight: number | null;
   orden?: number | null; 
-  tipo_parada?: Database['public']['Enums']['tipoparadaenum'] | null;
+  tipo_parada?: Enums<"tipoparadaenum"> | null;
 }
 
 export interface RepartoParaFiltro {
   id: string;
   label: string;
-  empresa_id?: string | null; // Added for summary component
-  empresa_nombre?: string | null; // Added for summary component
-  tipo_reparto?: string | null; // Added for summary component
+  empresa_id?: string | null;
+  empresa_nombre?: string | null;
+  tipo_reparto?: string | null;
 }
 
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
-
-// Helper for Zod Enums to be derived from DB Enums if needed, or defined directly
 export type Enums<T extends keyof Database["public"]["Enums"]> = Database["public"]["Enums"][T];
-    
-    
-    
