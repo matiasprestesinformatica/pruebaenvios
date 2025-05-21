@@ -21,6 +21,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { EditShipmentDialog } from "./edit-shipment-dialog"; // Import the dialog
 
 interface EnviosTableProps {
   initialEnvios: EnvioConCliente[];
@@ -79,6 +80,9 @@ export function EnviosTable({
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || "");
   const [isPending, startTransition] = useTransition();
 
+  const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
   useEffect(() => {
     setEnvios(initialEnvios);
     setTotalCount(initialTotalCount);
@@ -113,6 +117,18 @@ export function EnviosTable({
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
     updateQueryParams(newPage, searchTerm);
+  };
+
+  const handleOpenEditDialog = (shipmentId: string) => {
+    setEditingShipmentId(shipmentId);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingShipmentId(null);
+    // Optionally force re-fetch data or rely on revalidatePath from updateShipmentAction
+    // For now, revalidation from action should suffice.
   };
 
   return (
@@ -187,14 +203,13 @@ export function EnviosTable({
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 sm:gap-2">
-                        {/* Placeholder for future actions */}
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Ver Detalle: ${envio.id}`)} title="Ver Detalle del Envío">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Ver Detalle (ID: ${envio.id}) no implementado.`)} title="Ver Detalle del Envío">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Editar: ${envio.id}`)} title="Editar Envío">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(envio.id)} title="Editar Envío">
                           <Edit3 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => alert(`Eliminar: ${envio.id}`)} title="Eliminar Envío">
+                        <Button variant="ghost" size="icon" onClick={() => alert(`Eliminar (ID: ${envio.id}) no implementado.`)} title="Eliminar Envío">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -228,7 +243,14 @@ export function EnviosTable({
           </Button>
         </div>
       )}
+
+      {isEditDialogOpen && editingShipmentId && (
+        <EditShipmentDialog
+          shipmentId={editingShipmentId}
+          isOpen={isEditDialogOpen}
+          onOpenChange={handleCloseEditDialog}
+        />
+      )}
     </div>
   );
 }
-

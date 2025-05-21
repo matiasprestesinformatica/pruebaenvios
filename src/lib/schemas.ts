@@ -27,18 +27,26 @@ export const clientSchema = z.object({
 });
 export type ClientFormData = z.infer<typeof clientSchema>;
 
+export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
+export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(), 
-  package_size: z.enum(['small', 'medium', 'large'], { // Esto podría usar un enum de tipos_paquete en el futuro
+  package_size: z.enum(['small', 'medium', 'large'], {
     errorMap: () => ({ message: "Debe seleccionar un tamaño de paquete." })
   }),
   package_weight: z.coerce.number().min(0.1, "El peso del paquete debe ser mayor a 0."),
+  status: estadoEnvioEnum.optional(), // Added for editing
 }).superRefine((data, ctx) => {
   if (data.cliente_id) { 
     if (!data.client_location || data.client_location.trim() === "") {
+        // This validation might be too strict if client_location is auto-filled
+        // and not directly editable when a client is selected.
+        // Consider if this check is still needed or if it should be handled differently
+        // in the form logic based on whether client_location is derived or manually input.
+        // For now, keeping it to ensure location is always present one way or another.
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "La dirección del cliente seleccionada no pudo ser obtenida o está vacía. Verifique los datos del cliente o ingrésela manualmente deseleccionando el cliente.",
@@ -101,6 +109,7 @@ export const repartoCreationSchema = z.object({
 });
 export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 
+
 export const repartoLoteCreationSchema = z.object({
   fecha_reparto: z.date({
     required_error: "La fecha de reparto es obligatoria.",
@@ -113,10 +122,6 @@ export const repartoLoteCreationSchema = z.object({
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
 
 
-export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
-export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
-
-// Nuevos esquemas para Tipos de Paquete y Servicio
 export const tipoPaqueteSchema = z.object({
   nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),
   descripcion: z.string().optional().nullable(),
@@ -131,5 +136,3 @@ export const tipoServicioSchema = z.object({
   activo: z.boolean().default(true),
 });
 export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
-    
-    
