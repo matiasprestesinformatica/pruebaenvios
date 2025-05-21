@@ -16,23 +16,20 @@ interface MapaEnviosPageProps {
   };
 }
 
+interface MapaEnviosPageContentProps {
+  selectedRepartoId?: string | null;
+  repartosParaFiltro: RepartoParaFiltro[];
+  initialUnassignedEnviosData: EnvioMapa[];
+  initialUnassignedEnviosCount: number;
+}
+
 async function MapaEnviosPageContent({ 
   selectedRepartoId, 
   repartosParaFiltro,
+  initialUnassignedEnviosData,
   initialUnassignedEnviosCount
-}: { 
-  selectedRepartoId?: string | null, 
-  repartosParaFiltro: RepartoParaFiltro[],
-  initialUnassignedEnviosCount: number;
-}) {
+}: MapaEnviosPageContentProps) {
   const { data: envios, error: enviosError } = await getEnviosGeolocalizadosAction(selectedRepartoId);
-  // Fetch unassigned again for card if "all" or a specific reparto is selected
-  // to show the separate count on the card.
-  const { data: unassignedEnviosDataForCard, count: unassignedCountForCard } = 
-    (selectedRepartoId === "all" || (selectedRepartoId && selectedRepartoId !== "unassigned")) 
-    ? await getEnviosNoAsignadosGeolocalizadosAction() 
-    : { data: (selectedRepartoId === "unassigned" ? envios : []), count: (selectedRepartoId === "unassigned" ? envios.length : 0) };
-
 
   if (enviosError) {
     return (
@@ -49,19 +46,6 @@ async function MapaEnviosPageContent({
     );
   }
   
-  // This check is for client-side only, navigator is not defined on server
-  // if (typeof window !== 'undefined' && !navigator.onLine) { 
-  //    return (
-  //     <div className="flex flex-col items-center justify-center h-[calc(100vh-400px)] border-2 border-dashed border-muted-foreground/30 rounded-lg bg-card shadow p-8 text-center">
-  //       <WifiOff className="w-20 h-20 text-muted-foreground mb-4" />
-  //       <h2 className="text-xl font-semibold text-muted-foreground mb-2">Sin Conexión a Internet</h2>
-  //       <p className="text-muted-foreground max-w-md">
-  //         No se puede cargar el mapa de envíos porque no hay conexión a internet.
-  //       </p>
-  //     </div>
-  //   );
-  // }
-
   const isFilteredBySpecificReparto = !!selectedRepartoId && selectedRepartoId !== "all" && selectedRepartoId !== "unassigned";
 
   return (
@@ -70,11 +54,11 @@ async function MapaEnviosPageContent({
         <RepartoMapFilter repartos={repartosParaFiltro} currentRepartoId={selectedRepartoId} />
         <MapaEnviosSummary 
             displayedEnvios={envios || []} 
-            unassignedEnviosCount={unassignedCountForCard || 0}
+            unassignedEnviosCount={initialUnassignedEnviosCount}
             selectedRepartoId={selectedRepartoId}
             repartosList={repartosParaFiltro}
         />
-        <EnviosNoAsignadosCard envios={unassignedEnviosDataForCard || []} />
+        <EnviosNoAsignadosCard envios={initialUnassignedEnviosData} />
       </div>
       <div className="lg:col-span-3 h-[calc(100vh-250px)] min-h-[400px] lg:min-h-0">
         <MapaEnviosView envios={envios || []} isFilteredByReparto={isFilteredBySpecificReparto} />
@@ -92,10 +76,11 @@ export default async function MapaEnviosPage({ searchParams }: MapaEnviosPagePro
   
   const [repartosFilterResult, enviosNoAsignadosResult] = await Promise.all([
     getRepartosForMapFilterAction(),
-    getEnviosNoAsignadosGeolocalizadosAction() // Fetch initial count for summary
+    getEnviosNoAsignadosGeolocalizadosAction()
   ]);
 
   const repartosParaFiltro = repartosFilterResult.data || [];
+  const initialUnassignedEnviosData = enviosNoAsignadosResult.data || [];
   const initialUnassignedEnviosCount = enviosNoAsignadosResult.count || 0;
 
 
@@ -103,7 +88,7 @@ export default async function MapaEnviosPage({ searchParams }: MapaEnviosPagePro
      console.error("Error fetching repartos for filter:", repartosFilterResult.error);
   }
   if (enviosNoAsignadosResult.error) {
-    console.error("Error fetching initial unassigned envios count:", enviosNoAsignadosResult.error);
+    console.error("Error fetching initial unassigned envios:", enviosNoAsignadosResult.error);
   }
 
   return (
@@ -116,6 +101,7 @@ export default async function MapaEnviosPage({ searchParams }: MapaEnviosPagePro
         <MapaEnviosPageContent 
           selectedRepartoId={selectedRepartoId} 
           repartosParaFiltro={repartosParaFiltro}
+          initialUnassignedEnviosData={initialUnassignedEnviosData}
           initialUnassignedEnviosCount={initialUnassignedEnviosCount}
         />
       </Suspense>

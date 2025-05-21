@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { EnvioMapa, RepartoParaFiltro, TipoParadaEnum } from "@/types/supabase";
+import type { EnvioMapa, RepartoParaFiltro } from "@/types/supabase"; // No need for TipoParadaEnum directly here
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PackageSearch, Truck, Building, Route, MapPin } from "lucide-react";
 import { tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
@@ -37,9 +37,8 @@ export function MapaEnviosSummary({
   if (selectedReparto && (selectedReparto.tipo_reparto === 'viaje_empresa' || selectedReparto.tipo_reparto === 'viaje_empresa_lote')) {
     puntoDeRetiro = selectedReparto.empresa_nombre;
   } else if (displayedEnvios.some(e => e.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa)) {
-    // Fallback if not directly from selectedReparto, find first pickup point
     const retiro = displayedEnvios.find(e => e.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa);
-    if(retiro) puntoDeRetiro = retiro.nombre_cliente; // This would be the empresa name
+    if(retiro) puntoDeRetiro = retiro.nombre_cliente; 
   }
 
 
@@ -79,7 +78,11 @@ export function MapaEnviosSummary({
           </div>
         </div>
 
-        {(selectedRepartoId === "all" || selectedRepartoId === "unassigned" || !selectedRepartoId) && (
+        {/* Show "Envíos No Asignados" count always if it's > 0, 
+            or specifically if filtering for "all" or "unassigned",
+            but rely on the prop unassignedEnviosCount which is always fetched now.
+        */}
+        {(unassignedEnviosCount > 0 || selectedRepartoId === "all" || selectedRepartoId === "unassigned" || !selectedRepartoId) && (
           <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
             <PackageSearch className="h-5 w-5 text-muted-foreground flex-shrink-0" />
             <div>
@@ -92,4 +95,3 @@ export function MapaEnviosSummary({
     </Card>
   );
 }
-
