@@ -76,7 +76,6 @@ const optimizeRouteFlow = ai.defineFlow(
       throw new Error("AI did not return an output for route optimization.");
     }
     
-    // Validate that the AI output contains all original stop IDs and no duplicates
     const originalIds = new Set(input.stops.map(s => s.id));
     const optimizedIds = new Set(output.optimized_stop_ids);
 
@@ -90,8 +89,6 @@ const optimizeRouteFlow = ai.defineFlow(
                 optimizedStopIdsFromAI: output.optimized_stop_ids 
             }
         );
-        // Potentially throw an error or adjust the output if strict adherence is required
-        // For now, we'll return what the AI gave but log a warning.
     }
 
     return output;

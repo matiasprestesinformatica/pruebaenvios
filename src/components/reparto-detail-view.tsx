@@ -314,9 +314,8 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     if (result.success && result.data) {
       setSuggestedRoute(result.data);
       toast({ title: "Ruta Optimizada Sugerida", description: "La IA ha sugerido un nuevo orden para las paradas." });
-      // Call distance calculation for AI route if AI didn't provide it
       if (result.data.estimated_total_distance_km === undefined) {
-        handleCalculateAiRouteDistance(result.data, validStops);
+        handleCalculateAiRouteDistance(result.data, validStops); 
       }
     } else {
       toast({ title: "Error de Optimización", description: result.error || "No se pudo obtener una ruta optimizada de la IA.", variant: "destructive" });
@@ -359,7 +358,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     reparto.paradas.forEach(parada => {
       if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && reparto.empresas) {
         map.set(`empresa-${reparto.empresas.id}`, { type: 'pickup', details: reparto.empresas });
-      } else if (parada.envio) { // Ensure parada.envio exists before setting
+      } else if (parada.envio_id && parada.envio) { 
         map.set(parada.id, parada); 
       }
     });
@@ -571,7 +570,6 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
             {suggestedRoute.estimated_total_distance_km === undefined && (
                  <Button 
                     onClick={() => {
-                      // Get the original valid stops that were sent to AI for this specific suggestion
                       const originalValidStopsForThisSuggestion: OptimizeRouteStopInput[] = reparto.paradas.reduce((acc, parada) => {
                           if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
                               if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
