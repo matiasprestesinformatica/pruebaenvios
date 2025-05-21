@@ -30,7 +30,7 @@ export type OptimizeRouteInput = z.infer<typeof OptimizeRouteInputSchema>;
 
 const OptimizeRouteOutputSchema = z.object({
   optimized_stop_ids: z.array(z.string()).describe("An array of stop IDs in the suggested optimal order."),
-  notes: z.string().optional().describe("Any notes or reasoning from the AI about the suggested route."),
+  notes: z.string().optional().describe("Any notes or reasoning from the AI about the suggested route, potentially including estimated travel time."),
   estimated_total_distance_km: z.number().optional().describe("An estimated total travel distance for the optimized route in kilometers, if calculable by the AI."),
 });
 export type OptimizeRouteOutput = z.infer<typeof OptimizeRouteOutputSchema>;
@@ -51,16 +51,17 @@ Stops:
 - ID: {{id}}, Label: "{{label}}", Coordinates: ({{lat}}, {{lng}}){{#if type}}, Type: {{type}}{{/if}}
 {{/each}}
 
-Your task is to determine an efficient (ideally the shortest) route that visits all these stops.
-If the first stop is explicitly marked as a 'pickup' or seems like a depot/company location, it should be the starting point of the route.
-Otherwise, determine the best starting point among the stops provided to minimize overall travel.
-The output should be a list of stop IDs in the suggested optimized sequence.
+Your task is to determine an efficient route that visits all these stops.
+Your **principal prioridad absoluta** es minimizar la distancia total recorrida, encontrando la ruta **más corta y directa** posible. Evita al máximo rodeos innecesarios o rutas que impliquen retroceder, incluso si esto implica un ligero cambio en el orden que podría parecer lógico por proximidad agrupada inicialmente.
 
-Please provide the result as a JSON object adhering to the OptimizeRouteOutputSchema.
-Include the 'optimized_stop_ids' array.
-Please also try to calculate and include the 'estimated_total_distance_km' with the estimated total travel distance for the optimized route in kilometers.
-You can optionally include 'notes' with a brief explanation or reasoning for the route.
-Prioritize minimizing travel distance/time. Assume urban driving conditions in Mar del Plata.
+Si la primera parada está marcada explícitamente como 'pickup' o parece un depósito/ubicación de la empresa (normalmente la primera en la lista si es tipo 'pickup'), debe ser el punto de inicio de la ruta. De lo contrario, la IA debe **analizar las ubicaciones de todas las paradas para elegir el punto de inicio que resulte en la menor distancia total y, secundariamente, que minimice la cantidad de giros complejos para el inicio de la ruta.**
+
+Si tienes conocimiento general sobre la estructura vial de Mar del Plata, **intenta priorizar el uso de calles o avenidas principales para el tránsito entre zonas distantes**, siempre y cuando esto no aumente significativamente la distancia total en comparación con rutas más directas por calles secundarias.
+
+Por favor, proporciona el resultado como un objeto JSON adhiriéndote estrictamente al \`OptimizeRouteOutputSchema\`. Incluye el array \`optimized_stop_ids\`.
+Intenta también calcular e incluir \`estimated_total_distance_km\` con la distancia total estimada en kilómetros. **Si es posible, incluye una estimación del tiempo total de viaje (ej. 'Tiempo estimado: X horas Y minutos') dentro del campo \`notes\`.**
+
+Prioriza minimizar la distancia/tiempo de viaje. Asume condiciones de conducción urbana en Mar del Plata.
 `,
 });
 
@@ -81,7 +82,7 @@ const optimizeRouteFlow = ai.defineFlow(
 
     if (originalIds.size !== optimizedIds.size || !Array.from(originalIds).every(id => optimizedIds.has(id))) {
         console.warn(
-            "AI route optimization output is missing some original stop IDs, has duplicates, or returned a different number of stops.", 
+            "AI route optimization output mismatch: The number of stops or the stop IDs in the optimized route do not perfectly match the original input. This might indicate the AI omitted or duplicated stops.", 
             { 
                 originalStopCount: input.stops.length,
                 optimizedStopCount: output.optimized_stop_ids.length,
