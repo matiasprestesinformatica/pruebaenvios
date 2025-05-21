@@ -37,7 +37,7 @@ export async function getEmpresasForRepartoAction(): Promise<Pick<Empresa, 'id' 
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("empresas")
-      .select("id, nombre, direccion, latitud, longitud") // Added direccion, latitud, longitud
+      .select("id, nombre, direccion, latitud, longitud")
       .eq("estado", true)
       .order("nombre", { ascending: true });
     if (error) {
@@ -232,9 +232,9 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
 
     const { data: repartoArray, error: repartoError } = await supabase
       .from("repartos")
-      .select("*, repartidores (id, nombre), empresas (id, nombre, direccion, latitud, longitud)")
+      .select("*, repartidores (id, nombre), empresas (id, nombre, direccion, latitud, longitud)") // Asegúrate de seleccionar latitud y longitud de empresa
       .eq("id", repartoId);
-
+    
     if (repartoError) {
       const pgError = repartoError as PostgrestError;
       console.error(`Error fetching reparto details for ID ${repartoId}:`, JSON.stringify(pgError, null, 2));
@@ -253,7 +253,6 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
     }
     const repartoData = repartoArray[0] as RepartoConDetalles;
 
-    // Fetch paradas including envio details and associated tipo_servicio
     const { data: paradasData, error: paradasError } = await supabase
       .from("paradas_reparto")
       .select(`
@@ -300,7 +299,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
 export async function updateRepartoEstadoAction(
   repartoId: string,
   nuevoEstado: EstadoReparto,
-  envioIds: string[]
+  envioIds: string[] 
 ): Promise<{ success: boolean; error?: string | null }> {
   const supabase = createSupabaseServerClient();
 
@@ -391,7 +390,7 @@ export async function reorderParadasAction(
       if (paradaToMove.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && paradaToMove.orden === 0) {
          return { success: true, error: null }; 
       }
-      if (currentIndex === 0 && (paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || paradaToMove.orden !== 0)) {
+      if (currentIndex === 0 && (paradaToMove.tipo_parada !== tipoParadaSchemaEnum.Values.retiro_empresa || paradaToMove.orden !== 0) ) {
          return { success: true, error: null };
       }
       paradaToSwapWith = paradas[currentIndex - 1];
@@ -453,7 +452,7 @@ export async function getClientesByEmpresaAction(empresaId: string): Promise<Cli
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nombre, apellido, direccion, email, latitud, longitud, estado")
+      .select("id, nombre, apellido, direccion, email, latitud, longitud, estado") // Incluir latitud y longitud
       .eq("empresa_id", empresaId)
       .order("apellido", { ascending: true })
       .order("nombre", { ascending: true });
@@ -487,71 +486,54 @@ export async function createRepartoLoteAction(
 
   const { fecha_reparto, repartidor_id, empresa_id, clientes_con_servicio } = validatedFields.data;
 
-  const { data: empresaData, error: empresaError } = await supabase
-    .from("empresas")
-    .select("id, nombre, direccion, latitud, longitud")
-    .eq("id", empresa_id)
-    .single();
-
-  if (empresaError || !empresaData) {
-    const pgEmpresaError = empresaError as PostgrestError | null;
-    console.error("Error fetching empresa details for reparto lote:", JSON.stringify(pgEmpresaError, null, 2));
-    return { success: false, error: "No se pudieron obtener los detalles de la empresa seleccionada.", data: null };
-  }
-
-  const servicioIds = clientes_con_servicio.map(c => c.tipo_servicio_id_lote).filter(Boolean) as string[];
-  let preciosServicioMap = new Map<string, number | null>();
-
-  if (servicioIds.length > 0) {
-    const { data: tiposServicioDb, error: tiposServicioError } = await supabase
+  try {
+    // 1. Obtener los tipos de servicio para acceder a sus precios base
+    const { data: tiposServicioData, error: tiposServicioError } = await supabase
       .from("tipos_servicio")
       .select("id, precio_base")
-      .in("id", servicioIds);
+      .eq("activo", true);
 
     if (tiposServicioError) {
       console.error("Error fetching tipos_servicio for reparto lote:", JSON.stringify(tiposServicioError, null, 2));
       return { success: false, error: "Error al obtener precios de tipos de servicio." };
     }
-    preciosServicioMap = new Map(tiposServicioDb?.map(ts => [ts.id, ts.precio_base]));
-  }
+    const preciosServicioMap = new Map(tiposServicioData?.map(ts => [ts.id, ts.precio_base]));
 
 
-  const fechaRepartoString = fecha_reparto.toISOString().split('T')[0];
-  const repartoToInsert: Partial<Reparto> = {
-    fecha_reparto: fechaRepartoString,
-    repartidor_id,
-    empresa_id,
-    tipo_reparto: tipoRepartoEnum.Values.viaje_empresa_lote,
-    estado: estadoRepartoEnum.Values.asignado,
-  };
+    // 2. Crear el reparto
+    const fechaRepartoString = fecha_reparto.toISOString().split('T')[0];
+    const repartoToInsert: Partial<Reparto> = {
+      fecha_reparto: fechaRepartoString,
+      repartidor_id,
+      empresa_id,
+      tipo_reparto: tipoRepartoEnum.Values.viaje_empresa_lote,
+      estado: estadoRepartoEnum.Values.asignado,
+    };
 
-  const { data: nuevoReparto, error: repartoError } = await supabase
-    .from("repartos")
-    .insert(repartoToInsert as Database['public']['Tables']['repartos']['Insert'])
-    .select()
-    .single();
+    const { data: nuevoReparto, error: repartoError } = await supabase
+      .from("repartos")
+      .insert(repartoToInsert as Database['public']['Tables']['repartos']['Insert'])
+      .select()
+      .single();
 
-  if (repartoError || !nuevoReparto) {
-    const pgError = repartoError as PostgrestError | null;
-    console.error("Error creating reparto lote:", JSON.stringify(pgError, null, 2));
-    return { success: false, error: `No se pudo crear el reparto por lote: ${pgError?.message || 'Error desconocido'}`, data: null };
-  }
+    if (repartoError || !nuevoReparto) {
+      const pgError = repartoError as PostgrestError | null;
+      console.error("Error creating reparto lote:", JSON.stringify(pgError, null, 2));
+      return { success: false, error: `No se pudo crear el reparto por lote: ${pgError?.message || 'Error desconocido'}`, data: null };
+    }
 
-  const paradasParaInsertar: NuevaParadaReparto[] = [];
-  let currentOrder = 0;
+    // 3. Obtener detalles de la empresa y clientes seleccionados
+    const { data: empresaData, error: empresaError } = await supabase
+      .from("empresas")
+      .select("id, nombre, direccion, latitud, longitud")
+      .eq("id", empresa_id)
+      .single();
 
-  if (empresaData.latitud != null && empresaData.longitud != null && empresaData.direccion != null) {
-    paradasParaInsertar.push({
-      reparto_id: nuevoReparto.id,
-      envio_id: null, 
-      tipo_parada: tipoParadaSchemaEnum.Values.retiro_empresa,
-      orden: currentOrder++,
-    });
-  } else {
-    console.warn(`Empresa ${empresaData.nombre || ''} (ID: ${empresaData.id}) no tiene coordenadas o dirección. No se creará parada de retiro para el reparto ${nuevoReparto.id}.`);
-  }
-
-  if (clientes_con_servicio && clientes_con_servicio.length > 0) {
+    if (empresaError || !empresaData) {
+      console.error("Error fetching empresa details for reparto lote:", JSON.stringify(empresaError, null, 2));
+      return { success: false, error: "No se pudieron obtener los detalles de la empresa seleccionada.", data: null };
+    }
+    
     const clienteIdsParaConsulta = clientes_con_servicio.map(c => c.cliente_id);
     const { data: clientesDataDb, error: clientesError } = await supabase
       .from("clientes")
@@ -559,82 +541,105 @@ export async function createRepartoLoteAction(
       .in("id", clienteIdsParaConsulta);
 
     if (clientesError) {
-      const pgClientesError = clientesError as PostgrestError;
-      console.warn("Error fetching client details for auto-generating shipments (continuing):", JSON.stringify(pgClientesError, null, 2));
-    } else if (clientesDataDb) {
-        const clientesMap = new Map(clientesDataDb.map(c => [c.id, c]));
-
-        for (const clienteServicio of clientes_con_servicio) {
-          const cliente = clientesMap.get(clienteServicio.cliente_id);
-          if (!cliente) {
-            console.warn(`Cliente con ID ${clienteServicio.cliente_id} no encontrado. No se generará envío.`);
-            continue;
-          }
-          if (!cliente.direccion) {
-            console.warn(`Cliente ${cliente.id} (${cliente.nombre || ''} ${cliente.apellido || ''}) no tiene dirección. No se generará envío automático para este cliente en reparto ${nuevoReparto.id}.`);
-            continue;
-          }
-
-          let precioFinal: number | null = null;
-          if (clienteServicio.precio_manual_lote !== null && clienteServicio.precio_manual_lote !== undefined) {
-            precioFinal = clienteServicio.precio_manual_lote;
-          } else if (clienteServicio.tipo_servicio_id_lote) {
-            precioFinal = preciosServicioMap.get(clienteServicio.tipo_servicio_id_lote) ?? null;
-          }
-
-          const envioParaInsertar: NuevoEnvio = {
-            cliente_id: cliente.id,
-            client_location: cliente.direccion,
-            latitud: cliente.latitud,
-            longitud: cliente.longitud,
-            package_size: 'medium', 
-            package_weight: 1,   
-            status: estadoEnvioEnum.Values.asignado_a_reparto,
-            reparto_id: nuevoReparto.id,
-            tipo_servicio_id: clienteServicio.tipo_servicio_id_lote || null,
-            precio_servicio_final: precioFinal,
-          };
-
-          const { data: nuevoEnvioData, error: envioInsertError } = await supabase
-            .from("envios")
-            .insert(envioParaInsertar)
-            .select("id")
-            .single();
-
-          if (envioInsertError || !nuevoEnvioData) {
-            const pgEnvioError = envioInsertError as PostgrestError | null;
-            console.error(`Error auto-generating shipment for client ${cliente.id} in reparto ${nuevoReparto.id}:`, JSON.stringify(pgEnvioError, null, 2));
-            continue; 
-          }
-
-          paradasParaInsertar.push({
-            reparto_id: nuevoReparto.id,
-            envio_id: nuevoEnvioData.id,
-            tipo_parada: tipoParadaSchemaEnum.Values.entrega_cliente,
-            orden: currentOrder++,
-          });
-        }
+      console.warn("Error fetching client details for auto-generating shipments:", JSON.stringify(clientesError, null, 2));
+      // Podríamos optar por continuar sin los detalles de los clientes si el error no es crítico,
+      // pero la generación de envíos fallaría si no tenemos dirección, latitud, longitud.
+      // Por ahora, devolvemos error.
+      return { success: false, error: `Error al obtener detalles de clientes: ${clientesError.message}`, data: nuevoReparto };
     }
-  }
+    const clientesMap = new Map(clientesDataDb?.map(c => [c.id, c]));
 
-  if (paradasParaInsertar.length > 0) {
-    const { error: paradasError } = await supabase.from("paradas_reparto").insert(paradasParaInsertar);
-    if (paradasError) {
-      const pgParadasError = paradasError as PostgrestError;
-      console.error("Error creating paradas_reparto for reparto lote:", JSON.stringify(pgParadasError, null, 2));
-      revalidatePath("/repartos");
-      revalidatePath("/repartos/lote/nuevo");
-      revalidatePath("/envios");
-      revalidatePath("/mapa-envios");
-      return { success: true, data: nuevoReparto, error: `Reparto y envíos creados (si aplica), pero falló la creación de algunas paradas: ${pgParadasError.message}.` };
+    // 4. Crear envíos y paradas
+    const paradasParaInsertar: NuevaParadaReparto[] = [];
+    let currentOrder = 0;
+
+    if (empresaData.latitud != null && empresaData.longitud != null && empresaData.direccion != null) {
+      paradasParaInsertar.push({
+        reparto_id: nuevoReparto.id,
+        envio_id: null, 
+        tipo_parada: tipoParadaSchemaEnum.Values.retiro_empresa,
+        orden: currentOrder++,
+      });
+    } else {
+      console.warn(`Empresa ${empresaData.nombre || ''} (ID: ${empresaData.id}) no tiene coordenadas o dirección. No se creará parada de retiro para el reparto ${nuevoReparto.id}.`);
     }
-  }
 
-  revalidatePath("/repartos");
-  revalidatePath("/repartos/lote/nuevo");
-  revalidatePath("/envios");
-  revalidatePath("/mapa-envios");
-  return { success: true, data: nuevoReparto, error: null };
+    for (const clienteServicio of clientes_con_servicio) {
+      const cliente = clientesMap.get(clienteServicio.cliente_id);
+      if (!cliente) {
+        console.warn(`Cliente con ID ${clienteServicio.cliente_id} no encontrado. No se generará envío.`);
+        continue;
+      }
+      if (!cliente.direccion) {
+        console.warn(`Cliente ${cliente.id} (${cliente.nombre || ''} ${cliente.apellido || ''}) no tiene dirección. No se generará envío automático.`);
+        continue;
+      }
+
+      let precioFinal: number | null = null;
+      let tipoServicioIdFinal: string | null = clienteServicio.tipo_servicio_id_lote || null;
+
+      if (clienteServicio.precio_manual_lote !== null && clienteServicio.precio_manual_lote !== undefined) {
+        precioFinal = clienteServicio.precio_manual_lote;
+        // Si hay precio manual, el tipo_servicio_id debería ser null si el form lo maneja así.
+        // Si el form envía un tipo_servicio_id_lote Y un precio_manual_lote, el precio manual tiene precedencia.
+        // Por coherencia, si hay precio_manual_lote, tipoServicioIdFinal se considerará null a efectos de qué se guarda.
+        if (precioFinal !== null) tipoServicioIdFinal = null;
+      } else if (clienteServicio.tipo_servicio_id_lote) {
+        precioFinal = preciosServicioMap.get(clienteServicio.tipo_servicio_id_lote) ?? null;
+      }
+
+      const envioParaInsertar: NuevoEnvio = {
+        cliente_id: cliente.id,
+        client_location: cliente.direccion,
+        latitud: cliente.latitud,
+        longitud: cliente.longitud,
+        package_size: 'medium', // Default
+        package_weight: 1,   // Default
+        status: estadoEnvioEnum.Values.asignado_a_reparto,
+        reparto_id: nuevoReparto.id,
+        tipo_paquete_id: null, // Asumimos que puede ser null o se asigna un default
+        tipo_servicio_id: tipoServicioIdFinal,
+        precio_servicio_final: precioFinal,
+      };
+
+      const { data: nuevoEnvioData, error: envioInsertError } = await supabase
+        .from("envios")
+        .insert(envioParaInsertar)
+        .select("id")
+        .single();
+
+      if (envioInsertError || !nuevoEnvioData) {
+        console.error(`Error auto-generating shipment for client ${cliente.id}:`, JSON.stringify(envioInsertError, null, 2));
+        continue; 
+      }
+
+      paradasParaInsertar.push({
+        reparto_id: nuevoReparto.id,
+        envio_id: nuevoEnvioData.id,
+        tipo_parada: tipoParadaSchemaEnum.Values.entrega_cliente,
+        orden: currentOrder++,
+      });
+    }
+
+    if (paradasParaInsertar.length > 0) {
+      const { error: paradasError } = await supabase.from("paradas_reparto").insert(paradasParaInsertar);
+      if (paradasError) {
+        console.error("Error creating paradas_reparto for reparto lote:", JSON.stringify(paradasError, null, 2));
+        // No devolver error crítico aquí si el reparto y algunos envíos se crearon, pero sí notificar.
+      }
+    }
+
+    revalidatePath("/repartos");
+    revalidatePath("/repartos/lote/nuevo");
+    revalidatePath("/envios");
+    revalidatePath("/mapa-envios");
+    return { success: true, data: nuevoReparto, error: null };
+
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error("Unexpected error in createRepartoLoteAction:", err.message);
+    return { success: false, error: `Error inesperado: ${err.message}`, data: null };
+  }
 }
 
 
@@ -679,26 +684,31 @@ export async function applyOptimizedRouteOrderAction(
 
     const empresaIdDelReparto = repartoData.empresa_id;
 
-    const updates = orderedStopInputIds.map(async (stopInputId, index) => {
+    // Idealmente, esto debería ser una transacción.
+    // Por ahora, realizaremos actualizaciones individuales.
+    for (let i = 0; i < orderedStopInputIds.length; i++) {
+      const stopInputId = orderedStopInputIds[i];
+      const newOrder = i;
+
       if (stopInputId.startsWith('empresa-') && empresaIdDelReparto && stopInputId === `empresa-${empresaIdDelReparto}`) {
+        // Es la parada de retiro de la empresa
         const { error: updateError } = await supabase
           .from('paradas_reparto')
-          .update({ orden: index })
+          .update({ orden: newOrder })
           .eq('reparto_id', repartoId)
           .eq('tipo_parada', tipoParadaSchemaEnum.Values.retiro_empresa)
-          .is('envio_id', null);
+          .is('envio_id', null); // Condición clave para la parada de retiro
         if (updateError) throw updateError;
       } else {
+        // Es una parada de entrega de envío (su ID es el ID de la parada, no del envío)
         const { error: updateError } = await supabase
           .from('paradas_reparto')
-          .update({ orden: index })
+          .update({ orden: newOrder })
           .eq('reparto_id', repartoId)
-          .eq('id', stopInputId); 
+          .eq('id', stopInputId); // Asumimos que stopInputId es el ID de la parada_reparto
         if (updateError) throw updateError;
       }
-    });
-
-    await Promise.all(updates);
+    }
 
     revalidatePath(`/repartos/${repartoId}`);
     revalidatePath("/mapa-envios");

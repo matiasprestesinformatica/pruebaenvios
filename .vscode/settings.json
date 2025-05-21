@@ -22,5 +22,6 @@
     "fs",
     "http",
     "net"
-  ]
+  ],
+  "npm.packageManager": "pnpm"
 }

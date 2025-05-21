@@ -81,7 +81,7 @@ export function RepartoLoteCreateForm({
       form.setValue("fecha_reparto", new Date());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.setValue]);
+  }, []); // Only run once on mount to set initial date
 
   const { fields, append, remove, update } = useFieldArray({
     control: form.control,
@@ -90,6 +90,7 @@ export function RepartoLoteCreateForm({
   });
 
   const selectedEmpresaId = form.watch("empresa_id");
+  const watchedClientesConServicio = form.watch('clientes_con_servicio');
 
   const fetchClientes = useCallback(async (empresaId: string | undefined) => {
     form.setValue("clientes_con_servicio", []); 
@@ -107,6 +108,52 @@ export function RepartoLoteCreateForm({
   useEffect(() => {
     fetchClientes(selectedEmpresaId);
   }, [selectedEmpresaId, fetchClientes]);
+
+  useEffect(() => {
+    const newShowManualPriceState = { ...showManualPrice };
+    let formNeedsUpdate = false;
+
+    watchedClientesConServicio.forEach((clientService, index) => {
+      const clienteId = clientService.cliente_id;
+      const currentTipoServicioId = clientService.tipo_servicio_id_lote;
+
+      if (currentTipoServicioId === MANUAL_SERVICE_ID_PLACEHOLDER) {
+        if (!newShowManualPriceState[clienteId]) {
+          newShowManualPriceState[clienteId] = true;
+          form.setValue(`clientes_con_servicio.${index}.tipo_servicio_id_lote`, null, { shouldDirty: true });
+          formNeedsUpdate = true;
+        }
+      } else if (currentTipoServicioId === NULL_SERVICE_OPTION_VALUE || currentTipoServicioId === null || currentTipoServicioId === "") {
+        if (newShowManualPriceState[clienteId]) {
+          newShowManualPriceState[clienteId] = false;
+          formNeedsUpdate = true;
+        }
+        if (form.getValues(`clientes_con_servicio.${index}.tipo_servicio_id_lote`) !== null) {
+          form.setValue(`clientes_con_servicio.${index}.tipo_servicio_id_lote`, null, { shouldDirty: true });
+          formNeedsUpdate = true;
+        }
+        if (form.getValues(`clientes_con_servicio.${index}.precio_manual_lote`) !== null) {
+          form.setValue(`clientes_con_servicio.${index}.precio_manual_lote`, null, { shouldDirty: true });
+          formNeedsUpdate = true;
+        }
+      } else if (currentTipoServicioId) { // Es un ID de servicio real
+        const servicioSeleccionado = tiposServicio.find(ts => ts.id === currentTipoServicioId);
+        if (newShowManualPriceState[clienteId]) {
+          newShowManualPriceState[clienteId] = false;
+          formNeedsUpdate = true;
+        }
+        const nuevoPrecio = servicioSeleccionado?.precio_base ?? null;
+        if (form.getValues(`clientes_con_servicio.${index}.precio_manual_lote`) !== nuevoPrecio) {
+          form.setValue(`clientes_con_servicio.${index}.precio_manual_lote`, nuevoPrecio, { shouldDirty: true });
+          formNeedsUpdate = true;
+        }
+      }
+    });
+    if (formNeedsUpdate) {
+        setShowManualPrice(newShowManualPriceState);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedClientesConServicio, tiposServicio, form.setValue]);
 
 
   const handleFormSubmit = async (data: RepartoLoteCreationFormData) => {
@@ -133,6 +180,7 @@ export function RepartoLoteCreateForm({
     const existingIndex = fields.findIndex(field => field.cliente_id === clienteId);
     if (checked && existingIndex === -1) {
       append({ cliente_id: clienteId, tipo_servicio_id_lote: null, precio_manual_lote: null });
+      setShowManualPrice(prev => ({...prev, [clienteId]: false }));
     } else if (!checked && existingIndex !== -1) {
       remove(existingIndex);
       setShowManualPrice(prev => {
@@ -141,35 +189,6 @@ export function RepartoLoteCreateForm({
         return newState;
       });
     }
-  };
-
-  const handleTipoServicioChange = (clienteId: string, index: number, selectedValue: string | null) => {
-    let precioManualValue: number | null = form.getValues(`clientes_con_servicio.${index}.precio_manual_lote`);
-    let finalTipoServicioId: string | null = null;
-    let shouldShowManualPrice = false;
-
-    if (selectedValue === MANUAL_SERVICE_ID_PLACEHOLDER) {
-      finalTipoServicioId = null; 
-      // precioManualValue = null; // No limpiar el precio, permitir que el usuario ingrese o mantenga el anterior si lo desea
-      shouldShowManualPrice = true;
-    } else if (selectedValue === NULL_SERVICE_OPTION_VALUE || selectedValue === null || selectedValue === "") {
-      finalTipoServicioId = null;
-      precioManualValue = null;
-      shouldShowManualPrice = false;
-    } else { 
-      finalTipoServicioId = selectedValue;
-      const servicioSeleccionado = tiposServicio.find(ts => ts.id === selectedValue);
-      precioManualValue = servicioSeleccionado?.precio_base ?? null;
-      shouldShowManualPrice = false; 
-    }
-    
-    setShowManualPrice(prev => ({...prev, [clienteId]: shouldShowManualPrice}));
-    
-    update(index, {
-      cliente_id: clienteId,
-      tipo_servicio_id_lote: finalTipoServicioId,
-      precio_manual_lote: precioManualValue
-    });
   };
   
 
@@ -315,12 +334,7 @@ export function RepartoLoteCreateForm({
                             {filteredClientes.map((cliente) => {
                               const fieldIndex = fields.findIndex(f => f.cliente_id === cliente.id);
                               const isSelected = fieldIndex !== -1;
-                              const currentFieldData = isSelected ? fields[fieldIndex] : null;
                               
-                              const selectFieldValue = currentFieldData?.tipo_servicio_id_lote
-                                ? currentFieldData.tipo_servicio_id_lote
-                                : (showManualPrice[cliente.id] ? MANUAL_SERVICE_ID_PLACEHOLDER : NULL_SERVICE_OPTION_VALUE);
-
                               return (
                                 <TableRow key={cliente.id}>
                                   <TableCell>
@@ -332,14 +346,18 @@ export function RepartoLoteCreateForm({
                                   </TableCell>
                                   <TableCell>{cliente.nombre} {cliente.apellido}</TableCell>
                                   <TableCell>
-                                    {isSelected && currentFieldData && (
+                                    {isSelected && (
                                       <Controller
                                         control={form.control}
                                         name={`clientes_con_servicio.${fieldIndex}.tipo_servicio_id_lote` as const}
-                                        render={({ field: selectField }) => (
+                                        render={({ field }) => (
                                           <Select
-                                            onValueChange={(value) => handleTipoServicioChange(cliente.id, fieldIndex, value)}
-                                            value={selectFieldValue}
+                                            onValueChange={(value) => field.onChange(value)}
+                                            value={
+                                                field.value
+                                                ? field.value
+                                                : (showManualPrice[cliente.id] ? MANUAL_SERVICE_ID_PLACEHOLDER : NULL_SERVICE_OPTION_VALUE)
+                                            }
                                           >
                                             <SelectTrigger>
                                               <SelectValue placeholder="Seleccionar servicio" />
@@ -349,7 +367,7 @@ export function RepartoLoteCreateForm({
                                               <SelectItem value={MANUAL_SERVICE_ID_PLACEHOLDER}>-- Ingreso Manual --</SelectItem>
                                               {tiposServicio.map(ts => (
                                                 <SelectItem key={ts.id} value={ts.id}>
-                                                  {ts.nombre} ({ts.precio_base !== null ? `$${ts.precio_base.toFixed(2)}` : 'Sin precio base'})
+                                                  {ts.nombre} {ts.precio_base !== null ? `($${ts.precio_base.toFixed(2)})` : ''}
                                                 </SelectItem>
                                               ))}
                                             </SelectContent>
@@ -359,18 +377,18 @@ export function RepartoLoteCreateForm({
                                     )}
                                   </TableCell>
                                   <TableCell>
-                                    {isSelected && currentFieldData && (
+                                    {isSelected && (
                                       <Controller
                                         control={form.control}
                                         name={`clientes_con_servicio.${fieldIndex}.precio_manual_lote` as const}
-                                        render={({ field: inputField }) => (
+                                        render={({ field }) => (
                                           <Input
                                             type="number"
                                             step="0.01"
                                             placeholder="Precio manual"
-                                            {...inputField}
-                                            value={inputField.value ?? ""}
-                                            onChange={(e) => inputField.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                                            {...field}
+                                            value={field.value ?? ""}
+                                            onChange={(e) => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
                                             disabled={!showManualPrice[cliente.id]}
                                           />
                                         )}
@@ -409,6 +427,3 @@ export function RepartoLoteCreateForm({
     </Form>
   );
 }
-
-
-    
