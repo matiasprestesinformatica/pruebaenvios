@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState, useEffect, useTransition, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle } from "lucide-react";
+import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle, CheckCircle } from "lucide-react";
 import type { OptimizeRouteInput, OptimizeRouteOutput, OptimizeRouteStopInput } from "@/ai/flows/optimize-route-flow";
 
 interface RepartoDetailViewProps {
@@ -28,6 +28,7 @@ interface RepartoDetailViewProps {
   updateRepartoStatusAction: (repartoId: string, nuevoEstado: EstadoReparto, envioIds: string[]) => Promise<{ success: boolean; error?: string | null }>;
   reorderParadasAction: (repartoId: string, paradaId: string, direccion: 'up' | 'down') => Promise<{ success: boolean; error?: string | null }>;
   optimizeRouteAction: (paradasInput: OptimizeRouteInput) => Promise<{ success: boolean; data?: OptimizeRouteOutput | null; error?: string | null }>;
+  applyOptimizedRouteOrderAction: (repartoId: string, orderedStopInputIds: string[]) => Promise<{ success: boolean; error?: string | null }>;
 }
 
 interface ParadaMapaInfo {
@@ -87,7 +88,7 @@ function getEstadoEnvioBadgeColor(estado?: string | null) {
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, reorderParadasAction, optimizeRouteAction }: RepartoDetailViewProps) {
+export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, reorderParadasAction, optimizeRouteAction, applyOptimizedRouteOrderAction }: RepartoDetailViewProps) {
   const [reparto, setReparto] = useState<RepartoCompleto>(initialReparto);
   const [selectedStatus, setSelectedStatus] = useState<EstadoReparto>(reparto.estado as EstadoReparto);
   const [isUpdatingStatus, startUpdatingStatusTransition] = useTransition();
@@ -99,6 +100,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   const [isLoadingCurrentRouteDistance, setIsLoadingCurrentRouteDistance] = useState(false);
   const [aiCalculatedDistanceKm, setAiCalculatedDistanceKm] = useState<number | null>(null);
   const [isLoadingAiRouteDistance, setIsLoadingAiRouteDistance] = useState(false);
+  const [isApplyingRouteOrder, setIsApplyingRouteOrder] = useState(false);
 
   const { toast } = useToast();
 
@@ -111,9 +113,10 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
   useEffect(() => {
     setReparto(initialReparto);
     setSelectedStatus(initialReparto.estado as EstadoReparto);
-    setSuggestedRoute(null);
-    setCurrentRouteDistanceKm(null);
-    setAiCalculatedDistanceKm(null);
+    // No limpiar suggestedRoute aquí para que el usuario pueda verlo incluso si navega y vuelve
+    // setSuggestedRoute(null); 
+    setCurrentRouteDistanceKm(null); // Recalcular al cambiar reparto
+    setAiCalculatedDistanceKm(null); // Recalcular al cambiar reparto
   }, [initialReparto]);
 
   const getParadasMapaInfo = useCallback((paradas: ParadaConEnvioYCliente[], empresa?: Empresa | null): ParadaMapaInfo[] => {
@@ -157,7 +160,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
                 totalDistance += leg.distance.value;
               }
             });
-            resolve(totalDistance / 1000); // Convert meters to kilometers
+            resolve(totalDistance / 1000); 
           } else {
             console.error(`Error fetching directions ${status}`, result);
             resolve(null);
@@ -323,11 +326,11 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     setIsOptimizingRoute(false);
   };
   
-  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalValidStops: OptimizeRouteStopInput[]) => {
+  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalValidStopsForCalculation: OptimizeRouteStopInput[]) => {
     if (!aiRoute || !aiRoute.optimized_stop_ids || !mapsApiReady) return;
     setIsLoadingAiRouteDistance(true);
 
-    const paradasInfoMap = new Map(originalValidStops.map(p => [p.id, p]));
+    const paradasInfoMap = new Map(originalValidStopsForCalculation.map(p => [p.id, p]));
     
     const orderedStopsForAiRoute: ParadaMapaInfo[] = aiRoute.optimized_stop_ids
         .map(stopId => {
@@ -350,6 +353,23 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     setIsLoadingAiRouteDistance(false);
   };
 
+  const handleApplyOptimizedRoute = async () => {
+    if (!suggestedRoute || !suggestedRoute.optimized_stop_ids || suggestedRoute.optimized_stop_ids.length === 0) {
+      toast({ title: "Error", description: "No hay una ruta sugerida para aplicar.", variant: "destructive" });
+      return;
+    }
+    setIsApplyingRouteOrder(true);
+    const result = await applyOptimizedRouteOrderAction(reparto.id, suggestedRoute.optimized_stop_ids);
+    if (result.success) {
+      toast({ title: "Ruta Aplicada", description: "El orden de las paradas ha sido actualizado. La página se refrescará." });
+      setSuggestedRoute(null); // Clear the suggestion after applying
+      // Revalidation from action will trigger data refresh for 'initialReparto' prop
+    } else {
+      toast({ title: "Error al Aplicar Ruta", description: result.error || "No se pudo aplicar el nuevo orden.", variant: "destructive" });
+    }
+    setIsApplyingRouteOrder(false);
+  };
+
 
   const isViajeEmpresaType = reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa || reparto.tipo_reparto === tipoRepartoEnum.Values.viaje_empresa_lote;
 
@@ -358,7 +378,7 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     reparto.paradas.forEach(parada => {
       if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && reparto.empresas) {
         map.set(`empresa-${reparto.empresas.id}`, { type: 'pickup', details: reparto.empresas });
-      } else if (parada.envio_id && parada.envio) { 
+      } else if (parada.id) { // Check if parada.id is defined (it's parada_reparto.id for deliveries)
         map.set(parada.id, parada); 
       }
     });
@@ -594,57 +614,63 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
           </CardHeader>
           <CardContent>
             {suggestedRoute.optimized_stop_ids.length > 0 ? (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">Nuevo Orden</TableHead>
-                      <TableHead>Destino/Tipo Parada</TableHead>
-                      <TableHead>Ubicación</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {suggestedRoute.optimized_stop_ids.map((stopId, index) => {
-                      const paradaInfo = paradasMap.get(stopId);
-                      if (!paradaInfo) {
-                        console.warn(`AI suggested stopId "${stopId}" not found in current paradasMap.`);
-                        return (
-                           <TableRow key={`${stopId}-${index}-missing`}>
-                             <TableCell colSpan={3} className="text-destructive text-center">
-                                Parada sugerida con ID '{stopId}' no encontrada en los datos actuales del reparto.
-                             </TableCell>
-                           </TableRow>
-                        );
-                      }
-
-                      let label, location;
-                      let isPickup = false;
-                      if ('type' in paradaInfo && paradaInfo.type === 'pickup') { 
-                        label = `Retiro en ${paradaInfo.details.nombre}`;
-                        location = paradaInfo.details.direccion;
-                        isPickup = true;
-                      } else { 
-                        const paradaEnvioCliente = paradaInfo as ParadaConEnvioYCliente;
-                        const envio = paradaEnvioCliente.envio;
-                        label = envio?.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio?.nombre_cliente_temporal || 'N/A';
-                        location = envio?.client_location;
-                      }
-
-                      return (
-                        <TableRow key={`${stopId}-${index}`} className={isPickup ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
-                          <TableCell className="font-medium text-center">{index + 1}</TableCell>
-                          <TableCell>
-                            <div className="font-medium flex items-center gap-2">
-                               {isPickup ? <Home className="h-4 w-4 text-blue-600"/> : <User className="h-4 w-4 text-muted-foreground"/>}
-                               {label}
-                            </div>
-                          </TableCell>
-                          <TableCell>{location || 'N/A'}</TableCell>
+              <div className="space-y-4">
+                <div className="overflow-x-auto">
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead className="w-12">Nuevo Orden</TableHead>
+                        <TableHead>Destino/Tipo Parada</TableHead>
+                        <TableHead>Ubicación</TableHead>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                        {suggestedRoute.optimized_stop_ids.map((stopId, index) => {
+                        const paradaInfo = paradasMap.get(stopId);
+                        if (!paradaInfo) {
+                            console.warn(`AI suggested stopId "${stopId}" not found in current paradasMap.`);
+                            return (
+                            <TableRow key={`${stopId}-${index}-missing`}>
+                                <TableCell colSpan={3} className="text-destructive text-center">
+                                    Parada sugerida con ID '{stopId}' no encontrada en los datos actuales del reparto.
+                                </TableCell>
+                            </TableRow>
+                            );
+                        }
+
+                        let label, location;
+                        let isPickup = false;
+                        if ('type' in paradaInfo && paradaInfo.type === 'pickup') { 
+                            label = `Retiro en ${paradaInfo.details.nombre}`;
+                            location = paradaInfo.details.direccion;
+                            isPickup = true;
+                        } else { 
+                            const paradaEnvioCliente = paradaInfo as ParadaConEnvioYCliente;
+                            const envio = paradaEnvioCliente.envio;
+                            label = envio?.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio?.nombre_cliente_temporal || 'N/A';
+                            location = envio?.client_location;
+                        }
+
+                        return (
+                            <TableRow key={`${stopId}-${index}`} className={isPickup ? "bg-blue-50 dark:bg-blue-900/30" : ""}>
+                            <TableCell className="font-medium text-center">{index + 1}</TableCell>
+                            <TableCell>
+                                <div className="font-medium flex items-center gap-2">
+                                {isPickup ? <Home className="h-4 w-4 text-blue-600"/> : <User className="h-4 w-4 text-muted-foreground"/>}
+                                {label}
+                                </div>
+                            </TableCell>
+                            <TableCell>{location || 'N/A'}</TableCell>
+                            </TableRow>
+                        );
+                        })}
+                    </TableBody>
+                    </Table>
+                </div>
+                <Button onClick={handleApplyOptimizedRoute} disabled={isApplyingRouteOrder} className="w-full sm:w-auto">
+                    {isApplyingRouteOrder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                    Aplicar Ruta Sugerida
+                </Button>
               </div>
             ) : (
               <p className="text-muted-foreground">La IA no pudo generar una ruta optimizada o no hay paradas válidas.</p>
@@ -655,3 +681,5 @@ export function RepartoDetailView({ initialReparto, updateRepartoStatusAction, r
     </div>
   );
 }
+
+    

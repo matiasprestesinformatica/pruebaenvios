@@ -37,7 +37,7 @@ export async function getEmpresasForRepartoAction(): Promise<Pick<Empresa, 'id' 
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("empresas")
-      .select("id, nombre, direccion, latitud, longitud") // Include direccion, latitud, longitud
+      .select("id, nombre, direccion, latitud, longitud")
       .order("nombre", { ascending: true });
     if (error) {
       const pgError = error as PostgrestError;
@@ -154,14 +154,10 @@ export async function createRepartoAction(
     .select()
     .single();
 
-  if (repartoError) {
-    const pgError = repartoError as PostgrestError;
+  if (repartoError || !nuevoReparto) {
+    const pgError = repartoError as PostgrestError | null;
     console.error("Error creating reparto:", JSON.stringify(pgError, null, 2));
-    return { success: false, error: `No se pudo crear el reparto: ${pgError.message}`, data: null };
-  }
-
-  if (!nuevoReparto) {
-    return { success: false, error: "No se pudo crear el reparto, no se obtuvo respuesta.", data: null };
+    return { success: false, error: `No se pudo crear el reparto: ${pgError?.message || 'Error desconocido'}`, data: null };
   }
 
   const { error: enviosError } = await supabase
@@ -170,26 +166,23 @@ export async function createRepartoAction(
     .in("id", envio_ids);
 
   if (enviosError) {
-    const pgError = enviosError as PostgrestError;
-    console.error("Error updating envios for reparto:", JSON.stringify(pgError, null, 2));
-    // Continue to create paradas even if some envios fail to update, log error
-    // return { success: true, error: `Reparto creado, pero falló la asignación de envíos: ${pgError.message}.`, data: nuevoReparto };
+    const pgEnviosError = enviosError as PostgrestError;
+    console.warn("Error updating envios for reparto (continuing):", JSON.stringify(pgEnviosError, null, 2));
   }
 
   const paradasToInsert: NuevaParadaReparto[] = envio_ids.map((envioId, index) => ({
     reparto_id: nuevoReparto.id,
     envio_id: envioId,
-    tipo_parada: tipoParadaEnum.Values.entrega_cliente, // Default to 'entrega_cliente'
-    orden: index, // Simple sequential order for now
+    tipo_parada: tipoParadaEnum.Values.entrega_cliente,
+    orden: index, 
   }));
 
   if (paradasToInsert.length > 0) {
     const { error: paradasError } = await supabase.from("paradas_reparto").insert(paradasToInsert);
     if (paradasError) {
-      const pgError = paradasError as PostgrestError;
-      console.error("Error creating paradas_reparto:", JSON.stringify(pgError, null, 2));
-      // Reparto created, envios might be updated, but paradas failed.
-      return { success: true, error: `Reparto y envíos actualizados, pero falló la creación de paradas: ${pgError.message}.`, data: nuevoReparto };
+      const pgParadasError = paradasError as PostgrestError;
+      console.error("Error creating paradas_reparto:", JSON.stringify(pgParadasError, null, 2));
+      return { success: true, error: `Reparto y envíos actualizados, pero falló la creación de paradas: ${pgParadasError.message}.`, data: nuevoReparto };
     }
   }
 
@@ -278,7 +271,7 @@ export async function getRepartoDetailsAction(repartoId: string): Promise<{ data
     const paradasConEnvioYCliente: ParadaConEnvioYCliente[] = (paradasData || []).map(p => ({
       ...p,
       envio_id: p.envio_id, 
-      tipo_parada: p.tipo_parada as TipoParadaEnumTypeFromDB | null, // Cast to the enum type from DB
+      tipo_parada: p.tipo_parada as TipoParadaEnumTypeFromDB | null,
       envio: p.envio ? (p.envio as EnvioConCliente) : null
     }));
     
@@ -337,9 +330,7 @@ export async function updateRepartoEstadoAction(
 
       if (enviosError) {
         const pgEnviosError = enviosError as PostgrestError;
-        console.error(`Error updating envios status to '${nuevoEstadoEnvio}':`, JSON.stringify(pgEnviosError, null, 2));
-        // Don't stop the whole process, but report the error
-        // return { success: false, error: `Estado del reparto actualizado, pero falló la actualización de los envíos: ${pgEnviosError.message}` };
+        console.warn(`Error updating envios status to '${nuevoEstadoEnvio}' (continuing):`, JSON.stringify(pgEnviosError, null, 2));
         revalidatePath(`/repartos/${repartoId}`);
         revalidatePath("/repartos");
         revalidatePath("/envios");
@@ -388,25 +379,15 @@ export async function reorderParadasAction(
     let paradaToSwapWith: ParadaReparto | undefined;
     
     if (direccion === 'up') {
-      // Cannot move up if it's the first item, or if it's the "retiro_empresa" stop at orden 0
       if (currentIndex === 0 || (paradaToMove.tipo_parada === tipoParadaEnum.Values.retiro_empresa && paradaToMove.orden === 0)) { 
-        return { success: true, error: null }; // No change needed
+        return { success: true, error: null }; 
       }
       paradaToSwapWith = paradas[currentIndex - 1];
-      // Ensure a pickup point cannot be moved below a delivery if it's becoming the first delivery
-      if (paradaToSwapWith.tipo_parada === tipoParadaEnum.Values.retiro_empresa && paradaToMove.tipo_parada === tipoParadaEnum.Values.entrega_cliente){
-         // This scenario should be fine as a delivery is moving above a pickup if swap happens
-      }
-    } else { // direction === 'down'
+    } else { 
       if (currentIndex === paradas.length - 1) {
-        return { success: true, error: null }; // No change needed
+        return { success: true, error: null }; 
       }
       paradaToSwapWith = paradas[currentIndex + 1];
-       // A pickup point cannot be moved down if it's already order 0
-       if (paradaToMove.tipo_parada === tipoParadaEnum.Values.retiro_empresa && paradaToMove.orden === 0){
-            //This check is good, but the initial check `currentIndex === 0` should handle this for 'up'
-            // For 'down', if it's a pickup at order 0, it can be swapped with order 1
-       }
     }
 
     if (!paradaToSwapWith) {
@@ -436,10 +417,9 @@ export async function reorderParadasAction(
     if (updateError2) {
       const pgError2 = updateError2 as PostgrestError;
       console.error("Error updating orden for swapped parada, attempting rollback:", JSON.stringify(pgError2, null, 2));
-      // Attempt to rollback the first update
       await supabase
         .from('paradas_reparto')
-        .update({ orden: paradaToMove.orden }) // Restore original orden
+        .update({ orden: paradaToMove.orden }) 
         .eq('id', paradaToMove.id); 
       return { success: false, error: `Error al actualizar orden (2): ${pgError2.message}` };
     }
@@ -455,13 +435,12 @@ export async function reorderParadasAction(
   }
 }
 
-
 export async function getClientesByEmpresaAction(empresaId: string): Promise<Cliente[]> {
   try {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nombre, apellido, direccion, email, latitud, longitud") // Select all needed fields
+      .select("id, nombre, apellido, direccion, email, latitud, longitud")
       .eq("empresa_id", empresaId)
       .order("apellido", { ascending: true })
       .order("nombre", { ascending: true });
@@ -471,14 +450,13 @@ export async function getClientesByEmpresaAction(empresaId: string): Promise<Cli
       console.error("Error fetching clientes by empresa:", JSON.stringify(pgError, null, 2));
       return [];
     }
-    return data || [];
+    return (data as Cliente[]) || [];
   } catch (e: unknown) {
     const err = e as Error;
     console.error("Critical error in getClientesByEmpresaAction:", err.message);
     return [];
   }
 }
-
 
 export async function createRepartoLoteAction(
   formData: RepartoLoteCreationFormData
@@ -532,41 +510,39 @@ export async function createRepartoLoteAction(
   const paradasParaInsertar: NuevaParadaReparto[] = [];
   let currentOrder = 0;
 
-  // Add pickup stop for the company if it has coordinates
-  if (empresaData.latitud != null && empresaData.longitud != null) {
+  if (empresaData.latitud != null && empresaData.longitud != null && empresaData.direccion != null) {
     paradasParaInsertar.push({
       reparto_id: nuevoReparto.id,
-      envio_id: null, // No specific envio for company pickup
+      envio_id: null, 
       tipo_parada: tipoParadaEnum.Values.retiro_empresa,
       orden: currentOrder++,
     });
   } else {
-    console.warn(`Empresa ${empresaData.nombre} (ID: ${empresaData.id}) no tiene coordenadas. No se creará parada de retiro para el reparto ${nuevoReparto.id}.`);
+    console.warn(`Empresa ${empresaData.nombre} (ID: ${empresaData.id}) no tiene coordenadas o dirección. No se creará parada de retiro para el reparto ${nuevoReparto.id}.`);
   }
 
   if (cliente_ids && cliente_ids.length > 0) {
     const { data: clientesData, error: clientesError } = await supabase
       .from("clientes")
-      .select("id, direccion, latitud, longitud") 
+      .select("id, nombre, apellido, direccion, latitud, longitud") 
       .in("id", cliente_ids);
 
     if (clientesError) {
       const pgClientesError = clientesError as PostgrestError;
-      console.error("Error fetching client details for auto-generating shipments:", JSON.stringify(pgClientesError, null, 2));
-      // Continue without these clients if fetching fails? Or return error? For now, continue.
+      console.warn("Error fetching client details for auto-generating shipments (continuing):", JSON.stringify(pgClientesError, null, 2));
     } else if (clientesData) {
         for (const cliente of clientesData) {
           if (!cliente.direccion) {
-            console.warn(`Cliente ${cliente.id} no tiene dirección. No se generará envío automático para este cliente en reparto ${nuevoReparto.id}.`);
+            console.warn(`Cliente ${cliente.id} (${cliente.nombre} ${cliente.apellido}) no tiene dirección. No se generará envío automático para este cliente en reparto ${nuevoReparto.id}.`);
             continue; 
           }
           const envioParaInsertar: NuevoEnvio = {
             cliente_id: cliente.id,
             client_location: cliente.direccion,
-            latitud: cliente.latitud, // Use client's lat
-            longitud: cliente.longitud, // Use client's lng
-            package_size: 'medium', // Default, or could be from form
-            package_weight: 1,    // Default, or could be from form
+            latitud: cliente.latitud,
+            longitud: cliente.longitud,
+            package_size: 'medium', 
+            package_weight: 1,    
             status: estadoEnvioEnum.Values.asignado_a_reparto,
             reparto_id: nuevoReparto.id, 
           };
@@ -580,7 +556,7 @@ export async function createRepartoLoteAction(
           if (envioInsertError || !nuevoEnvioData) {
             const pgEnvioError = envioInsertError as PostgrestError | null;
             console.error(`Error auto-generating shipment for client ${cliente.id} in reparto ${nuevoReparto.id}:`, JSON.stringify(pgEnvioError, null, 2));
-            continue; // Skip adding parada if envio creation failed
+            continue;
           }
           
           paradasParaInsertar.push({
@@ -598,7 +574,6 @@ export async function createRepartoLoteAction(
     if (paradasError) {
       const pgParadasError = paradasError as PostgrestError;
       console.error("Error creating paradas_reparto for reparto lote:", JSON.stringify(pgParadasError, null, 2));
-      // Reparto created, some envios might be created, but paradas failed.
       revalidatePath("/repartos");
       revalidatePath("/repartos/lote/nuevo");
       revalidatePath("/envios"); 
@@ -632,3 +607,63 @@ export async function optimizeRouteAction(
     return { success: false, error: err.message || "Error inesperado durante la optimización de ruta.", data: null };
   }
 }
+
+
+export async function applyOptimizedRouteOrderAction(
+  repartoId: string,
+  orderedStopInputIds: string[] // Contiene parada.id para envíos y 'empresa-XYZ' para retiro
+): Promise<{ success: boolean; error?: string | null }> {
+  const supabase = createSupabaseServerClient();
+
+  try {
+    // Obtener el reparto para saber el empresa_id si es necesario
+    const { data: repartoData, error: repartoFetchError } = await supabase
+      .from('repartos')
+      .select('id, empresa_id, tipo_reparto')
+      .eq('id', repartoId)
+      .single();
+
+    if (repartoFetchError || !repartoData) {
+      const pgError = repartoFetchError as PostgrestError | null;
+      console.error('Error fetching reparto for applying optimized route:', JSON.stringify(pgError, null, 2));
+      return { success: false, error: pgError?.message || 'No se pudo encontrar el reparto.' };
+    }
+
+    const empresaIdDelReparto = repartoData.empresa_id;
+    const idParadaRetiroEmpresa = empresaIdDelReparto ? `empresa-${empresaIdDelReparto}` : null;
+
+    const updates = orderedStopInputIds.map(async (stopInputId, index) => {
+      if (idParadaRetiroEmpresa && stopInputId === idParadaRetiroEmpresa) {
+        // Es la parada de retiro de la empresa
+        const { error: updateError } = await supabase
+          .from('paradas_reparto')
+          .update({ orden: index })
+          .eq('reparto_id', repartoId)
+          .eq('tipo_parada', tipoParadaEnum.Values.retiro_empresa);
+        if (updateError) throw updateError;
+      } else {
+        // Es una parada de entrega (envio_id)
+        const { error: updateError } = await supabase
+          .from('paradas_reparto')
+          .update({ orden: index })
+          .eq('reparto_id', repartoId)
+          .eq('id', stopInputId); // Asumimos que stopInputId es el parada.id para envíos
+        if (updateError) throw updateError;
+      }
+    });
+
+    await Promise.all(updates);
+
+    revalidatePath(`/repartos/${repartoId}`);
+    revalidatePath("/mapa-envios"); 
+    return { success: true, error: null };
+
+  } catch (e: unknown) {
+    const err = e as Error;
+    const pgError = err as PostgrestError;
+    console.error("Error applying optimized route order:", JSON.stringify(err, null, 2));
+    return { success: false, error: pgError?.message || `Error inesperado al aplicar el orden optimizado: ${err.message}` };
+  }
+}
+
+    

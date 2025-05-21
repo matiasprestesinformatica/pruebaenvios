@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Package, AlertTriangle } from "lucide-react";
-import { getRepartoDetailsAction, updateRepartoEstadoAction, reorderParadasAction, optimizeRouteAction } from "../actions"; // Added optimizeRouteAction
+import { getRepartoDetailsAction, updateRepartoEstadoAction, reorderParadasAction, optimizeRouteAction, applyOptimizedRouteOrderAction } from "../actions";
 import { RepartoDetailView } from "@/components/reparto-detail-view";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,7 +44,8 @@ async function RepartoDetailContent({ repartoId }: { repartoId: string }) {
             initialReparto={repartoCompleto} 
             updateRepartoStatusAction={updateRepartoEstadoAction}
             reorderParadasAction={reorderParadasAction}
-            optimizeRouteAction={optimizeRouteAction} // Pass the new action
+            optimizeRouteAction={optimizeRouteAction}
+            applyOptimizedRouteOrderAction={applyOptimizedRouteOrderAction}
         />;
 }
 
@@ -90,3 +91,5 @@ function RepartoDetailSkeleton() {
 }
 
 export const dynamic = 'force-dynamic';
+
+    
