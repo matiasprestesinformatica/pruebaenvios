@@ -1,5 +1,3 @@
-
--- 00_schema_drop_all.sql
 -- Drop tables in reverse order of dependency due to foreign keys
 DROP TABLE IF EXISTS "public"."paradas_reparto" CASCADE;
 DROP TABLE IF EXISTS "public"."envios" CASCADE;
@@ -9,11 +7,13 @@ DROP TABLE IF EXISTS "public"."empresas" CASCADE;
 DROP TABLE IF EXISTS "public"."repartidores" CASCADE;
 DROP TABLE IF EXISTS "public"."tipos_paquete" CASCADE;
 DROP TABLE IF EXISTS "public"."tipos_servicio" CASCADE;
+DROP TABLE IF EXISTS "public"."tarifas_distancia_calculadora" CASCADE; -- Added
 
 -- Drop enums if they exist
 DROP TYPE IF EXISTS "public"."tipoparadaenum" CASCADE;
+DROP TYPE IF EXISTS "public"."tipocalculadoraservicioenum" CASCADE; -- Added
 
--- 01_schema_enums.sql
+
 -- Create ENUM types if they don't exist
 
 -- Enum para paradas_reparto.tipo_parada
@@ -24,7 +24,15 @@ BEGIN
     END IF;
 END$$;
 
--- 02_schema_tables.sql
+-- Enum para tarifas_distancia_calculadora.tipo_calculadora
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tipocalculadoraservicioenum') THEN
+        CREATE TYPE "public"."tipocalculadoraservicioenum" AS ENUM ('lowcost', 'express');
+    END IF;
+END$$;
+
+
 -- Create Table for Repartidores
 CREATE TABLE "public"."repartidores" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -94,8 +102,8 @@ CREATE TABLE "public"."repartos" (
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     "fecha_reparto" DATE NOT NULL,
     "repartidor_id" UUID NULL REFERENCES "public"."repartidores"("id") ON DELETE SET NULL,
-    "estado" TEXT NOT NULL DEFAULT 'asignado', -- Validated by Zod: 'asignado', 'en_curso', 'completado'
-    "tipo_reparto" TEXT NOT NULL, -- Validated by Zod: 'individual', 'viaje_empresa', 'viaje_empresa_lote'
+    "estado" TEXT NOT NULL DEFAULT 'asignado', 
+    "tipo_reparto" TEXT NOT NULL, 
     "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL
 );
 COMMENT ON TABLE "public"."repartos" IS 'Stores delivery route information.';
@@ -109,9 +117,9 @@ CREATE TABLE "public"."envios" (
     "client_location" TEXT NOT NULL,
     "latitud" NUMERIC NULL,
     "longitud" NUMERIC NULL,
-    "tipo_paquete_id" UUID NULL REFERENCES "public"."tipos_paquete"("id") ON DELETE SET NULL, -- Replaced package_size
+    "tipo_paquete_id" UUID NULL REFERENCES "public"."tipos_paquete"("id") ON DELETE SET NULL,
     "package_weight" NUMERIC NOT NULL DEFAULT 0.1,
-    "status" TEXT NOT NULL DEFAULT 'pending', -- Validated by Zod
+    "status" TEXT NOT NULL DEFAULT 'pending',
     "suggested_options" JSON NULL,
     "reasoning" TEXT NULL,
     "reparto_id" UUID NULL REFERENCES "public"."repartos"("id") ON DELETE SET NULL,
@@ -140,7 +148,23 @@ COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence of stops (s
 COMMENT ON COLUMN "public"."paradas_reparto"."envio_id" IS 'FK to envios. Null if tipo_parada is retiro_empresa.';
 COMMENT ON COLUMN "public"."paradas_reparto"."tipo_parada" IS 'Type of stop: company pickup or client delivery.';
 
--- 03_schema_rls.sql
+-- Create Table for Tarifas Distancia Calculadora
+CREATE TABLE "public"."tarifas_distancia_calculadora" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "tipo_calculadora" public.tipocalculadoraservicioenum NOT NULL,
+    "distancia_hasta_km" NUMERIC NOT NULL,
+    "precio" NUMERIC(10, 2) NOT NULL,
+    "fecha_vigencia_desde" DATE NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    CONSTRAINT uq_tarifa_distancia_version UNIQUE (tipo_calculadora, fecha_vigencia_desde, distancia_hasta_km)
+);
+COMMENT ON TABLE "public"."tarifas_distancia_calculadora" IS 'Stores distance-based pricing tiers for calculators (LowCost, Express).';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."tipo_calculadora" IS 'Indicates if the tariff is for LowCost or Express calculator.';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."distancia_hasta_km" IS 'The upper bound of the distance tier (e.g., up to 5 km).';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."precio" IS 'The price for this distance tier.';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."fecha_vigencia_desde" IS 'The date from which this tariff list is effective.';
+
+
 -- Enable RLS for all tables
 ALTER TABLE "public"."empresas" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."clientes" ENABLE ROW LEVEL SECURITY;
@@ -150,6 +174,7 @@ ALTER TABLE "public"."tipos_servicio" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."repartos" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."envios" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."paradas_reparto" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."tarifas_distancia_calculadora" ENABLE ROW LEVEL SECURITY;
 
 -- Create permissive policies for authenticated users
 CREATE POLICY "Allow all for authenticated users (empresas)" ON "public"."empresas"
@@ -168,8 +193,12 @@ CREATE POLICY "Allow all for authenticated users (envios)" ON "public"."envios"
     FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated users (paradas_reparto)" ON "public"."paradas_reparto"
     FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for authenticated users (tarifas_distancia_calculadora)" ON "public"."tarifas_distancia_calculadora"
+    FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read access for calculator tariffs" ON "public"."tarifas_distancia_calculadora"
+    FOR SELECT TO "anon", "authenticated" USING (true);
 
--- 04_data_seed.sql
+
 -- Sample Data for Empresas
 INSERT INTO "public"."empresas" ("id", "nombre", "direccion", "email", "telefono", "estado", "latitud", "longitud") VALUES
 ('a1b2c3d4-e5f6-7890-1234-567890abcdef', 'Tech Solutions SRL', 'San Martin 123, Mar del Plata', 'contacto@techsrl.com', '+542235550100', TRUE, -38.0045, -57.5426),
@@ -221,32 +250,44 @@ INSERT INTO "public"."envios" (
 ) VALUES
 ((SELECT id from clientes WHERE email = 'juan.perez@example.com'), 'Av. Colón 1234, Mar del Plata', -38.0005, -57.5560, (SELECT id from tipos_paquete WHERE nombre = 'Caja Mediana'), 1.5, 'asignado_a_reparto', 'df1e184e-71e6-4f00-a78d-b6e93034cd35', (SELECT id from tipos_servicio WHERE nombre = 'Envío Express'), 1500.00),
 ((SELECT id from clientes WHERE email = 'maria.garcia@example.com'), 'Belgrano 5678, Mar del Plata', -38.0025, -57.5490, (SELECT id from tipos_paquete WHERE nombre = 'Caja Pequeña'), 0.5, 'en_transito', 'caad29f1-cf73-42d4-b3d2-658a7814f1c4', (SELECT id from tipos_servicio WHERE nombre = 'Envío LowCost'), 800.00),
-((SELECT id from clientes WHERE email = 'carlos.lopez@example.com'), 'Moreno 9101, Mar del Plata', -37.9910, -57.5830, (SELECT id from tipos_paquete WHERE nombre = 'Caja Grande'), 5, 'entregado', 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', NULL, 2500.00), -- Precio manual
+((SELECT id from clientes WHERE email = 'carlos.lopez@example.com'), 'Moreno 9101, Mar del Plata', -37.9910, -57.5830, (SELECT id from tipos_paquete WHERE nombre = 'Caja Grande'), 5, 'entregado', 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', NULL, 2500.00),
 ((SELECT id from clientes WHERE email = 'ana.martinez@example.com'), 'Luro 3210, Mar del Plata', -38.0048, -57.5430, (SELECT id from tipos_paquete WHERE nombre = 'Documentos'), 2.2, 'asignado_a_reparto', 'df1e184e-71e6-4f00-a78d-b6e93034cd35', (SELECT id from tipos_servicio WHERE nombre = 'Envío Express'), 1500.00),
 ((SELECT id from clientes WHERE email = 'a.dentone@topservice.net'), 'Colon 6130, B7600 Mar del Plata', -38.0022, -57.5450, (SELECT id from tipos_paquete WHERE nombre = 'Caja Mediana'), 1, 'asignado_a_reparto', 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', NULL, NULL),
 ((SELECT id from clientes WHERE email = 'a_almejun@unique-mail.com'), 'Irala 6249, B7600 Mar del Plata', -38.0150, -57.5500, (SELECT id from tipos_paquete WHERE nombre = 'Delivery Comida'), 1, 'pending', NULL, (SELECT id from tipos_servicio WHERE nombre = 'Envío Express'), 1500.00);
 
 -- Sample Data for Paradas_Reparto
--- Reparto 1 (Tech Solutions)
 INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "tipo_parada", "orden")
-SELECT 'df1e184e-71e6-4f00-a78d-b6e93034cd35', e.id, 'entrega_cliente', 0
-FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'juan.perez@example.com') AND e.reparto_id = 'df1e184e-71e6-4f00-a78d-b6e93034cd35' LIMIT 1;
+SELECT 'df1e184e-71e6-4f00-a78d-b6e93034cd35', e.id, 'entrega_cliente', 0 FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'juan.perez@example.com') AND e.reparto_id = 'df1e184e-71e6-4f00-a78d-b6e93034cd35' AND e.client_location = 'Av. Colón 1234, Mar del Plata' LIMIT 1;
 INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "tipo_parada", "orden")
-SELECT 'df1e184e-71e6-4f00-a78d-b6e93034cd35', e.id, 'entrega_cliente', 1
-FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'ana.martinez@example.com') AND e.reparto_id = 'df1e184e-71e6-4f00-a78d-b6e93034cd35' LIMIT 1;
+SELECT 'df1e184e-71e6-4f00-a78d-b6e93034cd35', e.id, 'entrega_cliente', 1 FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'ana.martinez@example.com') AND e.reparto_id = 'df1e184e-71e6-4f00-a78d-b6e93034cd35' AND e.client_location = 'Luro 3210, Mar del Plata' LIMIT 1;
 
--- Reparto 2 (Individual)
 INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "tipo_parada", "orden")
-SELECT 'caad29f1-cf73-42d4-b3d2-658a7814f1c4', e.id, 'entrega_cliente', 0
-FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'maria.garcia@example.com') AND e.reparto_id = 'caad29f1-cf73-42d4-b3d2-658a7814f1c4' LIMIT 1;
+SELECT 'caad29f1-cf73-42d4-b3d2-658a7814f1c4', e.id, 'entrega_cliente', 0 FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'maria.garcia@example.com') AND e.reparto_id = 'caad29f1-cf73-42d4-b3d2-658a7814f1c4' AND e.client_location = 'Belgrano 5678, Mar del Plata' LIMIT 1;
 
--- Reparto 3 (Nutrisabor Lote)
 INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "tipo_parada", "orden") VALUES
-('a7a9309f-6bbf-4029-9f61-4d0a3724b908', NULL, 'retiro_empresa', 0); -- Parada de retiro
+('a7a9309f-6bbf-4029-9f61-4d0a3724b908', NULL, 'retiro_empresa', 0);
 INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "tipo_parada", "orden")
-SELECT 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', e.id, 'entrega_cliente', 1
-FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'carlos.lopez@example.com') AND e.reparto_id = 'a7a9309f-6bbf-4029-9f61-4d0a3724b908' LIMIT 1;
+SELECT 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', e.id, 'entrega_cliente', 1 FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'carlos.lopez@example.com') AND e.reparto_id = 'a7a9309f-6bbf-4029-9f61-4d0a3724b908' AND e.client_location = 'Moreno 9101, Mar del Plata' LIMIT 1;
 INSERT INTO "public"."paradas_reparto" ("reparto_id", "envio_id", "tipo_parada", "orden")
-SELECT 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', e.id, 'entrega_cliente', 2
-FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'a.dentone@topservice.net') AND e.reparto_id = 'a7a9309f-6bbf-4029-9f61-4d0a3724b908' LIMIT 1;
+SELECT 'a7a9309f-6bbf-4029-9f61-4d0a3724b908', e.id, 'entrega_cliente', 2 FROM envios e WHERE e.cliente_id = (SELECT id from clientes WHERE email = 'a.dentone@topservice.net') AND e.reparto_id = 'a7a9309f-6bbf-4029-9f61-4d0a3724b908' AND e.client_location = 'Colon 6130, B7600 Mar del Plata' LIMIT 1;
 
+-- Sample Data for Tarifas Distancia Calculadora
+-- LowCost - Vigente desde 2024-01-01
+INSERT INTO "public"."tarifas_distancia_calculadora" ("tipo_calculadora", "distancia_hasta_km", "precio", "fecha_vigencia_desde") VALUES
+('lowcost', 2.9, 800.00, '2024-01-01'),
+('lowcost', 4.9, 1200.00, '2024-01-01'),
+('lowcost', 8.9, 1800.00, '2024-01-01'),
+('lowcost', 13.0, 2500.00, '2024-01-01'),
+('lowcost', 17.0, 3200.00, '2024-01-01');
+
+-- LowCost - Vigente desde 2025-06-01 (ejemplo de precios futuros)
+INSERT INTO "public"."tarifas_distancia_calculadora" ("tipo_calculadora", "distancia_hasta_km", "precio", "fecha_vigencia_desde") VALUES
+('lowcost', 2.9, 900.00, '2025-06-01'),
+('lowcost', 4.9, 1300.00, '2025-06-01'),
+('lowcost', 8.9, 2000.00, '2025-06-01');
+
+-- Express - Vigente desde 2024-01-01
+INSERT INTO "public"."tarifas_distancia_calculadora" ("tipo_calculadora", "distancia_hasta_km", "precio", "fecha_vigencia_desde") VALUES
+('express', 2.0, 1500.00, '2024-01-01'),
+('express', 5.0, 2200.00, '2024-01-01'),
+('express', 10.0, 3500.00, '2024-01-01');

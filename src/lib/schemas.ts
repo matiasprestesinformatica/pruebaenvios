@@ -34,7 +34,7 @@ export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(),
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Can be null if not selected initially
   package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
   tipo_servicio_id: z.string().uuid().optional().nullable(),
@@ -64,7 +64,7 @@ export const shipmentSchema = z.object({
       });
     }
   }
-  if (!data.tipo_paquete_id) {
+  if (!data.tipo_paquete_id) { // Always require a package type
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de paquete.",
@@ -85,9 +85,6 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
-
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
@@ -114,7 +111,7 @@ export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 export const clienteConServicioLoteSchema = z.object({
   cliente_id: z.string().uuid(),
   tipo_servicio_id_lote: z.string().uuid().optional().nullable(),
-  precio_manual_lote: z.coerce.number().min(0).optional().nullable(),
+  precio_manual_lote: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
 });
 export type ClienteConServicioLoteData = z.infer<typeof clienteConServicioLoteSchema>;
 
@@ -143,3 +140,25 @@ export const tipoServicioSchema = z.object({
   activo: z.boolean().default(true),
 });
 export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
+
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
+
+export const tipoCalculadoraServicioEnum = z.enum(['lowcost', 'express']);
+export type TipoCalculadoraServicioFormData = z.infer<typeof tipoCalculadoraServicioEnum>;
+
+
+export const tarifaDistanciaCalculadoraSchema = z.object({
+  id: z.string().uuid().optional(), // Optional for new tariffs not yet in DB
+  distancia_hasta_km: z.coerce.number().min(0.1, "La distancia debe ser mayor a 0."),
+  precio: z.coerce.number().min(0, "El precio no puede ser negativo."),
+});
+export type TarifaDistanciaCalculadoraFormData = z.infer<typeof tarifaDistanciaCalculadoraSchema>;
+
+export const listaTarifasCalculadoraSchema = z.object({
+  fecha_vigencia_desde: z.date({
+    required_error: "La fecha de vigencia es obligatoria.",
+  }),
+  tarifas: z.array(tarifaDistanciaCalculadoraSchema).min(1, "Debe definir al menos un tramo de tarifa."),
+});
+export type ListaTarifasCalculadoraFormData = z.infer<typeof listaTarifasCalculadoraSchema>;

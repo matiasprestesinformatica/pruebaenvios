@@ -1,3 +1,12 @@
+-- Create Table for Repartidores
+CREATE TABLE "public"."repartidores" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "estado" BOOLEAN NOT NULL DEFAULT TRUE
+);
+COMMENT ON TABLE "public"."repartidores" IS 'Stores delivery personnel information.';
+
 -- Create Table for Empresas
 CREATE TABLE "public"."empresas" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,18 +36,9 @@ CREATE TABLE "public"."clientes" (
     "notas" TEXT NULL,
     "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL,
     "estado" BOOLEAN NOT NULL DEFAULT TRUE,
-    CONSTRAINT clientes_email_key UNIQUE (email) -- Permite múltiples NULLs pero no emails duplicados
+    CONSTRAINT clientes_email_key UNIQUE (email)
 );
 COMMENT ON TABLE "public"."clientes" IS 'Stores client information and their link to a company.';
-
--- Create Table for Repartidores
-CREATE TABLE "public"."repartidores" (
-    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    "nombre" TEXT NOT NULL,
-    "estado" BOOLEAN NOT NULL DEFAULT TRUE
-);
-COMMENT ON TABLE "public"."repartidores" IS 'Stores delivery personnel information.';
 
 -- Create Table for Tipos de Paquete
 CREATE TABLE "public"."tipos_paquete" (
@@ -67,8 +67,8 @@ CREATE TABLE "public"."repartos" (
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     "fecha_reparto" DATE NOT NULL,
     "repartidor_id" UUID NULL REFERENCES "public"."repartidores"("id") ON DELETE SET NULL,
-    "estado" TEXT NOT NULL DEFAULT 'asignado', -- Validated by Zod: 'asignado', 'en_curso', 'completado'
-    "tipo_reparto" TEXT NOT NULL, -- Validated by Zod: 'individual', 'viaje_empresa', 'viaje_empresa_lote'
+    "estado" TEXT NOT NULL DEFAULT 'asignado', 
+    "tipo_reparto" TEXT NOT NULL, 
     "empresa_id" UUID NULL REFERENCES "public"."empresas"("id") ON DELETE SET NULL
 );
 COMMENT ON TABLE "public"."repartos" IS 'Stores delivery route information.';
@@ -82,31 +82,49 @@ CREATE TABLE "public"."envios" (
     "client_location" TEXT NOT NULL,
     "latitud" NUMERIC NULL,
     "longitud" NUMERIC NULL,
-    "package_size" TEXT NOT NULL, -- Validated by Zod: 'small', 'medium', 'large'
+    "tipo_paquete_id" UUID NULL REFERENCES "public"."tipos_paquete"("id") ON DELETE SET NULL,
     "package_weight" NUMERIC NOT NULL DEFAULT 0.1,
-    "status" TEXT NOT NULL DEFAULT 'pending', -- Validated by Zod: 'pending', 'suggested', etc.
+    "status" TEXT NOT NULL DEFAULT 'pending',
     "suggested_options" JSON NULL,
     "reasoning" TEXT NULL,
-    "reparto_id" UUID NULL REFERENCES "public"."repartos"("id") ON DELETE SET NULL
+    "reparto_id" UUID NULL REFERENCES "public"."repartos"("id") ON DELETE SET NULL,
+    "tipo_servicio_id" UUID NULL REFERENCES "public"."tipos_servicio"("id") ON DELETE SET NULL,
+    "precio_servicio_final" NUMERIC(10, 2) NULL
 );
 COMMENT ON TABLE "public"."envios" IS 'Stores individual shipment details.';
 COMMENT ON COLUMN "public"."envios"."reparto_id" IS 'Foreign key to the assigned reparto.';
 COMMENT ON COLUMN "public"."envios"."latitud" IS 'Latitude of the client_location for mapping.';
 COMMENT ON COLUMN "public"."envios"."longitud" IS 'Longitude of the client_location for mapping.';
+COMMENT ON COLUMN "public"."envios"."tipo_paquete_id" IS 'Foreign key to the type of package.';
+COMMENT ON COLUMN "public"."envios"."tipo_servicio_id" IS 'Foreign key to the type of service.';
+COMMENT ON COLUMN "public"."envios"."precio_servicio_final" IS 'Final price for the service of this shipment.';
 
 -- Create Table for Paradas_Reparto
 CREATE TABLE "public"."paradas_reparto" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "reparto_id" UUID NOT NULL REFERENCES "public"."repartos"("id") ON DELETE CASCADE,
-    "envio_id" UUID NULL REFERENCES "public"."envios"("id") ON DELETE CASCADE, -- Nullable for 'retiro_empresa'
-    "tipo_parada" public.tipoparadaenum NULL, -- 'retiro_empresa', 'entrega_cliente'
+    "envio_id" UUID NULL REFERENCES "public"."envios"("id") ON DELETE CASCADE,
+    "tipo_parada" public.tipoparadaenum NULL,
     "orden" INTEGER NOT NULL,
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    -- Unique (reparto_id, envio_id) if envio_id is NOT NULL.
-    -- PostgreSQL allows multiple NULLs in a unique constraint, so this works for retiro_empresa.
     CONSTRAINT uq_reparto_envio UNIQUE (reparto_id, envio_id) DEFERRABLE INITIALLY DEFERRED
-    -- Removed: CONSTRAINT uq_reparto_orden UNIQUE (reparto_id, orden) 
 );
 COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence of stops (shipments or company pickup) within a delivery route.';
 COMMENT ON COLUMN "public"."paradas_reparto"."envio_id" IS 'FK to envios. Null if tipo_parada is retiro_empresa.';
 COMMENT ON COLUMN "public"."paradas_reparto"."tipo_parada" IS 'Type of stop: company pickup or client delivery.';
+
+-- Create Table for Tarifas Distancia Calculadora
+CREATE TABLE "public"."tarifas_distancia_calculadora" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "tipo_calculadora" public.tipocalculadoraservicioenum NOT NULL,
+    "distancia_hasta_km" NUMERIC NOT NULL,
+    "precio" NUMERIC(10, 2) NOT NULL,
+    "fecha_vigencia_desde" DATE NOT NULL,
+    "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    CONSTRAINT uq_tarifa_distancia_version UNIQUE (tipo_calculadora, fecha_vigencia_desde, distancia_hasta_km)
+);
+COMMENT ON TABLE "public"."tarifas_distancia_calculadora" IS 'Stores distance-based pricing tiers for calculators (LowCost, Express).';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."tipo_calculadora" IS 'Indicates if the tariff is for LowCost or Express calculator.';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."distancia_hasta_km" IS 'The upper bound of the distance tier (e.g., up to 5 km).';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."precio" IS 'The price for this distance tier.';
+COMMENT ON COLUMN "public"."tarifas_distancia_calculadora"."fecha_vigencia_desde" IS 'The date from which this tariff list is effective.';

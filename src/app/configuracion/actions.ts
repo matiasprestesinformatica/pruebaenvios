@@ -3,10 +3,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { TipoPaqueteFormData, TipoServicioFormData } from "@/lib/schemas";
-import { tipoPaqueteSchema, tipoServicioSchema } from "@/lib/schemas";
-import type { Database, TipoPaquete, NuevoTipoPaquete, UpdateTipoPaquete, TipoServicio, NuevoTipoServicio, UpdateTipoServicio } from "@/types/supabase";
+import type { TipoPaqueteFormData, TipoServicioFormData, ListaTarifasCalculadoraFormData, TarifaDistanciaCalculadoraFormData } from "@/lib/schemas";
+import { tipoPaqueteSchema, tipoServicioSchema, listaTarifasCalculadoraSchema } from "@/lib/schemas";
+import type { Database, TipoPaquete, NuevoTipoPaquete, UpdateTipoPaquete, TipoServicio, NuevoTipoServicio, UpdateTipoServicio, TipoCalculadoraServicioEnum, TarifaDistanciaCalculadora, NuevaTarifaDistanciaCalculadora } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { format } from 'date-fns';
 
 // --- Tipos de Paquete Actions ---
 
@@ -43,6 +44,8 @@ export async function addTipoPaqueteAction(
       return { success: false, error: errorMessage, data: null };
     }
     revalidatePath("/configuracion");
+    revalidatePath("/envios"); 
+    revalidatePath("/envios/nuevo");
     return { success: true, data: newTipoPaquete, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -139,7 +142,7 @@ export async function updateTipoPaqueteAction(
       return { success: false, error: errorMessage, data: null };
     }
     revalidatePath("/configuracion");
-    revalidatePath("/envios"); // Revalidate envios page as package types might affect display
+    revalidatePath("/envios"); 
     revalidatePath("/envios/nuevo");
     return { success: true, data: updatedTipoPaquete, error: null };
   } catch (e: unknown) {
@@ -164,7 +167,8 @@ export async function updateTipoPaqueteEstadoAction(
       return { success: false, error: pgError.message || "Error al actualizar estado." };
     }
     revalidatePath("/configuracion");
-    revalidatePath("/envios/nuevo"); // Revalidate new shipment page as active package types list might change
+    revalidatePath("/envios");
+    revalidatePath("/envios/nuevo");
     return { success: true, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -230,6 +234,8 @@ export async function addTipoServicioAction(
       return { success: false, error: errorMessage, data: null };
     }
     revalidatePath("/configuracion");
+    revalidatePath("/envios");
+    revalidatePath("/envios/nuevo");
     return { success: true, data: newTipoServicio, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -326,7 +332,7 @@ export async function updateTipoServicioAction(
       return { success: false, error: errorMessage, data: null };
     }
     revalidatePath("/configuracion");
-    revalidatePath("/envios"); // Revalidate envios page as service types/prices might affect display
+    revalidatePath("/envios"); 
     revalidatePath("/envios/nuevo");
     return { success: true, data: updatedTipoServicio, error: null };
   } catch (e: unknown) {
@@ -351,7 +357,8 @@ export async function updateTipoServicioEstadoAction(
       return { success: false, error: pgError.message || "Error al actualizar estado." };
     }
     revalidatePath("/configuracion");
-    revalidatePath("/envios/nuevo"); // Revalidate new shipment page as active service types list might change
+    revalidatePath("/envios");
+    revalidatePath("/envios/nuevo");
     return { success: true, error: null };
   } catch (e: unknown) {
     const err = e as Error;
@@ -378,5 +385,126 @@ export async function getTiposServicioActivosAction(): Promise<Pick<TipoServicio
     const err = e as Error;
     console.error("Unexpected error in getTiposServicioActivosAction:", err.message);
     return [];
+  }
+}
+
+
+// --- Tarifas Distancia Calculadora Actions ---
+
+export async function getTarifasCalculadoraConHistorialAction(
+  tipo: TipoCalculadoraServicioEnum
+): Promise<{ data: Record<string, TarifaDistanciaCalculadora[]>; error: string | null }> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from('tarifas_distancia_calculadora')
+      .select('*')
+      .eq('tipo_calculadora', tipo)
+      .order('fecha_vigencia_desde', { ascending: false })
+      .order('distancia_hasta_km', { ascending: true });
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error(`Error fetching tariffs history for ${tipo}:`, pgError);
+      return { data: {}, error: `Error al obtener historial de tarifas: ${pgError.message}` };
+    }
+
+    const agrupadas: Record<string, TarifaDistanciaCalculadora[]> = {};
+    (data || []).forEach(tarifa => {
+      const fechaKey = tarifa.fecha_vigencia_desde; // Direct string key
+      if (!agrupadas[fechaKey]) {
+        agrupadas[fechaKey] = [];
+      }
+      agrupadas[fechaKey].push(tarifa);
+    });
+
+    return { data: agrupadas, error: null };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error(`Unexpected error in getTarifasCalculadoraConHistorialAction for ${tipo}:`, err);
+    return { data: {}, error: err.message || "Error desconocido del servidor al obtener historial de tarifas." };
+  }
+}
+
+export async function saveListaTarifasCalculadoraAction(
+  tipo: TipoCalculadoraServicioEnum,
+  fechaVigenciaDate: Date, // Changed to Date
+  tarifas: TarifaDistanciaCalculadoraFormData[]
+): Promise<{ success: boolean; error?: string | null }> {
+  const supabase = createSupabaseServerClient();
+  
+  const fechaVigenciaString = format(fechaVigenciaDate, 'yyyy-MM-dd');
+
+  // Validate the whole list
+  const validatedSchema = listaTarifasCalculadoraSchema.safeParse({ fecha_vigencia_desde: fechaVigenciaDate, tarifas });
+  if (!validatedSchema.success) {
+    return { success: false, error: "Error de validación: " + JSON.stringify(validatedSchema.error.flatten().fieldErrors) };
+  }
+
+  // Delete existing tariffs for this type and date
+  const { error: deleteError } = await supabase
+    .from('tarifas_distancia_calculadora')
+    .delete()
+    .eq('tipo_calculadora', tipo)
+    .eq('fecha_vigencia_desde', fechaVigenciaString);
+
+  if (deleteError) {
+    const pgDeleteError = deleteError as PostgrestError;
+    console.error(`Error deleting existing tariffs for ${tipo} on ${fechaVigenciaString}:`, pgDeleteError);
+    return { success: false, error: `Error al limpiar tarifas existentes: ${pgDeleteError.message}` };
+  }
+
+  // Insert new tariffs
+  const tarifasParaInsertar: NuevaTarifaDistanciaCalculadora[] = tarifas.map(t => ({
+    tipo_calculadora: tipo,
+    fecha_vigencia_desde: fechaVigenciaString,
+    distancia_hasta_km: t.distancia_hasta_km,
+    precio: t.precio,
+  }));
+
+  if (tarifasParaInsertar.length > 0) {
+    const { error: insertError } = await supabase
+      .from('tarifas_distancia_calculadora')
+      .insert(tarifasParaInsertar);
+
+    if (insertError) {
+      const pgInsertError = insertError as PostgrestError;
+      console.error(`Error inserting new tariffs for ${tipo} on ${fechaVigenciaString}:`, pgInsertError);
+      return { success: false, error: `Error al guardar nuevas tarifas: ${pgInsertError.message}` };
+    }
+  }
+
+  revalidatePath('/configuracion');
+  revalidatePath('/cotizador-envios-express'); // Revalidate calculator pages
+  revalidatePath('/cotizador-envios-lowcost');
+  return { success: true, error: null };
+}
+
+
+export async function deleteTarifasCalculadoraPorFechaAction(
+  tipo: TipoCalculadoraServicioEnum,
+  fechaVigencia: string 
+): Promise<{ success: boolean; error?: string | null }> {
+  const supabase = createSupabaseServerClient();
+  try {
+    const { error } = await supabase
+      .from('tarifas_distancia_calculadora')
+      .delete()
+      .eq('tipo_calculadora', tipo)
+      .eq('fecha_vigencia_desde', fechaVigencia);
+
+    if (error) {
+      const pgError = error as PostgrestError;
+      console.error(`Error deleting tariffs for ${tipo} on ${fechaVigencia}:`, pgError);
+      return { success: false, error: `Error al eliminar lista de tarifas: ${pgError.message}` };
+    }
+    revalidatePath('/configuracion');
+    revalidatePath('/cotizador-envios-express');
+    revalidatePath('/cotizador-envios-lowcost');
+    return { success: true, error: null };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error(`Unexpected error in deleteTarifasCalculadoraPorFechaAction for ${tipo} on ${fechaVigencia}:`, err);
+    return { success: false, error: err.message || "Error desconocido al eliminar lista de tarifas." };
   }
 }

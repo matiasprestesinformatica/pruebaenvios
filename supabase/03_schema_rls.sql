@@ -7,6 +7,7 @@ ALTER TABLE "public"."tipos_servicio" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."repartos" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."envios" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."paradas_reparto" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."tarifas_distancia_calculadora" ENABLE ROW LEVEL SECURITY; -- Added
 
 -- Create permissive policies for authenticated users (for development/initial setup)
 -- Replace with more granular policies for production
@@ -34,3 +35,9 @@ CREATE POLICY "Allow all for authenticated users (envios)" ON "public"."envios"
 
 CREATE POLICY "Allow all for authenticated users (paradas_reparto)" ON "public"."paradas_reparto"
     FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all for authenticated users (tarifas_distancia_calculadora)" ON "public"."tarifas_distancia_calculadora"
+    FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- Added
+
+CREATE POLICY "Allow public read access for calculator tariffs" ON "public"."tarifas_distancia_calculadora"
+    FOR SELECT TO "anon", "authenticated" USING (true); -- Added for calculators

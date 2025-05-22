@@ -8,6 +8,8 @@ import { AddTipoPaqueteDialog } from "@/components/configuracion/add-tipo-paquet
 import { TiposPaqueteTable } from "@/components/configuracion/tipos-paquete-table";
 import { AddTipoServicioDialog } from "@/components/configuracion/add-tipo-servicio-dialog";
 import { TiposServicioTable } from "@/components/configuracion/tipos-servicio-table";
+import { GestionTarifasCalculadora } from "@/components/configuracion/gestion-tarifas-calculadora";
+
 
 import { 
     addTipoPaqueteAction, 
@@ -27,6 +29,7 @@ interface ConfiguracionPageSearchParams {
     searchTiposPaquete?: string;
     pageTiposServicio?: string;
     searchTiposServicio?: string;
+    tab?: string; // For active tab state if needed
 }
 
 interface ConfiguracionPageProps {
@@ -89,16 +92,18 @@ async function TiposServicioSection({ searchParams }: { searchParams: Configurac
 
 
 export default async function ConfiguracionPage({ searchParams }: ConfiguracionPageProps ) {
+  const currentTab = searchParams.tab || "tipos-paquete";
   return (
     <>
       <PageHeader
         title="Configuración General"
-        description="Administre los tipos de paquetes y servicios ofrecidos."
+        description="Administre los tipos de paquetes, servicios y tarifas de la aplicación."
       />
-      <Tabs defaultValue="tipos-paquete" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+      <Tabs defaultValue={currentTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 md:w-auto">
           <TabsTrigger value="tipos-paquete">Tipos de Paquete</TabsTrigger>
           <TabsTrigger value="tipos-servicio">Tipos de Servicio</TabsTrigger>
+          <TabsTrigger value="tarifas-calculadora">Tarifas Calculadora</TabsTrigger>
         </TabsList>
         <TabsContent value="tipos-paquete">
           <Suspense fallback={<Skeleton className="h-[400px] w-full mt-4" />}>
@@ -110,11 +115,14 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
             <TiposServicioSection searchParams={searchParams} />
           </Suspense>
         </TabsContent>
+        <TabsContent value="tarifas-calculadora">
+          <Suspense fallback={<Skeleton className="h-[600px] w-full mt-4" />}>
+            <GestionTarifasCalculadora />
+          </Suspense>
+        </TabsContent>
       </Tabs>
     </>
   );
 }
 
 export const dynamic = 'force-dynamic';
-    
-    

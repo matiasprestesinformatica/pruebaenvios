@@ -15,7 +15,7 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string
+          direccion: string 
           latitud: number | null
           longitud: number | null
           telefono: string | null
@@ -27,7 +27,7 @@ export interface Database {
           id?: string
           created_at?: string
           nombre: string
-          direccion: string
+          direccion: string 
           latitud?: number | null
           longitud?: number | null
           telefono?: string | null
@@ -167,8 +167,8 @@ export interface Database {
           created_at: string
           fecha_reparto: string
           repartidor_id: string | null
-          estado: string
-          tipo_reparto: string
+          estado: string // Zod validated: 'asignado', 'en_curso', 'completado'
+          tipo_reparto: string // Zod validated: 'individual', 'viaje_empresa', 'viaje_empresa_lote'
           empresa_id: string | null
         }
         Insert: {
@@ -199,14 +199,14 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null
+          tipo_paquete_id: string | null // Changed from package_size
           package_weight: number
-          status: string
+          status: string // Zod validated
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
-          tipo_servicio_id: string | null
-          precio_servicio_final: number | null
+          tipo_servicio_id: string | null // Added
+          precio_servicio_final: number | null // Added
         }
         Insert: {
           id?: string
@@ -216,14 +216,14 @@ export interface Database {
           client_location: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null
+          tipo_paquete_id?: string | null // Changed
           package_weight?: number
           status?: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
-          tipo_servicio_id?: string | null
-          precio_servicio_final?: number | null
+          tipo_servicio_id?: string | null // Added
+          precio_servicio_final?: number | null // Added
         }
         Update: {
           id?: string
@@ -233,14 +233,14 @@ export interface Database {
           client_location?: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null
+          tipo_paquete_id?: string | null // Changed
           package_weight?: number
           status?: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
-          tipo_servicio_id?: string | null
-          precio_servicio_final?: number | null
+          tipo_servicio_id?: string | null // Added
+          precio_servicio_final?: number | null // Added
         }
       }
       paradas_reparto: {
@@ -269,7 +269,7 @@ export interface Database {
           created_at?: string
         }
       }
-      tarifas_distancia_calculadora: { // Nueva tabla
+      tarifas_distancia_calculadora: {
         Row: {
           id: string
           tipo_calculadora: Enums<"tipocalculadoraservicioenum">
@@ -283,7 +283,7 @@ export interface Database {
           tipo_calculadora: Enums<"tipocalculadoraservicioenum">
           distancia_hasta_km: number
           precio: number
-          fecha_vigencia_desde?: string
+          fecha_vigencia_desde?: string // Allow default or specify
           created_at?: string
         }
         Update: {
@@ -304,7 +304,7 @@ export interface Database {
     }
     Enums: {
       tipoparadaenum: "retiro_empresa" | "entrega_cliente"
-      tipocalculadoraservicioenum: "lowcost" | "express" // Nuevo Enum
+      tipocalculadoraservicioenum: "lowcost" | "express"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -343,6 +343,7 @@ export type UpdateTipoServicio = Database['public']['Tables']['tipos_servicio'][
 
 export type TarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Row'];
 export type NuevaTarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Insert'];
+export type UpdateTarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Update'];
 
 
 // Extended types for relations
@@ -353,13 +354,14 @@ export type RepartoConDetalles = Reparto & {
 
 export type EnvioConClienteYAjustes = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
-  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; // Added for package name
+  tipos_servicio?: Pick<TipoServicio, 'id' | 'nombre'> | null; // Added for service name
 };
 
 export type EnvioParaDetalleReparto = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono'> | null;
-  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre', 'precio_base'> | null; // Asegurar que precio_base esté
-  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
+  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; // Added
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
@@ -375,16 +377,16 @@ export type ClienteWithEmpresa = Cliente & {
 };
 
 export interface EnvioMapa {
-  id: string;
+  id: string; // Can be envio_id or empresa_id for pickup
   latitud: number;
   longitud: number;
   status: string | null;
   nombre_cliente: string | null;
   client_location: string;
-  tipo_paquete_nombre?: string | null; // Changed from package_size
+  tipo_paquete_nombre?: string | null; 
   package_weight: number | null;
   orden?: number | null;
-  tipo_parada?: Database['public']['Enums']['tipoparadaenum'] | null;
+  tipo_parada?: Enums<"tipoparadaenum"> | null;
 }
 
 export interface RepartoParaFiltro {
@@ -396,7 +398,7 @@ export interface RepartoParaFiltro {
 }
 
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
-export type TipoCalculadoraServicioEnum = Database['public']['Enums']['tipocalculadoraservicioenum']; // Nuevo Enum Type
+export type TipoCalculadoraServicioEnum = Database['public']['Enums']['tipocalculadoraservicioenum'];
 
 export type EnvioCompletoParaDialog = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud'> | null;
