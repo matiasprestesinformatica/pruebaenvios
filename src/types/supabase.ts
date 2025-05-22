@@ -15,25 +15,25 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string // NOT NULL
+          direccion: string
           latitud: number | null
           longitud: number | null
           telefono: string | null
           email: string | null
           notas: string | null
-          estado: boolean // NOT NULL DEFAULT TRUE
+          estado: boolean
         }
         Insert: {
           id?: string
           created_at?: string
           nombre: string
-          direccion: string // NOT NULL
+          direccion: string
           latitud?: number | null
           longitud?: number | null
           telefono?: string | null
           email?: string | null
           notas?: string | null
-          estado?: boolean // Defaults to TRUE in DB
+          estado?: boolean
         }
         Update: {
           id?: string
@@ -54,28 +54,28 @@ export interface Database {
           created_at: string
           nombre: string
           apellido: string
-          direccion: string // NOT NULL
+          direccion: string
           latitud: number | null
           longitud: number | null
           telefono: string | null
-          email: string | null // Is UNIQUE in DB but can be NULL
+          email: string | null
           notas: string | null
           empresa_id: string | null
-          estado: boolean // NOT NULL DEFAULT TRUE
+          estado: boolean
         }
         Insert: {
           id?: string
           created_at?: string
           nombre: string
           apellido: string
-          direccion: string // NOT NULL
+          direccion: string
           latitud?: number | null
           longitud?: number | null
           telefono?: string | null
           email?: string | null
           notas?: string | null
           empresa_id?: string | null
-          estado?: boolean // Defaults to TRUE in DB
+          estado?: boolean
         }
         Update: {
           id?: string
@@ -97,13 +97,13 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          estado: boolean // NOT NULL DEFAULT TRUE
+          estado: boolean
         }
         Insert: {
           id?: string
           created_at?: string
           nombre: string
-          estado?: boolean // Defaults to TRUE in DB
+          estado?: boolean
         }
         Update: {
           id?: string
@@ -115,16 +115,16 @@ export interface Database {
       tipos_paquete: {
         Row: {
           id: string
-          nombre: string // NOT NULL UNIQUE
+          nombre: string
           descripcion: string | null
-          activo: boolean // NOT NULL DEFAULT TRUE
+          activo: boolean
           created_at: string
         }
         Insert: {
           id?: string
           nombre: string
           descripcion?: string | null
-          activo?: boolean // Defaults to TRUE in DB
+          activo?: boolean
           created_at?: string
         }
         Update: {
@@ -138,10 +138,10 @@ export interface Database {
       tipos_servicio: {
         Row: {
           id: string
-          nombre: string // NOT NULL UNIQUE
+          nombre: string
           descripcion: string | null
-          precio_base: number | null // NUMERIC(10,2)
-          activo: boolean // NOT NULL DEFAULT TRUE
+          precio_base: number | null
+          activo: boolean
           created_at: string
         }
         Insert: {
@@ -149,7 +149,7 @@ export interface Database {
           nombre: string
           descripcion?: string | null
           precio_base?: number | null
-          activo?: boolean // Defaults to TRUE in DB
+          activo?: boolean
           created_at?: string
         }
         Update: {
@@ -165,10 +165,10 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string // DATE
+          fecha_reparto: string
           repartidor_id: string | null
-          estado: string // TEXT NOT NULL DEFAULT 'asignado'
-          tipo_reparto: string // TEXT NOT NULL
+          estado: string
+          tipo_reparto: string
           empresa_id: string | null
         }
         Insert: {
@@ -176,7 +176,7 @@ export interface Database {
           created_at?: string
           fecha_reparto: string
           repartidor_id?: string | null
-          estado?: string // Defaults to 'asignado' in DB
+          estado?: string
           tipo_reparto: string
           empresa_id?: string | null
         }
@@ -196,17 +196,17 @@ export interface Database {
           created_at: string
           cliente_id: string | null
           nombre_cliente_temporal: string | null
-          client_location: string // NOT NULL
+          client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null // FK a tipos_paquete
-          package_weight: number // NOT NULL DEFAULT 0.1
-          status: string // TEXT NOT NULL DEFAULT 'pending'
+          tipo_paquete_id: string | null
+          package_weight: number
+          status: string
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
-          tipo_servicio_id: string | null // FK a tipos_servicio
-          precio_servicio_final: number | null // NUMERIC(10,2)
+          tipo_servicio_id: string | null
+          precio_servicio_final: number | null
         }
         Insert: {
           id?: string
@@ -217,8 +217,8 @@ export interface Database {
           latitud?: number | null
           longitud?: number | null
           tipo_paquete_id?: string | null
-          package_weight?: number // Defaults to 0.1 in DB
-          status?: string // Defaults to 'pending' in DB
+          package_weight?: number
+          status?: string
           suggested_options?: Json | null
           reasoning?: string | null
           reparto_id?: string | null
@@ -269,6 +269,32 @@ export interface Database {
           created_at?: string
         }
       }
+      tarifas_distancia_calculadora: { // Nueva tabla
+        Row: {
+          id: string
+          tipo_calculadora: Enums<"tipocalculadoraservicioenum">
+          distancia_hasta_km: number
+          precio: number
+          fecha_vigencia_desde: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tipo_calculadora: Enums<"tipocalculadoraservicioenum">
+          distancia_hasta_km: number
+          precio: number
+          fecha_vigencia_desde?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tipo_calculadora?: Enums<"tipocalculadoraservicioenum">
+          distancia_hasta_km?: number
+          precio?: number
+          fecha_vigencia_desde?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -278,6 +304,7 @@ export interface Database {
     }
     Enums: {
       tipoparadaenum: "retiro_empresa" | "entrega_cliente"
+      tipocalculadoraservicioenum: "lowcost" | "express" // Nuevo Enum
     }
     CompositeTypes: {
       [_ in never]: never
@@ -314,20 +341,24 @@ export type TipoServicio = Database['public']['Tables']['tipos_servicio']['Row']
 export type NuevoTipoServicio = Database['public']['Tables']['tipos_servicio']['Insert'];
 export type UpdateTipoServicio = Database['public']['Tables']['tipos_servicio']['Update'];
 
+export type TarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Row'];
+export type NuevaTarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Insert'];
+
+
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
   empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null;
 };
 
-export type EnvioConClienteYAjustes = Envio & { // Renamed from EnvioConCliente
+export type EnvioConClienteYAjustes = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
   tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
 };
 
 export type EnvioParaDetalleReparto = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono'> | null;
-  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
+  tipos_servicio: Pick<TipoServicio, 'id' | 'nombre', 'precio_base'> | null; // Asegurar que precio_base esté
   tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
 };
 
@@ -350,7 +381,7 @@ export interface EnvioMapa {
   status: string | null;
   nombre_cliente: string | null;
   client_location: string;
-  tipo_paquete_nombre?: string | null;
+  tipo_paquete_nombre?: string | null; // Changed from package_size
   package_weight: number | null;
   orden?: number | null;
   tipo_parada?: Database['public']['Enums']['tipoparadaenum'] | null;
@@ -365,6 +396,7 @@ export interface RepartoParaFiltro {
 }
 
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
+export type TipoCalculadoraServicioEnum = Database['public']['Enums']['tipocalculadoraservicioenum']; // Nuevo Enum Type
 
 export type EnvioCompletoParaDialog = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud'> | null;
