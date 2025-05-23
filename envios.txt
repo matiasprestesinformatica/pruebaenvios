@@ -1,0 +1,130 @@
+Explicación de la Página: /cotizador-envios-express
+
+==================================================
+Propósito Principal
+==================================================
+
+La página `/cotizador-envios-express` tiene como objetivo principal permitir a los usuarios (tanto clientes como personal interno) obtener una cotización estimada para un envío de tipo "Express" dentro de la ciudad de Mar del Plata. Se basa en la distancia entre una dirección de origen y una de destino, utilizando una tabla de tarifas preconfigurada.
+
+Una vez que se obtiene una cotización, la página también ofrece la funcionalidad de convertir esa cotización directamente en una solicitud de envío, recopilando información adicional del remitente y destinatario.
+
+==================================================
+Estructura y Componentes Principales
+==================================================
+
+La página está compuesta por varios componentes y sigue un flujo lógico:
+
+1.  **`src/app/cotizador-envios-express/page.tsx` (Server Component)**
+    *   **Función Principal:** Actúa como el punto de entrada para la ruta.
+    *   **Obtención de Datos Iniciales:**
+        *   Llama a la Server Action `getTarifasCalculadoraAction('express')` (desde `src/app/calculadora/actions.ts`) para obtener la lista de tarifas vigentes para el servicio "Express". Estas tarifas están almacenadas en la tabla `tarifas_distancia_calculadora` de Supabase.
+    *   **Renderizado Condicional y Suspense:**
+        *   Utiliza `<Suspense fallback={<CotizadorSkeleton />}>` para mostrar un esqueleto de carga mientras se obtienen las tarifas.
+        *   Dentro del Suspense, renderiza un componente hijo asíncrono (implícito o explícito como `CotizadorExpressData`) que maneja el estado de los datos de tarifas.
+        *   Si hay un error al cargar las tarifas (ej. la tabla está vacía o hay un error de conexión), muestra un componente `<Alert>` de ShadCN UI con el mensaje de error.
+        *   Si las tarifas se cargan correctamente, pasa estas tarifas como prop al componente principal del cotizador: `<CaluloCotizadorExpress tarifas={tarifas} />`.
+
+2.  **`src/components/configuracion/CaluloCotizadorExpress.tsx` (Client Component)**
+    *   **Responsabilidad Principal:** Maneja toda la interfaz de usuario y la lógica interactiva del cotizador y la posterior solicitud de envío.
+    *   **Estado Interno (`useState`):**
+        *   `origen`, `destino`: Para las direcciones ingresadas por el usuario.
+        *   `distancia`, `precio`: Para mostrar los resultados del cálculo.
+        *   `loading`, `mapLoading`: Indicadores de carga para el cálculo de ruta y la inicialización del mapa.
+        *   `error`: Para mostrar mensajes de error al usuario.
+        *   `showSolicitudForm`: Booleano para controlar la visibilidad del formulario de solicitud de envío después de una cotización exitosa.
+    *   **Integración con Google Maps (`useRef`, `useEffect`, `useCallback`):**
+        *   **Carga de la API:** Carga dinámicamente el script de la API de Google Maps JavaScript si aún no está cargado, usando `useEffect` y una función de callback global. Maneja errores si la clave API no está configurada o si el script no se puede cargar.
+        *   **Inicialización del Mapa:** Una vez cargada la API, inicializa una instancia de Google Maps en el `div` referenciado por `mapRef`. Se centra en Mar del Plata.
+        *   **Servicios de Google Maps:** Crea instancias de `DirectionsService` (para calcular rutas) y `DirectionsRenderer` (para dibujar la ruta en el mapa).
+        *   **Marcadores:** Gestiona marcadores para el origen y el destino (`marcadorOrigenRef`, `marcadorDestinoRef`).
+    *   **Funciones Clave:**
+        *   `initMap()`: Callback para inicializar el mapa una vez que la API de Google está lista.
+        *   `calcularPrecioConTarifas(distanciaKm: number)`:
+            *   Recibe la distancia en kilómetros.
+            *   Itera sobre el array `tarifas` (recibido como prop) que contiene los tramos de precio/distancia.
+            *   Encuentra el primer tramo donde `distanciaKm <= tarifa.distancia_hasta_km`.
+            *   Devuelve el precio formateado para ese tramo.
+            *   Si la distancia excede todos los tramos definidos, o si hay una lógica especial para distancias mayores (como un precio por km extra), se aplica aquí. Actualmente, devuelve "Consulte por WhatsApp" para distancias muy largas o si no hay tarifas.
+        *   `colocarMarcadores(...)`: Pone/actualiza los marcadores de origen y destino en el mapa y ajusta los límites del mapa para mostrarlos.
+        *   `calcularRuta()`:
+            1.  Se activa al hacer clic en "Calcular Ruta y Precio Express".
+            2.  Verifica que se hayan ingresado origen y destino.
+            3.  Llama a `directionsServiceRef.current.route()` con las direcciones de origen y destino (añadiendo ", Mar del Plata, Argentina" para mejorar la precisión de la geocodificación de Google).
+            4.  Si tiene éxito:
+                *   Dibuja la ruta en el mapa usando `directionsRendererRef.current.setDirections()`.
+                *   Extrae la distancia del resultado.
+                *   Llama a `calcularPrecioConTarifas()` con la distancia para obtener el precio estimado.
+                *   Actualiza los estados `distancia` y `precio`.
+                *   Coloca los marcadores de origen y destino.
+                *   Si se obtiene un precio válido, establece `showSolicitudForm = true`.
+            5.  Maneja errores si la ruta no se puede calcular.
+        *   `handleSolicitudSuccess()`: Se llama cuando el formulario de solicitud de envío se completa con éxito. Resetea el estado del cotizador (limpia campos, mapa, etc.) y oculta el formulario de solicitud.
+    *   **Renderizado UI:**
+        *   Campos de entrada (`Input` de ShadCN) para "Dirección de Origen" y "Dirección de Destino" con Tooltips informativos.
+        *   Botón "Calcular Ruta y Precio Express".
+        *   Muestra los resultados de `distancia` y `precio`.
+        *   Muestra mensajes de error (`Alert` de ShadCN).
+        *   Un `div` (`mapRef`) para el mapa de Google Maps.
+        *   Renderiza condicionalmente el componente `<SolicitudEnvioForm />` cuando `showSolicitudForm` es `true`.
+
+3.  **`src/components/calculadora/solicitud-envio-form.tsx` (Client Component)**
+    *   **Responsabilidad Principal:** Recopilar la información adicional necesaria para crear un envío formal una vez que se ha obtenido una cotización.
+    *   **Props:**
+        *   `initialData`: Recibe `{ direccionRetiro, direccionEntrega, montoACobrar }` pre-llenados desde el cotizador.
+        *   `createEnvioAction`: La Server Action `createEnvioDesdeCalculadoraAction`.
+        *   `onSolicitudSuccess`: Callback para ejecutar después de que el envío se crea con éxito (usado para resetear el cotizador).
+    *   **Formulario (`react-hook-form` y Zod `solicitudEnvioCalculadoraSchema`):**
+        *   Campos para: Nombre Envía, Teléfono Envía, Dirección Retiro (pre-llenada, solo lectura), Nombre Recibe, Teléfono Recibe, Dirección Entrega (pre-llenada, solo lectura), Horario Retiro Desde (input tipo `time`), Horario Entrega Hasta (input tipo `time`), Monto a Cobrar (pre-llenado, solo lectura), Detalles Adicionales (Textarea).
+    *   **Lógica de Envío:**
+        *   Al enviar, llama a `createEnvioAction` (que es `createEnvioDesdeCalculadoraAction`).
+        *   Muestra `toast` de éxito o error.
+        *   Si tiene éxito, llama a `onSolicitudSuccess`.
+
+4.  **`src/app/calculadora/actions.ts` (Server Actions)**
+    *   **`createEnvioDesdeCalculadoraAction(formData: SolicitudEnvioCalculadoraFormData)`:**
+        *   **Obtiene IDs de Configuración:** Busca en la base de datos el ID del tipo de servicio "Envíos Express" y un tipo de paquete por defecto (ej. "Caja Mediana"). Si no los encuentra, devuelve un error.
+        *   **Geocodificación:** Llama a la función interna `geocodeAddressInMarDelPlata` para obtener `latitud` y `longitud` para la `formData.direccionEntrega`. Valida si está dentro de Mar del Plata.
+        *   **Construcción de Notas:** Crea un string detallado para el campo `notas` del nuevo envío, incluyendo información del remitente, horarios y detalles adicionales.
+        *   **Creación del Envío:** Prepara un objeto `NuevoEnvio` con todos los datos recopilados (incluyendo IDs de servicio/paquete, coordenadas, precio cotizado, notas, etc.) y lo inserta en la tabla `envios` de Supabase. El estado inicial del envío se establece como 'pending'.
+        *   **Revalidación:** Revalida la ruta `/envios` para que la tabla de envíos se actualice.
+        *   **Respuesta:** Devuelve un objeto `{ success: boolean, error?: string, info?: string }` para indicar el resultado al cliente.
+
+==================================================
+Flujo Lógico General
+==================================================
+
+1.  **Usuario Navega a `/cotizador-envios-express`**:
+    *   La página (Server Component) obtiene las tarifas actuales para 'express'.
+    *   Renderiza `CaluloCotizadorExpress` pasándole las tarifas.
+
+2.  **Usuario Ingresa Direcciones y Cotiza (en `CaluloCotizadorExpress`):**
+    *   Ingresa origen y destino.
+    *   Hace clic en "Calcular Ruta y Precio".
+    *   `calcularRuta()` se ejecuta:
+        *   Se llama a la API de Google Maps Directions.
+        *   Se muestra la ruta en el mapa.
+        *   Se obtiene la distancia.
+        *   `calcularPrecioConTarifas()` usa la distancia y las tarifas (prop) para determinar el precio.
+        *   Se actualiza la UI con distancia y precio.
+        *   Si el precio es válido, `showSolicitudForm` se vuelve `true`.
+
+3.  **Usuario Completa el Formulario de Solicitud (en `SolicitudEnvioForm`):**
+    *   El formulario aparece con las direcciones y el monto pre-llenados.
+    *   El usuario ingresa datos del remitente, destinatario, horarios y detalles.
+    *   Hace clic en "Hacer Pedido".
+
+4.  **Se Crea el Envío (Server Action):**
+    *   `SolicitudEnvioForm` llama a `createEnvioDesdeCalculadoraAction`.
+    *   La acción del servidor:
+        *   Valida los datos.
+        *   Obtiene IDs de configuración.
+        *   Geocodifica la dirección de entrega.
+        *   Crea el registro del nuevo envío en la base de datos.
+        *   Devuelve éxito/error.
+
+5.  **Feedback y Reset:**
+    *   `SolicitudEnvioForm` muestra un `toast` con el resultado.
+    *   Si tiene éxito, llama a `onSolicitudSuccess`, que a su vez llama a `handleSolicitudSuccess` en `CaluloCotizadorExpress`.
+    *   `CaluloCotizadorExpress` resetea su estado (limpia campos, mapa, oculta el formulario de solicitud).
+
+Este flujo permite una transición fluida desde la obtención de una cotización hasta la creación de una solicitud de envío formal.
