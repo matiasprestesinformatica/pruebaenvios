@@ -13,13 +13,13 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Form, FormField, FormMessage, FormControl } from "@/components/ui/form"; // Added FormControl
-import { tipoCalculadoraServicioEnum, listaTarifasCalculadoraSchema, TarifaDistanciaCalculadoraFormData } from '@/lib/schemas';
+import { Form, FormField, FormItem, FormMessage, FormControl } from "@/components/ui/form"; // Added FormItem
+import { tipoCalculadoraServicioEnum, listaTarifasCalculadoraSchema, type TarifaDistanciaCalculadoraFormData } from '@/lib/schemas';
 import type { ListaTarifasCalculadoraFormData } from '@/lib/schemas';
 import type { TipoCalculadoraServicioEnum, TarifaDistanciaCalculadora } from '@/types/supabase';
 import { getTarifasCalculadoraConHistorialAction, saveListaTarifasCalculadoraAction, deleteTarifasCalculadoraPorFechaAction } from '@/app/configuracion/actions';
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, PlusCircle, Trash2, Loader2, AlertTriangle, Edit, Save } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { format, parseISO, isValid as isValidDate } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -47,7 +47,7 @@ export function GestionTarifasCalculadora() {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({ // removed 'update' as it wasn't used
+  const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "tarifas",
   });
@@ -79,14 +79,10 @@ export function GestionTarifasCalculadora() {
   
   const handleSaveNuevaLista = async (data: ListaTarifasCalculadoraFormData) => {
     setIsSubmitting(true);
+    // Validations before submitting
     for (let i = 0; i < data.tarifas.length; i++) {
-        if (i > 0 && data.tarifas[i].distancia_hasta_km <= data.tarifas[i-1].distancia_hasta_km) {
-            toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser mayor que la del tramo anterior.`, variant: "destructive" });
-            setIsSubmitting(false);
-            return;
-        }
         if (data.tarifas[i].distancia_hasta_km <= 0) {
-             toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser un valor positivo.`, variant: "destructive" });
+            toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser un valor positivo.`, variant: "destructive" });
             setIsSubmitting(false);
             return;
         }
@@ -95,9 +91,13 @@ export function GestionTarifasCalculadora() {
             setIsSubmitting(false);
             return;
         }
+        if (i > 0 && data.tarifas[i].distancia_hasta_km <= data.tarifas[i-1].distancia_hasta_km) {
+            toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser mayor que la del tramo anterior.`, variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
     }
     
-    // Convert Date object to yyyy-MM-dd string format
     const fechaVigenciaString = format(data.fecha_vigencia_desde, 'yyyy-MM-dd');
 
     const result = await saveListaTarifasCalculadoraAction(tipoCalculadoraSeleccionado, fechaVigenciaString, data.tarifas);
@@ -140,8 +140,8 @@ export function GestionTarifasCalculadora() {
             <Select value={tipoCalculadoraSeleccionado} onValueChange={(value) => setTipoCalculadoraSeleccionado(value as TipoCalculadoraServicioEnum)}>
               <SelectTrigger id="tipo-calculadora-selector"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="lowcost">LowCost</SelectItem>
-                <SelectItem value="express">Express</SelectItem>
+                <SelectItem value={tipoCalculadoraServicioEnum.Values.lowcost}>LowCost</SelectItem>
+                <SelectItem value={tipoCalculadoraServicioEnum.Values.express}>Express</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -165,10 +165,12 @@ export function GestionTarifasCalculadora() {
                         <Label>Fecha de Vigencia Desde</Label>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button variant={"outline"} className={`w-full justify-start text-left font-normal ${!field.value && "text-muted-foreground"}`}>
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {field.value && isValidDate(field.value) ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
-                            </Button>
+                            <FormControl>
+                              <Button variant={"outline"} className={`w-full justify-start text-left font-normal ${!field.value && "text-muted-foreground"}`}>
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value && isValidDate(field.value) ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
+                              </Button>
+                            </FormControl>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
                             <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) }/>
@@ -308,5 +310,3 @@ export function GestionTarifasCalculadora() {
     </Card>
   );
 }
-
-    
