@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export const empresaSchema = z.object({
@@ -34,13 +33,13 @@ export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(),
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Can be null if not selected initially
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
   package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
   tipo_servicio_id: z.string().uuid().optional().nullable(),
   precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
 }).superRefine((data, ctx) => {
-  if (data.cliente_id) { 
+  if (data.cliente_id) {
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -48,7 +47,7 @@ export const shipmentSchema = z.object({
             path: ["client_location"],
           });
     }
-  } else { 
+  } else {
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -64,7 +63,7 @@ export const shipmentSchema = z.object({
       });
     }
   }
-  if (!data.tipo_paquete_id) { // Always require a package type
+   if (!data.tipo_paquete_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de paquete.",
@@ -85,6 +84,9 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
+
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
@@ -141,15 +143,11 @@ export const tipoServicioSchema = z.object({
 });
 export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
 
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
-
 export const tipoCalculadoraServicioEnum = z.enum(['lowcost', 'express']);
 export type TipoCalculadoraServicioFormData = z.infer<typeof tipoCalculadoraServicioEnum>;
 
-
 export const tarifaDistanciaCalculadoraSchema = z.object({
-  id: z.string().uuid().optional(), // Optional for new tariffs not yet in DB
+  id: z.string().uuid().optional(),
   distancia_hasta_km: z.coerce.number().min(0.1, "La distancia debe ser mayor a 0."),
   precio: z.coerce.number().min(0, "El precio no puede ser negativo."),
 });
@@ -162,3 +160,18 @@ export const listaTarifasCalculadoraSchema = z.object({
   tarifas: z.array(tarifaDistanciaCalculadoraSchema).min(1, "Debe definir al menos un tramo de tarifa."),
 });
 export type ListaTarifasCalculadoraFormData = z.infer<typeof listaTarifasCalculadoraSchema>;
+
+// Schema for the new "Solicitar Envío" form from calculator
+export const solicitudEnvioCalculadoraSchema = z.object({
+  nombreEnvia: z.string().min(1, "El nombre de quien envía es obligatorio."),
+  telefonoEnvia: z.string().min(7, "El teléfono de quien envía es obligatorio.").regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido."),
+  direccionRetiro: z.string().min(1, "La dirección de retiro es obligatoria."),
+  nombreRecibe: z.string().min(1, "El nombre de quien recibe es obligatorio."),
+  telefonoRecibe: z.string().min(7, "El teléfono de quien recibe es obligatorio.").regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido."),
+  direccionEntrega: z.string().min(1, "La dirección de entrega es obligatoria."),
+  horarioRetiroDesde: z.string().min(1, "El horario inicial de retiro es obligatorio."), // Consider using a time format regex if needed
+  horarioEntregaHasta: z.string().min(1, "El horario límite de entrega es obligatorio."), // Consider using a time format regex
+  montoACobrar: z.coerce.number().min(0, "El monto a cobrar no puede ser negativo."),
+  detallesAdicionales: z.string().optional().nullable(),
+});
+export type SolicitudEnvioCalculadoraFormData = z.infer<typeof solicitudEnvioCalculadoraSchema>;

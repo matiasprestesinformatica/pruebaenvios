@@ -10,6 +10,8 @@ import { Terminal, Info, MapPinIcon, Rocket } from "lucide-react";
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TarifaDistanciaCalculadora } from '@/types/supabase';
+import { SolicitudEnvioForm } from '@/components/calculadora/solicitud-envio-form'; // New import
+import { createEnvioDesdeCalculadoraAction } from '@/app/calculadora/actions'; // New import
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -29,6 +31,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
   const [loading, setLoading] = useState<boolean>(false);
   const [mapLoading, setMapLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [showSolicitudForm, setShowSolicitudForm] = useState<boolean>(false); // New state
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -66,7 +69,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
       }
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
       if (!apiKey) { setError("Falta la configuración del mapa. Contacta al administrador."); setMapLoading(false); return; }
-      (window as any).initMapGloballyForCalculatorExpress = initMap; // Unique callback name
+      (window as any).initMapGloballyForCalculatorExpress = initMap;
       const script = document.createElement('script');
       script.id = scriptId;
       script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initMapGloballyForCalculatorExpress&libraries=marker,geometry`;
@@ -78,6 +81,13 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     return () => { if ((window as any).initMapGloballyForCalculatorExpress) delete (window as any).initMapGloballyForCalculatorExpress; };
   }, [initMap]);
 
+  const parsePrecioToNumber = (precioString: string | null): number | null => {
+    if (!precioString) return null;
+    const numericString = precioString.replace('$', '').replace(/\./g, '').replace(',', '.');
+    const parsed = parseFloat(numericString);
+    return isNaN(parsed) ? null : parsed;
+  };
+
   const calcularPrecioConTarifas = (distanciaKm: number) => {
     if (!tarifas || tarifas.length === 0) return "Tarifas no disponibles. Consulte por WhatsApp.";
     for (const tarifa of tarifas) {
@@ -85,11 +95,12 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
         return `$${tarifa.precio.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       }
     }
-    // Handle distances exceeding defined tiers, e.g., Express > 10km with per-km extra
     const lastTier = tarifas[tarifas.length - 1];
-    if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km === 10.0) { // Specific logic for express > 10km
-        const kmExtra = Math.ceil(distanciaKm - 10);
-        const precioCalculado = lastTier.precio + (kmExtra * 750); // Assuming 750 is the per-km rate
+    // Example: Express > 10km, $750 per extra km. Adjust this logic based on your business rules.
+    // Assuming 'express' specific logic for >10km.
+    if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km === 10.0 && tarifas.find(t => t.tipo_calculadora === 'express')) { 
+        const kmExtra = Math.ceil(distanciaKm - 10); // or lastTier.distancia_hasta_km if that's the base
+        const precioCalculado = lastTier.precio + (kmExtra * 750); // Example per-km rate
         return `$${precioCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return "Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.";
@@ -116,9 +127,9 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
   };
 
   const calcularRuta = async () => {
-    if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); return; }
-    if (!directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) { setError("El servicio de mapas no está listo. Intente de nuevo."); return; }
-    setLoading(true); setError(null); setDistancia(null); setPrecio(null);
+    if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); setShowSolicitudForm(false); return; }
+    if (!directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) { setError("El servicio de mapas no está listo. Intente de nuevo."); setShowSolicitudForm(false); return; }
+    setLoading(true); setError(null); setDistancia(null); setPrecio(null); setShowSolicitudForm(false);
 
     try {
       const response = await directionsServiceRef.current.route({
@@ -132,8 +143,12 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
         const leg = route.legs[0];
         const distanciaTexto = leg.distance?.text || "N/A";
         const distanciaValorKm = (leg.distance?.value || 0) / 1000;
+        const precioCalculado = calcularPrecioConTarifas(distanciaValorKm);
         setDistancia(`${distanciaTexto}`);
-        setPrecio(calcularPrecioConTarifas(distanciaValorKm));
+        setPrecio(precioCalculado);
+        if (parsePrecioToNumber(precioCalculado) !== null) {
+            setShowSolicitudForm(true);
+        }
         if (leg.start_location && leg.end_location && leg.start_address && leg.end_address) {
           colocarMarcadores(leg.start_location, leg.end_location, leg.start_address, leg.end_address);
         }
@@ -141,8 +156,22 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     } catch (e) {
       console.error("Error al calcular la ruta:", e);
       setError("No se pudo calcular la ruta. Asegúrese de que las direcciones sean válidas en Mar del Plata.");
+      setShowSolicitudForm(false);
     } finally { setLoading(false); }
   };
+  
+  const handleSolicitudSuccess = () => {
+    setShowSolicitudForm(false);
+    setOrigen('');
+    setDestino('');
+    setDistancia(null);
+    setPrecio(null);
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setDirections({routes: []}); // Clear map route
+    }
+    if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
+    if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4 md:p-6 lg:p-8 bg-card shadow-xl rounded-lg animate-fade-in">
@@ -190,11 +219,24 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
             Para envíos más económicos, utilizá nuestro <Link href="/cotizador-envios-lowcost" className="text-secondary underline hover:text-secondary/80">Cotizador Low Cost</Link>.
           </p>
         </div>
-        <div className="relative animate-fade-in">
+        <div className="relative animate-fade-in h-full"> {/* Ensure this div takes height */}
           {mapLoading && ( <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md"><p className="text-foreground">Cargando mapa...</p></div> )}
           <div ref={mapRef} id="mapa-express" className="h-[400px] md:h-full w-full rounded-md shadow-md border border-border min-h-[300px]"></div>
         </div>
       </div>
+      {showSolicitudForm && precio && origen && destino && (
+        <div className="mt-10 animate-fade-in">
+          <SolicitudEnvioForm
+            initialData={{
+              direccionRetiro: origen,
+              direccionEntrega: destino,
+              montoACobrar: parsePrecioToNumber(precio) ?? 0, // Provide a default if parsing fails
+            }}
+            createEnvioAction={createEnvioDesdeCalculadoraAction}
+            onSolicitudSuccess={handleSolicitudSuccess}
+          />
+        </div>
+      )}
     </div>
   );
 };
