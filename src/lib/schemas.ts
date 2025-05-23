@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 
 export const empresaSchema = z.object({
@@ -29,14 +30,33 @@ export type ClientFormData = z.infer<typeof clientSchema>;
 export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
 export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
+export const tipoPaqueteSchema = z.object({ // Renombrado desde packageSizeEnum a tipoPaqueteSchema para claridad
+  id: z.string().uuid().optional(), // ID es opcional ya que puede ser para creación o referencia
+  nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),
+  descripcion: z.string().optional().nullable(),
+  activo: z.boolean().default(true),
+});
+export type TipoPaqueteFormData = z.infer<typeof tipoPaqueteSchema>;
+
+
+export const tipoServicioSchema = z.object({
+  id: z.string().uuid().optional(),
+  nombre: z.string().min(1, "El nombre del tipo de servicio es obligatorio."),
+  descripcion: z.string().optional().nullable(),
+  precio_base: z.coerce.number().min(0, "El precio base no puede ser negativo.").optional().nullable(),
+  activo: z.boolean().default(true),
+});
+export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
+
+
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(),
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
+  client_location: z.string().optional().nullable(), // Será obligatorio si no hay cliente_id
+  tipo_paquete_id: z.string().uuid().nullable(), // FK a tipos_paquete
   package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
-  tipo_servicio_id: z.string().uuid().optional().nullable(),
+  tipo_servicio_id: z.string().uuid().optional().nullable(), // FK a tipos_servicio
   precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
@@ -47,7 +67,7 @@ export const shipmentSchema = z.object({
             path: ["client_location"],
           });
     }
-  } else {
+  } else { 
     if (!data.nombre_cliente_temporal || data.nombre_cliente_temporal.trim() === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -63,7 +83,7 @@ export const shipmentSchema = z.object({
       });
     }
   }
-   if (!data.tipo_paquete_id) {
+   if (!data.tipo_paquete_id) { // Asegura que tipo_paquete_id sea seleccionado
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de paquete.",
@@ -84,9 +104,6 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
-
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
@@ -128,20 +145,8 @@ export const repartoLoteCreationSchema = z.object({
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
 
-export const tipoPaqueteSchema = z.object({
-  nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),
-  descripcion: z.string().optional().nullable(),
-  activo: z.boolean().default(true),
-});
-export type TipoPaqueteFormData = z.infer<typeof tipoPaqueteSchema>;
-
-export const tipoServicioSchema = z.object({
-  nombre: z.string().min(1, "El nombre del tipo de servicio es obligatorio."),
-  descripcion: z.string().optional().nullable(),
-  precio_base: z.coerce.number().min(0, "El precio base no puede ser negativo.").optional().nullable(),
-  activo: z.boolean().default(true),
-});
-export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const tipoCalculadoraServicioEnum = z.enum(['lowcost', 'express']);
 export type TipoCalculadoraServicioFormData = z.infer<typeof tipoCalculadoraServicioEnum>;
@@ -161,7 +166,6 @@ export const listaTarifasCalculadoraSchema = z.object({
 });
 export type ListaTarifasCalculadoraFormData = z.infer<typeof listaTarifasCalculadoraSchema>;
 
-// Schema for the new "Solicitar Envío" form from calculator
 export const solicitudEnvioCalculadoraSchema = z.object({
   nombreEnvia: z.string().min(1, "El nombre de quien envía es obligatorio."),
   telefonoEnvia: z.string().min(7, "El teléfono de quien envía es obligatorio.").regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido."),
@@ -169,8 +173,8 @@ export const solicitudEnvioCalculadoraSchema = z.object({
   nombreRecibe: z.string().min(1, "El nombre de quien recibe es obligatorio."),
   telefonoRecibe: z.string().min(7, "El teléfono de quien recibe es obligatorio.").regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido."),
   direccionEntrega: z.string().min(1, "La dirección de entrega es obligatoria."),
-  horarioRetiroDesde: z.string().min(1, "El horario inicial de retiro es obligatorio."), // Consider using a time format regex if needed
-  horarioEntregaHasta: z.string().min(1, "El horario límite de entrega es obligatorio."), // Consider using a time format regex
+  horarioRetiroDesde: z.string().min(1, "El horario inicial de retiro es obligatorio."),
+  horarioEntregaHasta: z.string().min(1, "El horario límite de entrega es obligatorio."),
   montoACobrar: z.coerce.number().min(0, "El monto a cobrar no puede ser negativo."),
   detallesAdicionales: z.string().optional().nullable(),
 });
