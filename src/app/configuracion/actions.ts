@@ -428,20 +428,18 @@ export async function getTarifasCalculadoraConHistorialAction(
 
 export async function saveListaTarifasCalculadoraAction(
   tipo: TipoCalculadoraServicioEnum,
-  fechaVigenciaDate: Date, // Changed to Date
+  fechaVigenciaDate: Date,
   tarifas: TarifaDistanciaCalculadoraFormData[]
 ): Promise<{ success: boolean; error?: string | null }> {
   const supabase = createSupabaseServerClient();
   
   const fechaVigenciaString = format(fechaVigenciaDate, 'yyyy-MM-dd');
 
-  // Validate the whole list
   const validatedSchema = listaTarifasCalculadoraSchema.safeParse({ fecha_vigencia_desde: fechaVigenciaDate, tarifas });
   if (!validatedSchema.success) {
     return { success: false, error: "Error de validación: " + JSON.stringify(validatedSchema.error.flatten().fieldErrors) };
   }
 
-  // Delete existing tariffs for this type and date
   const { error: deleteError } = await supabase
     .from('tarifas_distancia_calculadora')
     .delete()
@@ -454,7 +452,6 @@ export async function saveListaTarifasCalculadoraAction(
     return { success: false, error: `Error al limpiar tarifas existentes: ${pgDeleteError.message}` };
   }
 
-  // Insert new tariffs
   const tarifasParaInsertar: NuevaTarifaDistanciaCalculadora[] = tarifas.map(t => ({
     tipo_calculadora: tipo,
     fecha_vigencia_desde: fechaVigenciaString,
@@ -475,7 +472,7 @@ export async function saveListaTarifasCalculadoraAction(
   }
 
   revalidatePath('/configuracion');
-  revalidatePath('/cotizador-envios-express'); // Revalidate calculator pages
+  revalidatePath('/cotizador-envios-express'); 
   revalidatePath('/cotizador-envios-lowcost');
   return { success: true, error: null };
 }

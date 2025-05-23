@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Form, FormField, FormItem, FormMessage, FormControl } from "@/components/ui/form"; // Added FormItem
+import { Form, FormField, FormItem, FormMessage, FormControl } from "@/components/ui/form";
 import { tipoCalculadoraServicioEnum, listaTarifasCalculadoraSchema, type TarifaDistanciaCalculadoraFormData } from '@/lib/schemas';
 import type { ListaTarifasCalculadoraFormData } from '@/lib/schemas';
 import type { TipoCalculadoraServicioEnum, TarifaDistanciaCalculadora } from '@/types/supabase';
@@ -54,20 +54,18 @@ export function GestionTarifasCalculadora() {
 
   const fetchTarifas = useCallback(async (tipo: TipoCalculadoraServicioEnum) => {
     setIsLoading(true);
+    setFechaSeleccionada(''); // Reset selected date when type changes
     const result = await getTarifasCalculadoraConHistorialAction(tipo);
     if (result.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
       setTarifasAgrupadas({});
       setFechasVigencia([]);
-      setFechaSeleccionada('');
     } else {
       setTarifasAgrupadas(result.data);
       const sortedFechas = Object.keys(result.data).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
       setFechasVigencia(sortedFechas);
       if (sortedFechas.length > 0) {
         setFechaSeleccionada(sortedFechas[0]);
-      } else {
-        setFechaSeleccionada('');
       }
     }
     setIsLoading(false);
@@ -79,7 +77,7 @@ export function GestionTarifasCalculadora() {
   
   const handleSaveNuevaLista = async (data: ListaTarifasCalculadoraFormData) => {
     setIsSubmitting(true);
-    // Validations before submitting
+    
     for (let i = 0; i < data.tarifas.length; i++) {
         if (data.tarifas[i].distancia_hasta_km <= 0) {
             toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser un valor positivo.`, variant: "destructive" });
@@ -98,14 +96,17 @@ export function GestionTarifasCalculadora() {
         }
     }
     
-    const fechaVigenciaString = format(data.fecha_vigencia_desde, 'yyyy-MM-dd');
+    const result = await saveListaTarifasCalculadoraAction(
+      tipoCalculadoraSeleccionado, 
+      data.fecha_vigencia_desde, // Pass the Date object
+      data.tarifas
+    );
 
-    const result = await saveListaTarifasCalculadoraAction(tipoCalculadoraSeleccionado, fechaVigenciaString, data.tarifas);
     if (result.success) {
       toast({ title: "Éxito", description: "Lista de tarifas guardada correctamente." });
       setIsDialogOpen(false);
       form.reset({ fecha_vigencia_desde: new Date(), tarifas: [{ distancia_hasta_km: 0, precio: 0 }] });
-      fetchTarifas(tipoCalculadoraSeleccionado);
+      fetchTarifas(tipoCalculadoraSeleccionado); // Refetch to show the new list
     } else {
       toast({ title: "Error al Guardar", description: result.error || "No se pudo guardar la lista de tarifas.", variant: "destructive" });
     }
@@ -182,16 +183,16 @@ export function GestionTarifasCalculadora() {
                   />
                   <div className="space-y-2">
                     <Label>Tramos de Tarifa</Label>
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex items-center gap-2 p-2 border rounded-md">
+                    {fields.map((fieldItem, index) => (
+                      <div key={fieldItem.id} className="flex items-center gap-2 p-2 border rounded-md">
                         <FormField
                           control={form.control}
                           name={`tarifas.${index}.distancia_hasta_km`}
-                          render={({ field: formField }) => (
+                          render={({ field }) => (
                             <FormItem className="flex-1">
                               <Label htmlFor={`dist-${index}`} className="sr-only">Distancia Hasta (km)</Label>
                               <FormControl>
-                                <Input id={`dist-${index}`} type="number" placeholder="Hasta (km)" {...formField} onChange={e => formField.onChange(parseFloat(e.target.value))} />
+                                <Input id={`dist-${index}`} type="number" placeholder="Hasta (km)" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} />
                               </FormControl>
                               <FormMessage/>
                             </FormItem>
@@ -200,11 +201,11 @@ export function GestionTarifasCalculadora() {
                          <FormField
                           control={form.control}
                           name={`tarifas.${index}.precio`}
-                          render={({ field: formField }) => (
+                          render={({ field }) => (
                             <FormItem className="flex-1">
                                <Label htmlFor={`price-${index}`} className="sr-only">Precio</Label>
                                <FormControl>
-                                <Input id={`price-${index}`} type="number" step="0.01" placeholder="Precio ($)" {...formField} onChange={e => formField.onChange(parseFloat(e.target.value))} />
+                                <Input id={`price-${index}`} type="number" step="0.01" placeholder="Precio ($)" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} />
                                </FormControl>
                                <FormMessage/>
                             </FormItem>
