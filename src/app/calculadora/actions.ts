@@ -98,7 +98,7 @@ export async function createEnvioDesdeCalculadoraAction(
     const { data: servicioExpress, error: servicioError } = await supabase
       .from('tipos_servicio')
       .select('id')
-      .eq('nombre', 'Envíos Express') // Assuming this is the exact name
+      .eq('nombre', 'Envíos Express') 
       .single();
 
     if (servicioError || !servicioExpress) {
@@ -111,13 +111,12 @@ export async function createEnvioDesdeCalculadoraAction(
     const { data: paqueteMediano, error: paqueteError } = await supabase
       .from('tipos_paquete')
       .select('id')
-      .eq('nombre', 'Caja Mediana') // Assuming this is an active package type
+      .eq('nombre', 'Caja Mediana') 
       .eq('activo', true)
       .single();
 
     if (paqueteError || !paqueteMediano) {
       console.warn("Default package type 'Caja Mediana' not found or not active. Consider creating it or using another default.", paqueteError);
-      // Fallback or error, for now, let's make it an error if not found.
       return { success: false, error: "No se pudo encontrar un tipo de paquete por defecto ('Caja Mediana')." };
     }
     const tipoPaqueteId = paqueteMediano.id;
@@ -125,15 +124,19 @@ export async function createEnvioDesdeCalculadoraAction(
     // 3. Geocode direccionEntrega
     let latitud: number | null = null;
     let longitud: number | null = null;
-    let geocodingInfo: string | null = "Geocodificación de dirección de entrega no realizada o fallida.";
+    let geocodingInfo: string | null = null;
 
     if (formData.direccionEntrega) {
       const coords = await geocodeAddressInMarDelPlata(formData.direccionEntrega);
       if (coords) {
         latitud = coords.lat;
         longitud = coords.lng;
-        geocodingInfo = "Dirección de entrega geocodificada.";
+        geocodingInfo = "Dirección de entrega geocodificada exitosamente.";
+      } else {
+        geocodingInfo = "No se pudo geocodificar la dirección de entrega o está fuera de Mar del Plata. Coordenadas no guardadas.";
       }
+    } else {
+        geocodingInfo = "No se proporcionó dirección de entrega para geocodificar.";
     }
     
     // 4. Construct notas
@@ -146,13 +149,13 @@ Detalles Adicionales: ${formData.detallesAdicionales || 'Ninguno'}.`;
 
     // 5. Prepare new shipment data
     const nuevoEnvioData: NuevoEnvio = {
-      cliente_id: null, // Calculator entries are for temporary clients
+      cliente_id: null, 
       nombre_cliente_temporal: formData.nombreRecibe,
       client_location: formData.direccionEntrega,
-      latitud: latitud,
-      longitud: longitud,
+      latitud: latitud, // Usar las coordenadas geocodificadas
+      longitud: longitud, // Usar las coordenadas geocodificadas
       tipo_paquete_id: tipoPaqueteId,
-      package_weight: 1, // Default weight as calculator doesn't ask for it
+      package_weight: 1, 
       status: estadoEnvioEnum.Values.pending,
       reparto_id: null,
       tipo_servicio_id: tipoServicioId,
@@ -175,7 +178,7 @@ Detalles Adicionales: ${formData.detallesAdicionales || 'Ninguno'}.`;
     }
 
     revalidatePath("/envios");
-    return { success: true, error: null, info: `Envío para ${formData.nombreRecibe} creado. ${geocodingInfo}` };
+    return { success: true, error: null, info: `Envío para ${formData.nombreRecibe} creado. ${geocodingInfo || ''}` };
 
   } catch (e: unknown) {
     const err = e as Error;
@@ -183,4 +186,3 @@ Detalles Adicionales: ${formData.detallesAdicionales || 'Ninguno'}.`;
     return { success: false, error: err.message || "Error desconocido del servidor al crear el envío." };
   }
 }
-
