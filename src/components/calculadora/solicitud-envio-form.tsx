@@ -28,11 +28,21 @@ interface SolicitudEnvioFormProps {
     direccionEntrega: string;
     montoACobrar: number;
   };
-  createEnvioAction: (data: SolicitudEnvioCalculadoraFormData) => Promise<{ success: boolean; error?: string | null; info?: string | null }>;
+  initialDestinoCoords?: { lat: number; lng: number } | null; // New prop
+  createEnvioAction: (
+    data: SolicitudEnvioCalculadoraFormData,
+    lat?: number | null, // Optional lat
+    lng?: number | null  // Optional lng
+  ) => Promise<{ success: boolean; error?: string | null; info?: string | null }>;
   onSolicitudSuccess?: () => void;
 }
 
-export function SolicitudEnvioForm({ initialData, createEnvioAction, onSolicitudSuccess }: SolicitudEnvioFormProps) {
+export function SolicitudEnvioForm({ 
+    initialData, 
+    initialDestinoCoords, // Use the new prop
+    createEnvioAction, 
+    onSolicitudSuccess 
+}: SolicitudEnvioFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
@@ -55,7 +65,11 @@ export function SolicitudEnvioForm({ initialData, createEnvioAction, onSolicitud
   const handleFormSubmit = async (data: SolicitudEnvioCalculadoraFormData) => {
     setIsSubmitting(true);
     try {
-      const result = await createEnvioAction(data);
+      const result = await createEnvioAction(
+        data,
+        initialDestinoCoords?.lat,
+        initialDestinoCoords?.lng
+      );
       if (result.success) {
         toast({
           title: "Solicitud de Envío Creada",
@@ -140,3 +154,5 @@ export function SolicitudEnvioForm({ initialData, createEnvioAction, onSolicitud
     </Card>
   );
 }
+
+    

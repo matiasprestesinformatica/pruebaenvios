@@ -89,12 +89,13 @@ export async function getTarifasCalculadoraAction(
 }
 
 export async function createEnvioDesdeCalculadoraAction(
-  formData: SolicitudEnvioCalculadoraFormData
+  formData: SolicitudEnvioCalculadoraFormData,
+  providedLat?: number | null, 
+  providedLng?: number | null 
 ): Promise<{ success: boolean; error?: string | null; info?: string | null }> {
   try {
     const supabase = createSupabaseServerClient();
 
-    // 1. Fetch ID for "Envíos Express" service type
     const { data: servicioExpress, error: servicioError } = await supabase
       .from('tipos_servicio')
       .select('id')
@@ -107,7 +108,6 @@ export async function createEnvioDesdeCalculadoraAction(
     }
     const tipoServicioId = servicioExpress.id;
 
-    // 2. Fetch ID for a default package type (e.g., "Caja Mediana")
     const { data: paqueteMediano, error: paqueteError } = await supabase
       .from('tipos_paquete')
       .select('id')
@@ -121,25 +121,27 @@ export async function createEnvioDesdeCalculadoraAction(
     }
     const tipoPaqueteId = paqueteMediano.id;
 
-    // 3. Geocode direccionEntrega
     let latitud: number | null = null;
     let longitud: number | null = null;
     let geocodingInfo: string | null = null;
 
-    if (formData.direccionEntrega) {
-      const coords = await geocodeAddressInMarDelPlata(formData.direccionEntrega);
-      if (coords) {
-        latitud = coords.lat;
-        longitud = coords.lng;
-        geocodingInfo = "Dirección de entrega geocodificada exitosamente.";
-      } else {
-        geocodingInfo = "No se pudo geocodificar la dirección de entrega o está fuera de Mar del Plata. Coordenadas no guardadas.";
-      }
+    if (providedLat != null && providedLng != null) {
+        latitud = providedLat;
+        longitud = providedLng;
+        geocodingInfo = "Coordenadas de destino pre-calculadas utilizadas.";
+    } else if (formData.direccionEntrega) {
+        const coords = await geocodeAddressInMarDelPlata(formData.direccionEntrega);
+        if (coords) {
+            latitud = coords.lat;
+            longitud = coords.lng;
+            geocodingInfo = "Dirección de entrega geocodificada exitosamente.";
+        } else {
+            geocodingInfo = "No se pudo geocodificar la dirección de entrega o está fuera de Mar del Plata. Coordenadas no guardadas.";
+        }
     } else {
-        geocodingInfo = "No se proporcionó dirección de entrega para geocodificar.";
+        geocodingInfo = "No se proporcionó dirección de entrega ni coordenadas pre-calculadas.";
     }
     
-    // 4. Construct notas
     const notas = `Envío solicitado desde calculadora.
 Remitente: ${formData.nombreEnvia}, Tel: ${formData.telefonoEnvia}.
 Dirección de Retiro: ${formData.direccionRetiro}.
@@ -147,13 +149,12 @@ Horario Retiro Desde: ${formData.horarioRetiroDesde}.
 Horario Entrega Hasta: ${formData.horarioEntregaHasta}.
 Detalles Adicionales: ${formData.detallesAdicionales || 'Ninguno'}.`;
 
-    // 5. Prepare new shipment data
     const nuevoEnvioData: NuevoEnvio = {
       cliente_id: null, 
       nombre_cliente_temporal: formData.nombreRecibe,
       client_location: formData.direccionEntrega,
-      latitud: latitud, // Usar las coordenadas geocodificadas
-      longitud: longitud, // Usar las coordenadas geocodificadas
+      latitud: latitud,
+      longitud: longitud,
       tipo_paquete_id: tipoPaqueteId,
       package_weight: 1, 
       status: estadoEnvioEnum.Values.pending,
@@ -165,7 +166,6 @@ Detalles Adicionales: ${formData.detallesAdicionales || 'Ninguno'}.`;
       reasoning: null,
     };
 
-    // 6. Insert into envios table
     const { data: envioCreado, error: insertError } = await supabase
       .from('envios')
       .insert(nuevoEnvioData)
@@ -186,3 +186,4 @@ Detalles Adicionales: ${formData.detallesAdicionales || 'Ninguno'}.`;
     return { success: false, error: err.message || "Error desconocido del servidor al crear el envío." };
   }
 }
+    

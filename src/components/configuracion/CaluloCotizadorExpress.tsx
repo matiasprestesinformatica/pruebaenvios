@@ -10,8 +10,8 @@ import { Terminal, Info, MapPinIcon, Rocket } from "lucide-react";
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TarifaDistanciaCalculadora } from '@/types/supabase';
-import { SolicitudEnvioForm } from '@/components/calculadora/solicitud-envio-form'; // New import
-import { createEnvioDesdeCalculadoraAction } from '@/app/calculadora/actions'; // New import
+import { SolicitudEnvioForm } from '@/components/calculadora/solicitud-envio-form';
+import { createEnvioDesdeCalculadoraAction } from '@/app/calculadora/actions';
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -31,7 +31,9 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
   const [loading, setLoading] = useState<boolean>(false);
   const [mapLoading, setMapLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [showSolicitudForm, setShowSolicitudForm] = useState<boolean>(false); // New state
+  const [showSolicitudForm, setShowSolicitudForm] = useState<boolean>(false);
+  const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -96,11 +98,9 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
       }
     }
     const lastTier = tarifas[tarifas.length - 1];
-    // Example: Express > 10km, $750 per extra km. Adjust this logic based on your business rules.
-    // Assuming 'express' specific logic for >10km.
     if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km === 10.0 && tarifas.find(t => t.tipo_calculadora === 'express')) { 
-        const kmExtra = Math.ceil(distanciaKm - 10); // or lastTier.distancia_hasta_km if that's the base
-        const precioCalculado = lastTier.precio + (kmExtra * 750); // Example per-km rate
+        const kmExtra = Math.ceil(distanciaKm - 10);
+        const precioCalculado = lastTier.precio + (kmExtra * 750);
         return `$${precioCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return "Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.";
@@ -130,6 +130,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); setShowSolicitudForm(false); return; }
     if (!directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) { setError("El servicio de mapas no está listo. Intente de nuevo."); setShowSolicitudForm(false); return; }
     setLoading(true); setError(null); setDistancia(null); setPrecio(null); setShowSolicitudForm(false);
+    setOrigenCoords(null); setDestinoCoords(null); // Reset coords before new calculation
 
     try {
       const response = await directionsServiceRef.current.route({
@@ -146,6 +147,14 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
         const precioCalculado = calcularPrecioConTarifas(distanciaValorKm);
         setDistancia(`${distanciaTexto}`);
         setPrecio(precioCalculado);
+
+        if (leg.start_location) {
+            setOrigenCoords({ lat: leg.start_location.lat(), lng: leg.start_location.lng() });
+        }
+        if (leg.end_location) {
+            setDestinoCoords({ lat: leg.end_location.lat(), lng: leg.end_location.lng() });
+        }
+
         if (parsePrecioToNumber(precioCalculado) !== null) {
             setShowSolicitudForm(true);
         }
@@ -166,8 +175,10 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     setDestino('');
     setDistancia(null);
     setPrecio(null);
+    setOrigenCoords(null);
+    setDestinoCoords(null);
     if (directionsRendererRef.current) {
-      directionsRendererRef.current.setDirections({routes: []}); // Clear map route
+      directionsRendererRef.current.setDirections({routes: []}); 
     }
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
@@ -219,7 +230,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
             Para envíos más económicos, utilizá nuestro <Link href="/cotizador-envios-lowcost" className="text-secondary underline hover:text-secondary/80">Cotizador Low Cost</Link>.
           </p>
         </div>
-        <div className="relative animate-fade-in h-full"> {/* Ensure this div takes height */}
+        <div className="relative animate-fade-in h-full"> 
           {mapLoading && ( <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md"><p className="text-foreground">Cargando mapa...</p></div> )}
           <div ref={mapRef} id="mapa-express" className="h-[400px] md:h-full w-full rounded-md shadow-md border border-border min-h-[300px]"></div>
         </div>
@@ -230,8 +241,9 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
             initialData={{
               direccionRetiro: origen,
               direccionEntrega: destino,
-              montoACobrar: parsePrecioToNumber(precio) ?? 0, // Provide a default if parsing fails
+              montoACobrar: parsePrecioToNumber(precio) ?? 0,
             }}
+            initialDestinoCoords={destinoCoords} // Pass the destination coordinates
             createEnvioAction={createEnvioDesdeCalculadoraAction}
             onSolicitudSuccess={handleSolicitudSuccess}
           />
@@ -244,3 +256,5 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
 export default CaluloCotizadorExpress;
 
 declare global { interface Window { initMapGloballyForCalculatorExpress?: () => void; } }
+
+    

@@ -10,6 +10,8 @@ import { Terminal, Info, MapPinIcon } from "lucide-react";
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TarifaDistanciaCalculadora } from '@/types/supabase';
+// Intentionally not adding SolicitudEnvioForm here for LowCost,
+// but if needed, it would be added similar to Express.
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -29,12 +31,12 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
   const [loading, setLoading] = useState<boolean>(false);
   const [mapLoading, setMapLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  // Not adding showSolicitudForm and coords state for LowCost unless specifically requested for parity
 
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  // Removed geocoderRef as it's not directly used in the refactored version.
   const marcadorOrigenRef = useRef<google.maps.Marker | null>(null);
   const marcadorDestinoRef = useRef<google.maps.Marker | null>(null);
 
@@ -96,23 +98,12 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
     if (!tarifas || tarifas.length === 0) {
       return "Tarifas no disponibles. Consulte por WhatsApp.";
     }
-    // Assumes tariffs are sorted by distancia_hasta_km
     for (const tarifa of tarifas) {
       if (distanciaKm <= tarifa.distancia_hasta_km) {
         return `$${tarifa.precio.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       }
     }
-    // If distance exceeds all defined tiers
-    const lastTier = tarifas[tarifas.length - 1];
-    if (distanciaKm > lastTier.distancia_hasta_km) {
-        // Example of per-km extra if the last tier was defined with it
-        // if (lastTier.precio_por_km_extra) {
-        //   const extraKm = Math.ceil(distanciaKm - lastTier.distancia_max_km_previous_tier);
-        //   return `$${(lastTier.precio_base_extra + extraKm * lastTier.precio_por_km_extra).toLocaleString('es-AR')}`;
-        // }
-        return "Distancia excede tarifas. Consulte por WhatsApp.";
-    }
-    return "No se pudo calcular. Consulte por WhatsApp.";
+    return "Distancia excede tarifas. Consulte por WhatsApp.";
   };
 
   const colocarMarcadores = (
@@ -146,6 +137,8 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
     if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); return; }
     if (!directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) { setError("El servicio de mapas no está listo. Intente de nuevo."); return; }
     setLoading(true); setError(null); setDistancia(null); setPrecio(null);
+    // Resetting coords if they were being stored
+    // setOrigenCoords(null); setDestinoCoords(null); 
 
     try {
       const response = await directionsServiceRef.current.route({
@@ -161,6 +154,11 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
         const distanciaValorKm = (leg.distance?.value || 0) / 1000;
         setDistancia(`${distanciaTexto}`);
         setPrecio(calcularPrecioConTarifas(distanciaValorKm));
+
+        // Storing coordinates if needed (currently not passed to a form for LowCost)
+        // if (leg.start_location) setOrigenCoords({ lat: leg.start_location.lat(), lng: leg.start_location.lng() });
+        // if (leg.end_location) setDestinoCoords({ lat: leg.end_location.lat(), lng: leg.end_location.lng() });
+
         if (leg.start_location && leg.end_location && leg.start_address && leg.end_address) {
           colocarMarcadores(leg.start_location, leg.end_location, leg.start_address, leg.end_address);
         }
@@ -238,3 +236,5 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
 export default CaluloCotizadorLowCost;
 
 declare global { interface Window { initMapGloballyForCalculator?: () => void; } }
+
+    
