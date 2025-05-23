@@ -20,9 +20,8 @@ import type { EnvioCompletoParaDialog, Cliente, TipoPaquete, TipoServicio } from
 import { 
     getEnvioByIdAction, 
     updateShipmentAction, 
-    getClientesForShipmentFormAction,
-    suggestDeliveryOptionsAction 
-} from "@/app/envios/actions";
+    getClientesForShipmentFormAction 
+} from "@/app/envios/actions"; // Removed suggestDeliveryOptionsAction as it's not used here
 import { getTiposPaqueteActivosAction, getTiposServicioActivosAction } from "@/app/configuracion/actions";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -45,6 +44,7 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
     if (isOpen && shipmentId) {
       const fetchShipmentRelatedData = async () => {
         setIsLoadingData(true);
+        setInitialShipmentData(null); // Reset initial data on open/ID change
         try {
           const [shipmentResult, clientesData, tiposPaqueteData, tiposServicioData] = await Promise.all([
             getEnvioByIdAction(shipmentId),
@@ -55,20 +55,22 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
 
           if (shipmentResult.data) {
             const currentShipment = shipmentResult.data;
+            // Map EnvioCompletoParaDialog to ShipmentFormData
             const formData: Partial<ShipmentFormData> = {
               cliente_id: currentShipment.cliente_id,
               nombre_cliente_temporal: currentShipment.nombre_cliente_temporal || "",
               client_location: currentShipment.client_location,
               tipo_paquete_id: currentShipment.tipo_paquete_id,
-              package_weight: currentShipment.package_weight || 0.1,
-              status: currentShipment.status as ShipmentFormData['status'],
+              package_weight: currentShipment.package_weight,
+              status: currentShipment.status as ShipmentFormData['status'], // Cast as it's compatible
               tipo_servicio_id: currentShipment.tipo_servicio_id,
               precio_servicio_final: currentShipment.precio_servicio_final,
+              // Ensure other fields required by ShipmentFormData but not directly in EnvioCompletoParaDialog are handled if any
             };
             setInitialShipmentData(formData);
           } else {
             toast({ title: "Error", description: shipmentResult.error || "No se pudo cargar el envío.", variant: "destructive" });
-            onOpenChange(false);
+            onOpenChange(false); // Close dialog if shipment data fails to load
           }
           setClientes(clientesData || []);
           setTiposPaquete(tiposPaqueteData || []);
@@ -83,7 +85,8 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
       };
       fetchShipmentRelatedData();
     } else if (!isOpen) {
-      setInitialShipmentData(null); 
+      // Optionally reset data when dialog is closed, though useEffect above handles re-fetch on open
+      // setInitialShipmentData(null); 
     }
   }, [isOpen, shipmentId, onOpenChange, toast]);
 
@@ -96,7 +99,7 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
           title: "Envío Actualizado",
           description: `Los datos del envío han sido actualizados. ${result.info || ''}`,
         });
-        onOpenChange(false);
+        onOpenChange(false); // Close dialog on success
       } else {
         toast({
           title: "Error al Actualizar",
@@ -107,19 +110,15 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
     } catch (error) {
       toast({
         title: "Error Inesperado",
-        description: "Ocurrió un error al procesar la solicitud de actualización.",
+        description: (error instanceof Error ? error.message : "Ocurrió un error desconocido.") + "Ocurrió un error al procesar la solicitud de actualización.",
         variant: "destructive",
       });
+      console.error("Error updating shipment:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
   
-  const handleSuggestOptions = async (data: Pick<ShipmentFormData, 'client_location' | 'package_weight' | 'tipo_paquete_id'>) => {
-    if (!suggestDeliveryOptionsAction) return null;
-    return suggestDeliveryOptionsAction(data);
-  };
-
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -148,8 +147,8 @@ export function EditShipmentDialog({ shipmentId, isOpen, onOpenChange }: EditShi
                 tiposPaquete={tiposPaquete}
                 tiposServicio={tiposServicio}
                 isEditMode={true}
-                onSuggestOptions={onSuggestOptions ? handleSuggestOptions : undefined} // onSuggestOptions may not be defined, check prop
-                onOpenChange={onOpenChange} // Pass onOpenChange to ShipmentForm
+                onSuggestOptions={undefined} // Explicitly disable AI suggestions for edit mode
+                onOpenChange={onOpenChange}
             />
         ) : (
             <p className="py-4 text-muted-foreground">Cargando datos del envío...</p>
