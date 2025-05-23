@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Form, FormField, FormMessage, FormControl } from "@/components/ui/form"; // Added FormControl
 import { tipoCalculadoraServicioEnum, listaTarifasCalculadoraSchema, TarifaDistanciaCalculadoraFormData } from '@/lib/schemas';
 import type { ListaTarifasCalculadoraFormData } from '@/lib/schemas';
 import type { TipoCalculadoraServicioEnum, TarifaDistanciaCalculadora } from '@/types/supabase';
@@ -46,7 +47,7 @@ export function GestionTarifasCalculadora() {
     },
   });
 
-  const { fields, append, remove, update } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({ // removed 'update' as it wasn't used
     control: form.control,
     name: "tarifas",
   });
@@ -64,7 +65,7 @@ export function GestionTarifasCalculadora() {
       const sortedFechas = Object.keys(result.data).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
       setFechasVigencia(sortedFechas);
       if (sortedFechas.length > 0) {
-        setFechaSeleccionada(sortedFechas[0]); // Select the most recent by default
+        setFechaSeleccionada(sortedFechas[0]);
       } else {
         setFechaSeleccionada('');
       }
@@ -78,21 +79,33 @@ export function GestionTarifasCalculadora() {
   
   const handleSaveNuevaLista = async (data: ListaTarifasCalculadoraFormData) => {
     setIsSubmitting(true);
-    // Ensure distances are strictly increasing
     for (let i = 0; i < data.tarifas.length; i++) {
         if (i > 0 && data.tarifas[i].distancia_hasta_km <= data.tarifas[i-1].distancia_hasta_km) {
             toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser mayor que la del tramo anterior.`, variant: "destructive" });
             setIsSubmitting(false);
             return;
         }
+        if (data.tarifas[i].distancia_hasta_km <= 0) {
+             toast({ title: "Error de Validación", description: `La 'Distancia Hasta (km)' del tramo ${i+1} debe ser un valor positivo.`, variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
+        if (data.tarifas[i].precio < 0) {
+             toast({ title: "Error de Validación", description: `El 'Precio' del tramo ${i+1} no puede ser negativo.`, variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
     }
+    
+    // Convert Date object to yyyy-MM-dd string format
+    const fechaVigenciaString = format(data.fecha_vigencia_desde, 'yyyy-MM-dd');
 
-    const result = await saveListaTarifasCalculadoraAction(tipoCalculadoraSeleccionado, data.fecha_vigencia_desde, data.tarifas);
+    const result = await saveListaTarifasCalculadoraAction(tipoCalculadoraSeleccionado, fechaVigenciaString, data.tarifas);
     if (result.success) {
       toast({ title: "Éxito", description: "Lista de tarifas guardada correctamente." });
       setIsDialogOpen(false);
       form.reset({ fecha_vigencia_desde: new Date(), tarifas: [{ distancia_hasta_km: 0, precio: 0 }] });
-      fetchTarifas(tipoCalculadoraSeleccionado); // Refresh data
+      fetchTarifas(tipoCalculadoraSeleccionado);
     } else {
       toast({ title: "Error al Guardar", description: result.error || "No se pudo guardar la lista de tarifas.", variant: "destructive" });
     }
@@ -104,8 +117,8 @@ export function GestionTarifasCalculadora() {
     setIsSubmitting(true);
     const result = await deleteTarifasCalculadoraPorFechaAction(tipoCalculadoraSeleccionado, fechaSeleccionada);
     if (result.success) {
-      toast({ title: "Éxito", description: `Lista de tarifas para ${format(parseISO(fechaSeleccionada), "dd/MM/yyyy")} eliminada.` });
-      fetchTarifas(tipoCalculadoraSeleccionado); // Refresh data
+      toast({ title: "Éxito", description: `Lista de tarifas para ${format(parseISO(fechaSeleccionada), "dd/MM/yyyy", { locale: es })} eliminada.` });
+      fetchTarifas(tipoCalculadoraSeleccionado);
     } else {
       toast({ title: "Error al Eliminar", description: result.error || "No se pudo eliminar la lista de tarifas.", variant: "destructive" });
     }
@@ -158,7 +171,7 @@ export function GestionTarifasCalculadora() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) }/>
                           </PopoverContent>
                         </Popover>
                         <FormMessage />
@@ -175,7 +188,9 @@ export function GestionTarifasCalculadora() {
                           render={({ field: formField }) => (
                             <FormItem className="flex-1">
                               <Label htmlFor={`dist-${index}`} className="sr-only">Distancia Hasta (km)</Label>
-                              <Input id={`dist-${index}`} type="number" placeholder="Hasta (km)" {...formField} onChange={e => formField.onChange(parseFloat(e.target.value))} />
+                              <FormControl>
+                                <Input id={`dist-${index}`} type="number" placeholder="Hasta (km)" {...formField} onChange={e => formField.onChange(parseFloat(e.target.value))} />
+                              </FormControl>
                               <FormMessage/>
                             </FormItem>
                           )}
@@ -186,7 +201,9 @@ export function GestionTarifasCalculadora() {
                           render={({ field: formField }) => (
                             <FormItem className="flex-1">
                                <Label htmlFor={`price-${index}`} className="sr-only">Precio</Label>
-                              <Input id={`price-${index}`} type="number" step="0.01" placeholder="Precio ($)" {...formField} onChange={e => formField.onChange(parseFloat(e.target.value))} />
+                               <FormControl>
+                                <Input id={`price-${index}`} type="number" step="0.01" placeholder="Precio ($)" {...formField} onChange={e => formField.onChange(parseFloat(e.target.value))} />
+                               </FormControl>
                                <FormMessage/>
                             </FormItem>
                           )}
@@ -291,3 +308,5 @@ export function GestionTarifasCalculadora() {
     </Card>
   );
 }
+
+    
