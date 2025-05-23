@@ -25,12 +25,15 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Lightbulb, Send, Info, DollarSign, Box } from "lucide-react"; // Package replaced by Box
+import { Loader2, Lightbulb, Send, Info, DollarSign, Box as BoxIcon } from "lucide-react";
 import type { Cliente, TipoPaquete, TipoServicio } from "@/types/supabase";
 import type { SuggestDeliveryOptionsOutput } from "@/ai/flows/suggest-delivery-options";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+
+const NULL_VALUE_PLACEHOLDER = "_NULL_VALUE_";
+const MANUAL_SERVICE_ID_PLACEHOLDER = "_MANUAL_";
 
 interface ShipmentFormProps {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'email' | 'direccion' | 'latitud' | 'longitud'>[];
@@ -40,10 +43,8 @@ interface ShipmentFormProps {
   onSubmitShipment: (data: ShipmentFormData, aiSuggestions?: SuggestDeliveryOptionsOutput) => Promise<{success: boolean, error?: string | null, info?: string | null, data?: any}>;
   initialData?: Partial<ShipmentFormData>;
   isEditMode?: boolean;
+  onOpenChange?: (open: boolean) => void; // Declared as it's passed by EditShipmentDialog
 }
-
-const NULL_VALUE_PLACEHOLDER = "_NULL_VALUE_";
-const MANUAL_SERVICE_ID_PLACEHOLDER = "_MANUAL_";
 
 export function ShipmentForm({ 
     clientes, 
@@ -52,19 +53,20 @@ export function ShipmentForm({
     onSuggestOptions, 
     onSubmitShipment, 
     initialData,
-    isEditMode = false 
+    isEditMode = false,
+    onOpenChange // Deconstructed
 }: ShipmentFormProps) {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<SuggestDeliveryOptionsOutput | null>(null);
-  const [selectedClientAddress, setSelectedClientAddress] = useState<string | null>(initialData?.client_location || null);
-  const [showManualPrice, setShowManualPrice] = useState(!!(initialData?.tipo_servicio_id === null && initialData?.precio_servicio_final !== null && initialData.precio_servicio_final !== undefined));
+  const [selectedClientAddress, setSelectedClientAddress] = useState<string | null>(null);
+  const [showManualPriceState, setShowManualPriceState] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
 
   const form = useForm<ShipmentFormData>({
     resolver: zodResolver(shipmentSchema),
-    defaultValues: initialData || {
+    defaultValues: { // Default values for new form
       cliente_id: null,
       nombre_cliente_temporal: "",
       client_location: "",
@@ -77,84 +79,108 @@ export function ShipmentForm({
   });
 
   const selectedClientId = form.watch("cliente_id");
-  const selectedTipoServicioId = form.watch("tipo_servicio_id");
-  
+  // Watched value for tipo_servicio_id to react to its changes
+  const watchedTipoServicioId = form.watch("tipo_servicio_id");
+
   useEffect(() => {
-    if (initialData) {
-      const currentTipoPaqueteId = initialData.tipo_paquete_id === "" ? null : initialData.tipo_paquete_id;
-      const currentTipoServicioId = initialData.tipo_servicio_id === "" ? null : initialData.tipo_servicio_id;
-
-      form.reset({
-        ...initialData,
-        tipo_paquete_id: currentTipoPaqueteId,
-        tipo_servicio_id: currentTipoServicioId,
+    if (isEditMode && initialData) {
+      const defaultFormValues: Partial<ShipmentFormData> = {
+        cliente_id: initialData.cliente_id || null,
+        nombre_cliente_temporal: initialData.nombre_cliente_temporal || "",
+        client_location: initialData.client_location || "",
+        tipo_paquete_id: initialData.tipo_paquete_id || null,
+        package_weight: initialData.package_weight === undefined ? 0.1 : initialData.package_weight,
+        status: initialData.status || estadoEnvioEnum.Values.pending,
+        tipo_servicio_id: initialData.tipo_servicio_id || null,
         precio_servicio_final: initialData.precio_servicio_final === undefined ? null : initialData.precio_servicio_final,
-      });
-      if (initialData.cliente_id) {
-        const client = clientes.find(c => c.id === initialData.cliente_id);
-        setSelectedClientAddress(client?.direccion || initialData.client_location || null);
-      } else {
-        setSelectedClientAddress(initialData.client_location || null);
-      }
-      setShowManualPrice(currentTipoServicioId === null && initialData.precio_servicio_final !== null && initialData.precio_servicio_final !== undefined);
-    }
-  }, [initialData, form, clientes]);
+      };
+      form.reset(defaultFormValues);
+      
+      const clientForInitialData = initialData.cliente_id ? clientes.find(c => c.id === initialData.cliente_id) : null;
+      setSelectedClientAddress(clientForInitialData?.direccion || initialData.client_location || null);
+      
+      const initialIsManualPrice = (initialData.tipo_servicio_id === null || initialData.tipo_servicio_id === MANUAL_SERVICE_ID_PLACEHOLDER) &&
+                                 initialData.precio_servicio_final !== null &&
+                                 initialData.precio_servicio_final !== undefined;
+      setShowManualPriceState(initialIsManualPrice);
 
+    } else if (!isEditMode) {
+      form.reset({ // Reset to new form defaults
+        cliente_id: null,
+        nombre_cliente_temporal: "",
+        client_location: "",
+        tipo_paquete_id: null,
+        package_weight: 0.1,
+        status: estadoEnvioEnum.Values.pending,
+        tipo_servicio_id: null,
+        precio_servicio_final: null,
+      });
+      setSelectedClientAddress(null);
+      setShowManualPriceState(false);
+    }
+  }, [isEditMode, initialData, form, clientes]); // form removed from deps as per react-hook-form guidance on reset
 
   useEffect(() => {
     if (selectedClientId && selectedClientId !== NULL_VALUE_PLACEHOLDER) {
       const client = clientes.find(c => c.id === selectedClientId);
-      if (client && client.direccion) {
-        form.setValue("client_location", client.direccion, { shouldValidate: true });
-        form.setValue("nombre_cliente_temporal", "", { shouldValidate: true });
-        setSelectedClientAddress(client.direccion);
-      } else {
-        // Keep form value if editing, or clear if creating and client has no address
-        const currentLocation = form.getValues("client_location");
-        if (!isEditMode || (isEditMode && initialData?.cliente_id !== selectedClientId) || !currentLocation) {
+      if (client) {
+        form.setValue("nombre_cliente_temporal", ""); // Clear temporary name
+        if (client.direccion) {
+          form.setValue("client_location", client.direccion, { shouldValidate: true });
+          setSelectedClientAddress(client.direccion);
+        } else {
+           // Client selected but has no address - keep current form value if editing, clear if creating
+           if (!isEditMode || (initialData?.cliente_id !== selectedClientId)) {
             form.setValue("client_location", "", { shouldValidate: true });
             setSelectedClientAddress(null);
-        }
-        if(client && !client.direccion && !isEditMode) {
-            toast({title: "Advertencia", description: "El cliente seleccionado no tiene una dirección registrada. Por favor, actualice los datos del cliente o ingrese la dirección manualmente.", variant: "destructive", duration: 7000});
+          }
+          toast({title: "Advertencia", description: "El cliente seleccionado no tiene una dirección registrada. Ingrese la dirección manualmente o actualice los datos del cliente.", variant: "destructive", duration: 7000});
         }
       }
     } else if (selectedClientId === NULL_VALUE_PLACEHOLDER) {
+      // If "Ninguno / Envío Temporal" is selected, clear client-specific fields
+      // but allow manual entry for client_location and nombre_cliente_temporal.
+      // The form fields themselves handle this.
+      // We might want to clear form.setValue("client_location", "") here if it wasn't an edit
+      if (!isEditMode || (initialData && initialData.cliente_id !== null)) { // If switching from a client to temporal
         form.setValue("client_location", "", { shouldValidate: true });
-        setSelectedClientAddress(null);
+      }
+      setSelectedClientAddress(null);
     }
-  }, [selectedClientId, clientes, form, toast, isEditMode, initialData]);
-  
-  useEffect(() => {
-    if(selectedTipoServicioId === MANUAL_SERVICE_ID_PLACEHOLDER){
-      setShowManualPrice(true);
-      form.setValue("tipo_servicio_id", null); 
-    } else if (selectedTipoServicioId && selectedTipoServicioId !== NULL_VALUE_PLACEHOLDER) {
-      const servicio = tiposServicio.find(s => s.id === selectedTipoServicioId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, clientes, form.setValue, toast, isEditMode, initialData?.cliente_id]);
+
+  const handleTipoServicioChange = (value: string | null) => {
+    form.setValue('tipo_servicio_id', value === NULL_VALUE_PLACEHOLDER || value === MANUAL_SERVICE_ID_PLACEHOLDER ? null : value);
+    if (value === MANUAL_SERVICE_ID_PLACEHOLDER) {
+      setShowManualPriceState(true);
+      // Keep existing manual price if user toggles back and forth, or let them clear it
+    } else if (value && value !== NULL_VALUE_PLACEHOLDER) {
+      const servicio = tiposServicio.find(s => s.id === value);
       form.setValue("precio_servicio_final", servicio?.precio_base ?? null);
-      setShowManualPrice(false);
-    } else { 
+      setShowManualPriceState(false);
+    } else { // NULL_VALUE_PLACEHOLDER or empty
       form.setValue("precio_servicio_final", null);
-      setShowManualPrice(false);
+      setShowManualPriceState(false);
     }
-  }, [selectedTipoServicioId, tiposServicio, form]);
+  };
 
 
   const handleSuggestOptionsLocal = async () => {
     if (!onSuggestOptions) return;
+    const formDataForSuggestion = form.getValues();
     const isValid = await form.trigger(["client_location", "package_weight", "tipo_paquete_id"]);
     if (!isValid) {
-        toast({ title: "Error de Validación", description: "Corrija los campos para obtener sugerencias.", variant: "destructive"});
+        toast({ title: "Error de Validación", description: "Corrija los campos resaltados para obtener sugerencias.", variant: "destructive"});
         return;
     }
     setIsSuggesting(true);
     setAiSuggestions(null);
-    const formData = form.getValues();
     try {
       const suggestions = await onSuggestOptions({
-          client_location: formData.client_location,
-          package_weight: formData.package_weight,
-          tipo_paquete_id: formData.tipo_paquete_id
+          client_location: formDataForSuggestion.client_location!, // Assert non-null as it's validated
+          package_weight: formDataForSuggestion.package_weight,
+          tipo_paquete_id: formDataForSuggestion.tipo_paquete_id
       });
       if (suggestions) {
         setAiSuggestions(suggestions);
@@ -177,12 +203,13 @@ export function ShipmentForm({
         tipo_paquete_id: data.tipo_paquete_id === NULL_VALUE_PLACEHOLDER ? null : data.tipo_paquete_id,
         tipo_servicio_id: data.tipo_servicio_id === NULL_VALUE_PLACEHOLDER || data.tipo_servicio_id === MANUAL_SERVICE_ID_PLACEHOLDER ? null : data.tipo_servicio_id,
         precio_servicio_final: data.precio_servicio_final === undefined ? null : data.precio_servicio_final,
+        status: data.status || estadoEnvioEnum.Values.pending, // Ensure status has a default if not provided
     };
 
     try {
         const result = await onSubmitShipment(submissionData, aiSuggestions ?? undefined);
         if (result.success) {
-            toast({ title: isEditMode ? "Envío Actualizado" : "Envío Creado", description: `${result.info || ''}` });
+            toast({ title: isEditMode ? "Envío Actualizado" : "Envío Creado", description: `${isEditMode ? "Los cambios han sido guardados." : "El nuevo envío ha sido registrado."} ${result.info || ''}` });
             if (!isEditMode) {
                 router.push("/envios");
                 form.reset({
@@ -190,7 +217,7 @@ export function ShipmentForm({
                   tipo_paquete_id: null, package_weight: 0.1, status: estadoEnvioEnum.Values.pending,
                   tipo_servicio_id: null, precio_servicio_final: null,
                 });
-                setAiSuggestions(null); setSelectedClientAddress(null); setShowManualPrice(false);
+                setAiSuggestions(null); setSelectedClientAddress(null); setShowManualPriceState(false);
             } else {
                if(onOpenChange) onOpenChange(false); // Close dialog if in edit mode from a dialog
                router.refresh(); 
@@ -205,12 +232,6 @@ export function ShipmentForm({
     }
   };
   
-  // Prop for EditShipmentDialog to close itself
-  let onOpenChange: ((open: boolean) => void) | undefined;
-  if (isEditMode && (props as any).onOpenChange) {
-    onOpenChange = (props as any).onOpenChange;
-  }
-
 
   return (
     <Form {...form}>
@@ -245,9 +266,9 @@ export function ShipmentForm({
                 <FormField control={form.control} name="nombre_cliente_temporal" render={({ field }) => (<FormItem><FormLabel>Nombre Cliente (Temporal)</FormLabel><FormControl><Input placeholder="Nombre del destinatario" {...field} value={field.value || ""} /></FormControl><FormMessage /></FormItem>)} />
             )}
             {selectedClientId && selectedClientId !== NULL_VALUE_PLACEHOLDER && selectedClientAddress ? (
-                <FormItem><FormLabel>Ubicación del Cliente (Automático)</FormLabel><div className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 text-sm"><Info className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>{selectedClientAddress}</span></div><FormField control={form.control} name="client_location" render={({ field }) => <Input type="hidden" {...field} value={selectedClientAddress || ""} />} /></FormItem>
+                <FormItem><FormLabel>Ubicación del Cliente (Automático)</FormLabel><div className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 text-sm"><Info className="h-4 w-4 text-muted-foreground flex-shrink-0" /><span>{selectedClientAddress}</span></div><Input type="hidden" {...form.register("client_location")} value={selectedClientAddress || ""} /></FormItem>
             ) : (
-                <FormField control={form.control} name="client_location" render={({ field }) => (<FormItem><FormLabel>Ubicación Manual</FormLabel><FormControl><Input placeholder="Dirección completa" {...field} value={field.value || ""}/></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={form.control} name="client_location" render={({ field }) => (<FormItem><FormLabel>Ubicación Manual</FormLabel><FormControl><Input placeholder="Dirección completa (Ej: Av. Colón 1234, Mar del Plata)" {...field} value={field.value || ""}/></FormControl><FormMessage /></FormItem>)} />
             )}
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -268,12 +289,8 @@ export function ShipmentForm({
                   </FormItem>
                 )}
               />
-              <FormField control={form.control} name="package_weight" render={({ field }) => (<FormItem><FormLabel>Peso (kg)</FormLabel><FormControl><Input type="number" step="0.01" min="0.01" placeholder="Ej: 1.5" {...field} onChange={event => field.onChange(parseFloat(event.target.value))} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="package_weight" render={({ field }) => (<FormItem><FormLabel>Peso (kg)</FormLabel><FormControl><Input type="number" step="0.01" min="0.01" placeholder="Ej: 1.5" {...field} onChange={event => field.onChange(parseFloat(event.target.value))} value={field.value ?? 0.1} /></FormControl><FormMessage /></FormItem>)} />
             </div>
-
-            {isEditMode && (
-              <FormField control={form.control} name="status" render={({ field }) => (<FormItem><FormLabel>Estado del Envío</FormLabel><Select onValueChange={field.onChange} value={field.value || undefined}><FormControl><SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger></FormControl><SelectContent>{estadoEnvioEnum.options.map((estado) => (<SelectItem key={estado} value={estado}>{estado.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)} />
-            )}
           </CardContent>
         </Card>
 
@@ -290,20 +307,8 @@ export function ShipmentForm({
                         <FormItem>
                             <FormLabel>Tipo de Servicio</FormLabel>
                              <Select 
-                                onValueChange={(value) => {
-                                    field.onChange(value === NULL_VALUE_PLACEHOLDER || value === MANUAL_SERVICE_ID_PLACEHOLDER ? null : value);
-                                    if (value === MANUAL_SERVICE_ID_PLACEHOLDER) {
-                                      setShowManualPrice(true);
-                                    } else if (value && value !== NULL_VALUE_PLACEHOLDER) {
-                                      const servicio = tiposServicio.find(s => s.id === value);
-                                      form.setValue("precio_servicio_final", servicio?.precio_base ?? null);
-                                      setShowManualPrice(false);
-                                    } else {
-                                      form.setValue("precio_servicio_final", null);
-                                      setShowManualPrice(false);
-                                    }
-                                }} 
-                                value={field.value ? field.value : (showManualPrice ? MANUAL_SERVICE_ID_PLACEHOLDER : NULL_VALUE_PLACEHOLDER)}
+                                onValueChange={(value) => handleTipoServicioChange(value)} 
+                                value={field.value ? field.value : (showManualPriceState ? MANUAL_SERVICE_ID_PLACEHOLDER : NULL_VALUE_PLACEHOLDER)}
                             >
                                 <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar un tipo de servicio" /></SelectTrigger></FormControl>
                                 <SelectContent>
@@ -311,7 +316,7 @@ export function ShipmentForm({
                                     <SelectItem value={MANUAL_SERVICE_ID_PLACEHOLDER}>-- Ingreso Manual de Precio --</SelectItem>
                                     {tiposServicio.map(servicio => (
                                         <SelectItem key={servicio.id} value={servicio.id}>
-                                            {servicio.nombre} {servicio.precio_base !== null ? `($${servicio.precio_base.toFixed(2)})` : ''}
+                                            {servicio.nombre} {servicio.precio_base !== null && servicio.precio_base !== undefined ? `($${servicio.precio_base.toFixed(2)})` : ''}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -335,11 +340,11 @@ export function ShipmentForm({
                                     {...field}
                                     value={field.value ?? ""}
                                     onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-                                    disabled={!showManualPrice && selectedTipoServicioId !== null && selectedTipoServicioId !== NULL_VALUE_PLACEHOLDER && selectedTipoServicioId !== MANUAL_SERVICE_ID_PLACEHOLDER}
+                                    disabled={!showManualPriceState}
                                 />
                             </FormControl>
                             <FormDescription>
-                                {showManualPrice ? "Ingrese el precio manualmente." : (selectedTipoServicioId && selectedTipoServicioId !== NULL_VALUE_PLACEHOLDER && selectedTipoServicioId !== MANUAL_SERVICE_ID_PLACEHOLDER ? "Precio basado en el tipo de servicio seleccionado." : "Seleccione un tipo de servicio o ingrese un precio manual.")}
+                                {showManualPriceState ? "Ingrese el precio manualmente." : (watchedTipoServicioId && watchedTipoServicioId !== NULL_VALUE_PLACEHOLDER && watchedTipoServicioId !== MANUAL_SERVICE_ID_PLACEHOLDER ? "Precio basado en el tipo de servicio seleccionado." : "Seleccione un tipo de servicio o ingrese un precio manual.")}
                             </FormDescription>
                             <FormMessage />
                         </FormItem>
@@ -347,6 +352,15 @@ export function ShipmentForm({
                 />
             </CardContent>
         </Card>
+
+        {isEditMode && (
+          <Card>
+            <CardHeader><CardTitle>Estado del Envío</CardTitle></CardHeader>
+            <CardContent>
+              <FormField control={form.control} name="status" render={({ field }) => (<FormItem><FormLabel>Estado Actual</FormLabel><Select onValueChange={field.onChange} value={field.value || undefined}><FormControl><SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger></FormControl><SelectContent>{estadoEnvioEnum.options.map((estado) => (<SelectItem key={estado} value={estado}>{estado.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)} />
+            </CardContent>
+          </Card>
+        )}
 
         {!isEditMode && onSuggestOptions && (
           <Button type="button" variant="outline" onClick={handleSuggestOptionsLocal} disabled={isSuggesting || isSubmitting} className="w-full sm:w-auto">
@@ -359,9 +373,11 @@ export function ShipmentForm({
         )}
 
         <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || isSuggesting}>
-          {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isEditMode ? "Guardando..." : "Creando..."}</> : <><Send className="mr-2 h-4 w-4" />{isEditMode ? "Guardar Cambios" : "Crear Envío"}</>}
+          {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isEditMode ? "Guardando Cambios..." : "Crear Envío..."}</> : <><Send className="mr-2 h-4 w-4" />{isEditMode ? "Guardar Cambios" : "Crear Envío"}</>}
         </Button>
       </form>
     </Form>
   );
 }
+
+    
