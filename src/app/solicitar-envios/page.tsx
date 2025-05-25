@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const GOOGLE_MAPS_SCRIPT_ID_SOLICITAR = 'google-maps-api-script-solicitar-envio'; // More specific ID
+const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 }; // Center coordinates for Mar del Plata
 
 declare global {
   interface Window {
@@ -54,7 +55,6 @@ export default function SolicitarEnviosPage() {
 
   const initMap = useCallback(() => {
     if (!window.google || !window.google.maps || !mapRef.current || mapInstanceRef.current) return;
-    const marDelPlata = { lat: -38.0055, lng: -57.5426 };
     const map = new window.google.maps.Map(mapRef.current!, {
       zoom: 12, center: marDelPlata, mapTypeControl: false, streetViewControl: false,
     });
@@ -76,7 +76,7 @@ export default function SolicitarEnviosPage() {
       (window as any).initMapGloballyForSolicitarEnvioPage = initMap;
       const script = document.createElement('script');
       script.id = GOOGLE_MAPS_SCRIPT_ID_SOLICITAR;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMapGloballyForSolicitarEnvioPage&libraries=marker,geometry`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMapGloballyForSolicitarEnvioPage&libraries=marker,geometry&loading=async`;
       script.async = true; script.defer = true;
       script.onerror = () => setErrorCalculation("Error al cargar el script del mapa.");
       document.head.appendChild(script);
