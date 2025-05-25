@@ -17,7 +17,7 @@ import { Terminal, Info, MapPinIcon, Loader2, ArrowRight, Edit, Calculator } fro
 import type { TipoPaquete, TipoServicio, TarifaDistanciaCalculadora, Cliente, EnvioIndividual, NuevoEnvioIndividual } from "@/types/supabase"; // Added missing types
 import type { SolicitudEnvioIndividualFormData } from '@/lib/schemas';
 
-const GOOGLE_MAPS_SCRIPT_ID = "google-maps-api-script-solicitar";
+const GOOGLE_MAPS_SCRIPT_ID = "AIzaSyA1UksWl_uTYZlU6lYkPJjlcs1ZFQyO7tw";
 
 export default function SolicitarEnviosPage() {
   const [step, setStep] = useState(1); // 1: Addresses, 2: Full Form
