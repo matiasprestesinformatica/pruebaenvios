@@ -16,9 +16,10 @@ import { Terminal, MapPinIcon, Calculator, Loader2, Edit } from "lucide-react";
 import type { TarifaDistanciaCalculadora, TipoPaquete, TipoServicio } from "@/types/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { createEnvioIndividualAction } from "./actions";
-import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; // Use shared loader
+import { loadGoogleMapsApi } from '@/lib/google-maps-loader';
 
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
+const INITIAL_ZOOM = 12;
 
 export default function SolicitarEnviosPage() {
   const [step, setStep] = useState(1);
@@ -30,7 +31,7 @@ export default function SolicitarEnviosPage() {
   const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const [googleApiLoadedState, setGoogleApiLoadedState] = useState<boolean>(false);
-  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true); // Tracks script loading attempt
+  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true);
   const [loadingCalculation, setLoadingCalculation] = useState<boolean>(false);
   const [errorCalculation, setErrorCalculation] = useState<string | null>(null);
 
@@ -51,25 +52,34 @@ export default function SolicitarEnviosPage() {
 
   const initMap = useCallback(() => {
     if (!mapRef.current || !window.google?.maps?.DirectionsService || !window.google?.maps?.DirectionsRenderer) {
-      console.error("Map ref or Google Maps Directions services not available for initMap.");
+      console.error("Map ref or Google Maps services not available for initMap in SolicitarEnviosPage.");
       setErrorCalculation("No se pudo inicializar el mapa para cálculo de ruta. Intente recargar.");
+      setGoogleApiLoadedState(false); // Mark as not ready if services are missing
       return;
     }
-    if (mapInstanceRef.current) return; // Already initialized
+    if (mapInstanceRef.current) return;
 
-    const map = new window.google.maps.Map(mapRef.current!, {
-      zoom: 12, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false,
-    });
-    mapInstanceRef.current = map;
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
-    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+    try {
+      const map = new window.google.maps.Map(mapRef.current!, {
+        zoom: INITIAL_ZOOM, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false,
+      });
+      mapInstanceRef.current = map;
+      directionsServiceRef.current = new window.google.maps.DirectionsService();
+      directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+      setErrorCalculation(null); // Clear previous errors
+    } catch (error) {
+      console.error("Error initializing Google Maps instance:", error);
+      setErrorCalculation("Error al inicializar la instancia del mapa.");
+      setGoogleApiLoadedState(false);
+    }
   }, []);
 
   useEffect(() => {
+    setMapApiLoading(true);
     loadGoogleMapsApi()
       .then(() => {
         setGoogleApiLoadedState(true);
-        setErrorCalculation(null); // Clear previous API loading errors
+        setErrorCalculation(null);
       })
       .catch((err: Error) => {
         console.error("Failed to load Google Maps API in SolicitarEnviosPage:", err);
@@ -106,8 +116,10 @@ export default function SolicitarEnviosPage() {
         } else {
             setTarifasExpress(tarifasResult.data);
         }
+
         if (!paquetesResult || paquetesResult.length === 0) console.warn("No se encontraron tipos de paquete activos.");
         setTiposPaqueteActivos(paquetesResult || []);
+        
         if(!serviciosResult || serviciosResult.length === 0) console.warn("No se encontraron tipos de servicio activos.");
         setTiposServicioActivos(serviciosResult || []);
 
@@ -123,7 +135,7 @@ export default function SolicitarEnviosPage() {
 
   const calcularPrecioConTarifas = useCallback((distanciaKm: number): number | null => {
     if (!tarifasExpress || tarifasExpress.length === 0) {
-        setErrorCalculation("Tarifas Express no disponibles. No se puede calcular el precio. Por favor, configure las tarifas.");
+        setErrorCalculation("Tarifas Express no disponibles. No se puede calcular el precio. Por favor, configure las tarifas e intente de nuevo.");
         return null;
     }
     for (const tarifa of tarifasExpress) {
@@ -195,25 +207,39 @@ export default function SolicitarEnviosPage() {
         setDistancia(distanciaTexto); setPrecioCotizado(precioCalc);
         if (leg.start_location) setOrigenCoords({ lat: leg.start_location.lat(), lng: leg.start_location.lng() });
         if (leg.end_location) setDestinoCoords({ lat: leg.end_location.lat(), lng: leg.end_location.lng() });
-        if (precioCalc !== null) setStep(2); else if (!errorCalculation) setErrorCalculation("No se pudo calcular un precio para la distancia. Verifique las tarifas.");
+        
+        if (precioCalc !== null) {
+          setStep(2); 
+        } else if (!errorCalculation) { // if calcularPrecioConTarifas returned null but didn't set an error itself
+            setErrorCalculation("No se pudo calcular un precio para la distancia. Verifique las tarifas o la distancia.");
+        }
+        
         if (leg.start_location && leg.end_location && leg.start_address && leg.end_address) {
             colocarMarcadores(leg.start_location, leg.end_location, leg.start_address, leg.end_address);
         }
       } else { throw new Error("No se pudo obtener la información de la ruta desde Google Maps."); }
     } catch (e) {
       console.error("Error al calcular la ruta:", e);
-      setErrorCalculation("No se pudo calcular la ruta. Asegúrese de que las direcciones sean válidas en Mar del Plata.");
+      setErrorCalculation(`No se pudo calcular la ruta. Asegúrese de que las direcciones sean válidas en Mar del Plata. Error: ${(e as Error).message}`);
     } finally { setLoadingCalculation(false); }
   };
 
   const handleSolicitudEnviada = () => {
     setStep(1); setOrigen(''); setDestino(''); setDistancia(null); setPrecioCotizado(null);
     setOrigenCoords(null); setDestinoCoords(null);
-    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null);
+    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null as any); 
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
-    if (mapInstanceRef.current) { mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER); mapInstanceRef.current.setZoom(12); }
+    if (mapInstanceRef.current) { mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER); mapInstanceRef.current.setZoom(INITIAL_ZOOM); }
     setErrorCalculation(null);
+  };
+  
+  const handleModificarDirecciones = () => {
+    setStep(1);
+    setErrorCalculation(null); // Clear previous calculation errors
+    // Optionally clear distancia and precioCotizado if you want the UI to reset completely
+    // setDistancia(null);
+    // setPrecioCotizado(null);
   };
 
   if (loadingInitialData) {
@@ -268,7 +294,11 @@ export default function SolicitarEnviosPage() {
                 <Input id="direccion-entrega-solicitar" type="text" value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Ej: Av. Libertad 4567, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
               </div>
             </div>
-            <Button onClick={handleCalcularYContinuar} disabled={loadingCalculation || mapApiLoading || !googleApiLoadedState || tarifasExpress.length === 0} className="w-full">
+            <Button 
+                onClick={handleCalcularYContinuar} 
+                disabled={loadingCalculation || mapApiLoading || !googleApiLoadedState || tarifasExpress.length === 0 || loadingInitialData || !directionsServiceRef.current} 
+                className="w-full"
+            >
               {loadingCalculation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Calculator className="mr-2 h-4 w-4" />}
               Calcular y Continuar Solicitud
             </Button>
@@ -292,7 +322,7 @@ export default function SolicitarEnviosPage() {
 
       {step === 2 && origen && destino && precioCotizado !== null && !loadingInitialData && !errorInitialData && tiposPaqueteActivos.length > 0 && tiposServicioActivos.length > 0 && (
         <div className="animate-in fade-in-50 mt-6">
-            <Button variant="outline" onClick={() => { setStep(1); setErrorCalculation(null); }} className="mb-4 flex items-center gap-2">
+            <Button variant="outline" onClick={handleModificarDirecciones} className="mb-4 flex items-center gap-2">
                 <Edit className="h-4 w-4"/> Modificar Direcciones
             </Button>
             <SolicitarEnvioForm
@@ -309,7 +339,7 @@ export default function SolicitarEnviosPage() {
                     precio_cotizado: precioCotizado,
                 }}
                 onSuccess={handleSolicitudEnviada}
-                onBack={() => setStep(1)}
+                onBack={handleModificarDirecciones}
             />
         </div>
       )}
@@ -328,3 +358,4 @@ export default function SolicitarEnviosPage() {
     </>
   );
 }
+
