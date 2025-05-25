@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export const empresaSchema = z.object({
@@ -58,6 +57,13 @@ export const shipmentSchema = z.object({
   precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
   notas: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
+  if (!data.tipo_paquete_id) { // Ensures tipo_paquete_id is always provided
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un tipo de paquete.",
+      path: ["tipo_paquete_id"],
+    });
+  }
   if (data.cliente_id) {
     if (!data.client_location || data.client_location.trim() === "") {
         ctx.addIssue({
@@ -82,18 +88,11 @@ export const shipmentSchema = z.object({
       });
     }
   }
-  if (!data.tipo_paquete_id) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Debe seleccionar un tipo de paquete.",
-      path: ["tipo_paquete_id"],
-    });
-  }
   if (!data.tipo_servicio_id && (data.precio_servicio_final === null || data.precio_servicio_final === undefined)) {
     ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Debe seleccionar un tipo de servicio o ingresar un precio final para el servicio.",
-        path: ["tipo_servicio_id"],
+        path: ["tipo_servicio_id"], // Or precio_servicio_final, depending on UI flow
     });
   }
 });
@@ -186,22 +185,34 @@ export const solicitudEnvioCalculadoraSchema = z.object({
 });
 export type SolicitudEnvioCalculadoraFormData = z.infer<typeof solicitudEnvioCalculadoraSchema>;
 
+// Schema for the new "Solicitar Envío" form
 export const solicitudEnvioIndividualSchema = z.object({
-  nombre_cliente: z.string().min(1, "Su nombre es obligatorio."),
+  // Client (Solicitante) details
+  nombre_cliente: z.string().min(1, "Su nombre completo es obligatorio."),
   email_cliente: z.string().email("Ingrese un email válido.").optional().nullable().or(z.literal('')),
   telefono_cliente: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
+  
+  // Pickup details
   direccion_retiro: z.string().min(1, "La dirección de retiro es obligatoria."),
   latitud_retiro: z.coerce.number().optional().nullable(),
   longitud_retiro: z.coerce.number().optional().nullable(),
+
+  // Delivery details
   direccion_entrega: z.string().min(1, "La dirección de entrega es obligatoria."),
   latitud_entrega: z.coerce.number().optional().nullable(),
   longitud_entrega: z.coerce.number().optional().nullable(),
+
+  // Package details
   tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
   descripcion_paquete: z.string().optional().nullable(),
   peso_paquete: z.coerce.number().min(0.01, "El peso debe ser positivo.").optional().nullable(),
   dimensiones_paquete: z.string().optional().nullable(),
+
+  // Service and price
   tipo_servicio_id: z.string().uuid().optional().nullable(),
   precio_manual_servicio: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
+
+  // Notes
   notas_cliente: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (!data.tipo_paquete_id) {
@@ -213,9 +224,9 @@ export const solicitudEnvioIndividualSchema = z.object({
   }
   if (!data.tipo_servicio_id && (data.precio_manual_servicio === null || data.precio_manual_servicio === undefined)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Debe seleccionar un tipo de servicio o ingresar un precio manual.",
-      path: ["tipo_servicio_id"], // Could also be precio_manual_servicio
+        code: z.ZodIssueCode.custom,
+        message: "Debe seleccionar un tipo de servicio o ingresar un precio manual.",
+        path: ["tipo_servicio_id"], 
     });
   }
 });

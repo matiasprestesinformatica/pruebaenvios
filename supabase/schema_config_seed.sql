@@ -76,7 +76,7 @@ CREATE TABLE "public"."clientes" (
 COMMENT ON TABLE "public"."clientes" IS 'Stores client information and their link to a company.';
 
 -- Create Table for Tipos de Paquete
-CREATE TABLE "public"."tipos_paquete" (
+CREATE TABLE IF NOT EXISTS "public"."tipos_paquete" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL UNIQUE,
     "descripcion" TEXT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE "public"."tipos_paquete" (
 COMMENT ON TABLE "public"."tipos_paquete" IS 'Defines different types of packages.';
 
 -- Create Table for Tipos de Servicio
-CREATE TABLE "public"."tipos_servicio" (
+CREATE TABLE IF NOT EXISTS "public"."tipos_servicio" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL UNIQUE,
     "descripcion" TEXT NULL,
@@ -127,7 +127,7 @@ CREATE TABLE "public"."envios" (
     "precio_servicio_final" NUMERIC(10, 2) NULL,
     "notas" TEXT NULL
 );
-COMMENT ON TABLE "public"."envios" IS 'Stores internal shipment details, linked to clients and repartos.';
+COMMENT ON TABLE "public"."envios" IS 'Stores individual shipment details.';
 
 -- Create Table for Paradas_Reparto
 CREATE TABLE "public"."paradas_reparto" (
@@ -139,7 +139,7 @@ CREATE TABLE "public"."paradas_reparto" (
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     CONSTRAINT uq_reparto_envio UNIQUE (reparto_id, envio_id) DEFERRABLE INITIALLY DEFERRED
 );
-COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence of stops (shipments or company pickup) within a delivery route.';
+COMMENT ON TABLE "public"."paradas_reparto" IS 'Defines the sequence of stops within a delivery route.';
 
 -- Create Table for Tarifas Distancia Calculadora
 CREATE TABLE "public"."tarifas_distancia_calculadora" (
@@ -153,11 +153,11 @@ CREATE TABLE "public"."tarifas_distancia_calculadora" (
 );
 COMMENT ON TABLE "public"."tarifas_distancia_calculadora" IS 'Stores distance-based pricing tiers for calculator services like LowCost and Express.';
 
--- Create Table for Envios_Individuales (Public facing requests)
-CREATE TABLE "public"."envios_individuales" (
+-- Create Table for Envios Individuales (Solicitudes de Envío)
+CREATE TABLE IF NOT EXISTS "public"."envios_individuales" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "cliente_id" UUID NULL REFERENCES "public"."clientes"("id") ON DELETE SET NULL,
-    "nombre_cliente" TEXT NOT NULL, -- Nombre del solicitante/contacto principal
+    "nombre_cliente" TEXT NOT NULL,
     "email_cliente" TEXT NULL,
     "telefono_cliente" TEXT NULL,
     "direccion_retiro" TEXT NOT NULL,
@@ -171,19 +171,19 @@ CREATE TABLE "public"."envios_individuales" (
     "peso_paquete" NUMERIC NULL,
     "dimensiones_paquete" TEXT NULL,
     "tipo_servicio_id" UUID NULL REFERENCES "public"."tipos_servicio"("id") ON DELETE SET NULL,
-    "precio_final_servicio" NUMERIC(10, 2) NULL, -- Final price for the service
-    "status" TEXT NOT NULL DEFAULT 'pendiente', -- Status of this individual request
+    "precio_final_servicio" NUMERIC(10, 2) NULL,
+    "status" TEXT NOT NULL DEFAULT 'pendiente',
     "fecha_solicitud" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     "notas_cliente" TEXT NULL,
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
-COMMENT ON TABLE "public"."envios_individuales" IS 'Stores individual shipment requests made by clients/users, typically from a public form.';
+COMMENT ON TABLE "public"."envios_individuales" IS 'Stores individual shipment requests made by clients/users.';
 
 
 -- 03_schema_rls.sql
 ALTER TABLE "public"."empresas" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated users (empresas)" ON "public"."empresas" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read access for Empresas" ON "public"."empresas" FOR SELECT TO "anon", "authenticated" USING (true);
+CREATE POLICY "Allow admin all access for Empresas" ON "public"."empresas" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
 ALTER TABLE "public"."clientes" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for authenticated users (clientes)" ON "public"."clientes" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
@@ -192,12 +192,12 @@ ALTER TABLE "public"."repartidores" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for authenticated users (repartidores)" ON "public"."repartidores" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
 ALTER TABLE "public"."tipos_paquete" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated users (tipos_paquete)" ON "public"."tipos_paquete" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read access for tipos_paquete" ON "public"."tipos_paquete" FOR SELECT TO "anon", "authenticated" USING (true); -- Added for public form
+CREATE POLICY "Allow public read for Tipos Paquete" ON "public"."tipos_paquete" FOR SELECT TO anon, authenticated USING (activo = TRUE);
+CREATE POLICY "Allow admin all for Tipos Paquete" ON "public"."tipos_paquete" FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 ALTER TABLE "public"."tipos_servicio" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated users (tipos_servicio)" ON "public"."tipos_servicio" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read access for tipos_servicio" ON "public"."tipos_servicio" FOR SELECT TO "anon", "authenticated" USING (true); -- Added for public form
+CREATE POLICY "Allow public read for Tipos Servicio" ON "public"."tipos_servicio" FOR SELECT TO anon, authenticated USING (activo = TRUE);
+CREATE POLICY "Allow admin all for Tipos Servicio" ON "public"."tipos_servicio" FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 ALTER TABLE "public"."repartos" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for authenticated users (repartos)" ON "public"."repartos" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
@@ -209,56 +209,53 @@ ALTER TABLE "public"."paradas_reparto" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for authenticated users (paradas_reparto)" ON "public"."paradas_reparto" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
 ALTER TABLE "public"."tarifas_distancia_calculadora" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated users (tarifas_distancia_calculadora)" ON "public"."tarifas_distancia_calculadora" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read access for Tarifas Calculadora" ON "public"."tarifas_distancia_calculadora" FOR SELECT TO "anon", "authenticated" USING (true);
+CREATE POLICY "Allow admin all for Tarifas Calculadora" ON "public"."tarifas_distancia_calculadora" FOR ALL TO "authenticated" USING (true) WITH CHECK (true);
 
 ALTER TABLE "public"."envios_individuales" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public insert for envios_individuales" ON "public"."envios_individuales" FOR INSERT TO "anon", "authenticated" WITH CHECK (true);
-CREATE POLICY "Allow admin read for envios_individuales" ON "public"."envios_individuales" FOR SELECT TO "authenticated" USING (true); -- Adjust role if needed
+CREATE POLICY "Allow admin all access for envios_individuales" ON "public"."envios_individuales" FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- Refine for specific user access
 
 
--- 04_data_seed.sql (Focus on configuration data)
--- Sample Data for Tipos de Paquete
+-- 04_data_seed.sql (Solo datos de configuración esenciales)
+INSERT INTO "public"."tipos_servicio" ("id", "nombre", "descripcion", "precio_base", "activo") VALUES
+('svc_express_001', 'Envíos Express', 'Entrega urgente en la ciudad.', NULL, TRUE),
+('svc_lowcost_002', 'Envíos LowCost', 'Entrega económica programada.', NULL, TRUE),
+('svc_motofija_003', 'Moto Fija', 'Servicio de mensajería con moto asignada.', 50000.00, TRUE),
+('svc_planemprend_004', 'Plan Emprendedores', 'Tarifas especiales y soluciones para emprendedores.', NULL, TRUE),
+('svc_enviosflex_005', 'Envíos Flex', 'Servicio adaptable a necesidades específicas.', NULL, TRUE)
+ON CONFLICT (nombre) DO NOTHING;
+
 INSERT INTO "public"."tipos_paquete" ("id", "nombre", "descripcion", "activo") VALUES
 ('pkg_caja_peq_001', 'Caja Pequeña', 'Cajas de hasta 30x30x30cm', TRUE),
 ('pkg_caja_med_002', 'Caja Mediana', 'Cajas de hasta 50x50x50cm', TRUE),
 ('pkg_caja_gra_003', 'Caja Grande', 'Cajas mayores a 50x50x50cm', FALSE),
 ('pkg_docs_004', 'Documentos', 'Sobres y documentación', TRUE),
 ('pkg_delivery_005', 'Delivery Comida', 'Pedidos de comida', TRUE),
-('pkg_otros_006', 'Otros', 'Paquetes con formas irregulares u otros', TRUE);
+('pkg_otros_006', 'Otros', 'Paquetes con formas irregulares u otros', TRUE)
+ON CONFLICT (nombre) DO NOTHING;
 
--- Sample Data for Tipos de Servicio
-INSERT INTO "public"."tipos_servicio" ("id", "nombre", "descripcion", "precio_base", "activo") VALUES
-('svc_express_001', 'Envíos Express', 'Entrega urgente en la ciudad. Precio según calculadora.', NULL, TRUE),
-('svc_lowcost_002', 'Envíos LowCost', 'Entrega económica programada. Precio según calculadora.', NULL, TRUE),
-('svc_motofija_003', 'Moto Fija', 'Servicio de mensajería con moto asignada.', 50000.00, TRUE),
-('svc_planemprend_004', 'Plan Emprendedores', 'Tarifas especiales y soluciones para emprendedores.', NULL, TRUE),
-('svc_enviosflex_005', 'Envíos Flex', 'Servicio adaptable a necesidades específicas.', NULL, TRUE);
-
--- Sample Data for Tarifas Distancia Calculadora
--- LowCost Tariffs
+-- Sample Data for Tarifas Distancia Calculadora (Vigentes)
 INSERT INTO "public"."tarifas_distancia_calculadora" (tipo_calculadora, distancia_hasta_km, precio, fecha_vigencia_desde) VALUES
 ('lowcost', 2.9, 2150.00, CURRENT_DATE),
 ('lowcost', 4.9, 2900.00, CURRENT_DATE),
 ('lowcost', 8.9, 4000.00, CURRENT_DATE),
 ('lowcost', 13.0, 5800.00, CURRENT_DATE),
-('lowcost', 30.0, 8200.00, CURRENT_DATE);
-
--- Express Tariffs
-INSERT INTO "public"."tarifas_distancia_calculadora" (tipo_calculadora, distancia_hasta_km, precio, fecha_vigencia_desde) VALUES
+('lowcost', 30.0, 8200.00, CURRENT_DATE),
 ('express', 3.0, 2700.00, CURRENT_DATE),
 ('express', 5.0, 3400.00, CURRENT_DATE),
 ('express', 6.0, 4200.00, CURRENT_DATE),
 ('express', 7.0, 5000.00, CURRENT_DATE),
 ('express', 8.0, 5800.00, CURRENT_DATE),
 ('express', 9.0, 6500.00, CURRENT_DATE),
-('express', 10.0, 7350.00, CURRENT_DATE);
+('express', 10.0, 7350.00, CURRENT_DATE)
+ON CONFLICT (tipo_calculadora, fecha_vigencia_desde, distancia_hasta_km) DO NOTHING;
 
--- Minimal Repartidores and Empresas for dropdowns in forms
+-- Add minimal repartidores and empresas for dropdowns if not present
 INSERT INTO "public"."repartidores" ("id", "nombre", "estado") VALUES
-('0596f87a-a4a8-4f3d-9086-f003eab75af9', 'Matias (Disponible)', TRUE);
+('0596f87a-a4a8-4f3d-9086-f003eab75af9', 'Matias (Default)', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO "public"."empresas" ("id", "nombre", "direccion", "estado", "latitud", "longitud") VALUES
-('b2c3d4e5-f6a7-8901-2345-678901bcdef0', 'NUTRISABOR (Ejemplo)', 'Av. Independencia 456, Mar del Plata', TRUE, -38.0012, -57.5501);
-
--- No sample data for clientes, envios, repartos, paradas_reparto, envios_individuales in this config-focused seed.
+('a1b2c3d4-e5f6-7890-1234-567890abcdef', 'Empresa Ejemplo 1', 'Dirección Ejemplo 1, Mar del Plata', TRUE, -38.0000, -57.5500)
+ON CONFLICT (id) DO NOTHING;

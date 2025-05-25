@@ -1,4 +1,3 @@
-
 export type Json =
   | string
   | number
@@ -199,7 +198,7 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null
+          tipo_paquete_id: string | null // Changed from package_size
           package_weight: number
           status: string
           suggested_options: Json | null
@@ -217,7 +216,7 @@ export interface Database {
           client_location: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null
+          tipo_paquete_id?: string | null // Changed
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -235,7 +234,7 @@ export interface Database {
           client_location?: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null
+          tipo_paquete_id?: string | null // Changed
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -298,7 +297,7 @@ export interface Database {
             created_at?: string
         }
       }
-      envios_individuales: {
+      envios_individuales: { // Nueva tabla
         Row: {
           id: string
           cliente_id: string | null
@@ -506,7 +505,7 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 export type UpdateParadaReparto = Database['public']['Tables']['paradas_reparto']['Update'];
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
 
-
+// Nueva tabla para envios_individuales
 export type EnvioIndividual = Database['public']['Tables']['envios_individuales']['Row'];
 export type NuevoEnvioIndividual = Database['public']['Tables']['envios_individuales']['Insert'];
 export type UpdateEnvioIndividual = Database['public']['Tables']['envios_individuales']['Update'];
@@ -519,7 +518,7 @@ export type RepartoConDetalles = Reparto & {
 };
 
 export type EnvioConClienteYAjustes = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'latitud' | 'longitud'> | null;
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null; // direccion, email were removed for brevity here, add if needed
   tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; 
   tipos_servicio?: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
 };

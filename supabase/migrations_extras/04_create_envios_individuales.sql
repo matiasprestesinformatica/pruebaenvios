@@ -1,6 +1,7 @@
--- Este archivo define la creación de la tabla envios_individuales y tablas de soporte si no existen.
--- Asegúrate de que tipos_paquete y tipos_servicio se creen si este script se ejecuta de forma aislada.
+-- Ensure ENUM types exist if they are referenced by FKs or used directly,
+-- though for envios_individuales, we're using FKs to tables that manage these.
 
+-- Create tipos_paquete table if it doesn't exist (as per prompt instructions)
 CREATE TABLE IF NOT EXISTS "public"."tipos_paquete" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL UNIQUE,
@@ -10,6 +11,7 @@ CREATE TABLE IF NOT EXISTS "public"."tipos_paquete" (
 );
 COMMENT ON TABLE "public"."tipos_paquete" IS 'Defines different types of packages.';
 
+-- Create tipos_servicio table if it doesn't exist (as per prompt instructions)
 CREATE TABLE IF NOT EXISTS "public"."tipos_servicio" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "nombre" TEXT NOT NULL UNIQUE,
@@ -20,11 +22,11 @@ CREATE TABLE IF NOT EXISTS "public"."tipos_servicio" (
 );
 COMMENT ON TABLE "public"."tipos_servicio" IS 'Defines different types of services and their base prices.';
 
--- Create Table for Envios_Individuales
-CREATE TABLE "public"."envios_individuales" (
+-- Create Table for Envios Individuales (Solicitudes de Envío)
+CREATE TABLE IF NOT EXISTS "public"."envios_individuales" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    "cliente_id" UUID NULL REFERENCES "public"."clientes"("id") ON DELETE SET NULL,
-    "nombre_cliente" TEXT NOT NULL, -- Nombre del solicitante/contacto principal
+    "cliente_id" UUID NULL REFERENCES "public"."clientes"("id") ON DELETE SET NULL, -- Opcional
+    "nombre_cliente" TEXT NOT NULL, -- Nombre del solicitante/contacto para este envío
     "email_cliente" TEXT NULL,
     "telefono_cliente" TEXT NULL,
     "direccion_retiro" TEXT NOT NULL,
@@ -33,40 +35,51 @@ CREATE TABLE "public"."envios_individuales" (
     "direccion_entrega" TEXT NOT NULL,
     "latitud_entrega" NUMERIC NULL,
     "longitud_entrega" NUMERIC NULL,
-    "tipo_paquete_id" UUID NULL REFERENCES "public"."tipos_paquete"("id") ON DELETE SET NULL,
+    "tipo_paquete_id" UUID NULL REFERENCES "public"."tipos_paquete"("id") ON DELETE SET NULL, -- FK a tipos_paquete
     "descripcion_paquete" TEXT NULL,
     "peso_paquete" NUMERIC NULL,
     "dimensiones_paquete" TEXT NULL,
-    "tipo_servicio_id" UUID NULL REFERENCES "public"."tipos_servicio"("id") ON DELETE SET NULL,
-    "precio_final_servicio" NUMERIC(10, 2) NULL, -- Renombrado de precio_manual_servicio para claridad
-    "status" TEXT NOT NULL DEFAULT 'pendiente',
+    "tipo_servicio_id" UUID NULL REFERENCES "public"."tipos_servicio"("id") ON DELETE SET NULL, -- FK a tipos_servicio
+    "precio_final_servicio" NUMERIC(10, 2) NULL, -- Precio final, ya sea manual o de tipo_servicio
+    "status" TEXT NOT NULL DEFAULT 'pendiente', -- ej: 'pendiente', 'confirmado', 'en_proceso', 'cancelado_por_cliente'
     "fecha_solicitud" TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     "notas_cliente" TEXT NULL,
     "created_at" TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 COMMENT ON TABLE "public"."envios_individuales" IS 'Stores individual shipment requests made by clients/users.';
-COMMENT ON COLUMN "public"."envios_individuales"."nombre_cliente" IS 'Name of the person requesting or primary contact for the shipment.';
-COMMENT ON COLUMN "public"."envios_individuales"."precio_final_servicio" IS 'Final service price, either from a service type or manually entered.';
 
 -- RLS Policies for envios_individuales
 ALTER TABLE "public"."envios_individuales" ENABLE ROW LEVEL SECURITY;
 
+-- Allow public insert for new requests
 CREATE POLICY "Allow public insert for envios_individuales" ON "public"."envios_individuales"
     FOR INSERT TO "anon", "authenticated" WITH CHECK (true);
 
-CREATE POLICY "Allow admin read access for envios_individuales" ON "public"."envios_individuales"
-    FOR SELECT TO "authenticated" USING (true); -- O un rol específico de admin
+-- Allow authenticated users to manage (select, update, delete potentially) their own requests, or admins to manage all.
+-- This is a placeholder; more specific RLS for select/update/delete would be needed for production.
+CREATE POLICY "Allow admin all access to envios_individuales" ON "public"."envios_individuales"
+    FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- Placeholder, refine for roles
 
--- RLS Policies for tipos_paquete (if not already more permissively defined)
-ALTER TABLE "public"."tipos_paquete" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access for tipos_paquete" ON "public"."tipos_paquete"
-    FOR SELECT TO "anon", "authenticated" USING (true);
-CREATE POLICY "Allow admin all access for tipos_paquete" ON "public"."tipos_paquete"
-    FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- O un rol específico de admin
+-- RLS Policies for tipos_paquete (if not already created)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policy WHERE polname = 'Allow public read access for Tipos Paquete (Solicitar)' AND polrelid = 'public.tipos_paquete'::regclass) THEN
+        ALTER TABLE "public"."tipos_paquete" ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY "Allow public read access for Tipos Paquete (Solicitar)" ON "public"."tipos_paquete"
+            FOR SELECT TO "anon", "authenticated" USING (activo = TRUE);
+        CREATE POLICY "Allow admin all access for Tipos Paquete (Solicitar)" ON "public"."tipos_paquete"
+            FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- Placeholder for admin role
+    END IF;
+END$$;
 
--- RLS Policies for tipos_servicio (if not already more permissively defined)
-ALTER TABLE "public"."tipos_servicio" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access for tipos_servicio" ON "public"."tipos_servicio"
-    FOR SELECT TO "anon", "authenticated" USING (true);
-CREATE POLICY "Allow admin all access for tipos_servicio" ON "public"."tipos_servicio"
-    FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- O un rol específico de admin
+-- RLS Policies for tipos_servicio (if not already created)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policy WHERE polname = 'Allow public read access for Tipos Servicio (Solicitar)' AND polrelid = 'public.tipos_servicio'::regclass) THEN
+        ALTER TABLE "public"."tipos_servicio" ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY "Allow public read access for Tipos Servicio (Solicitar)" ON "public"."tipos_servicio"
+            FOR SELECT TO "anon", "authenticated" USING (activo = TRUE);
+        CREATE POLICY "Allow admin all access for Tipos Servicio (Solicitar)" ON "public"."tipos_servicio"
+            FOR ALL TO "authenticated" USING (true) WITH CHECK (true); -- Placeholder for admin role
+    END IF;
+END$$;
