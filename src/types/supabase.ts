@@ -15,7 +15,7 @@ export interface Database {
           id: string
           created_at: string
           nombre: string
-          direccion: string 
+          direccion: string
           latitud: number | null
           longitud: number | null
           telefono: string | null
@@ -27,7 +27,7 @@ export interface Database {
           id?: string
           created_at?: string
           nombre: string
-          direccion: string 
+          direccion: string
           latitud?: number | null
           longitud?: number | null
           telefono?: string | null
@@ -165,7 +165,7 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string
+          fecha_reparto: string 
           repartidor_id: string | null
           estado: string 
           tipo_reparto: string 
@@ -174,7 +174,7 @@ export interface Database {
         Insert: {
           id?: string
           created_at?: string
-          fecha_reparto: string
+          fecha_reparto: string 
           repartidor_id?: string | null
           estado?: string
           tipo_reparto: string
@@ -183,7 +183,7 @@ export interface Database {
         Update: {
           id?: string
           created_at?: string
-          fecha_reparto?: string
+          fecha_reparto?: string 
           repartidor_id?: string | null
           estado?: string
           tipo_reparto?: string
@@ -199,7 +199,7 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null // Changed from package_size
+          tipo_paquete_id: string | null
           package_weight: number
           status: string
           suggested_options: Json | null
@@ -217,7 +217,7 @@ export interface Database {
           client_location: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null // Changed from package_size
+          tipo_paquete_id?: string | null
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -235,7 +235,7 @@ export interface Database {
           client_location?: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null // Changed from package_size
+          tipo_paquete_id?: string | null
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -298,7 +298,7 @@ export interface Database {
             created_at?: string
         }
       }
-      envios_individuales: { // New table for client-requested shipments
+      envios_individuales: {
         Row: {
           id: string
           cliente_id: string | null
@@ -425,7 +425,6 @@ export type EnvioIndividual = Database['public']['Tables']['envios_individuales'
 export type NuevoEnvioIndividual = Database['public']['Tables']['envios_individuales']['Insert'];
 export type UpdateEnvioIndividual = Database['public']['Tables']['envios_individuales']['Update'];
 
-
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
@@ -433,7 +432,7 @@ export type RepartoConDetalles = Reparto & {
 };
 
 export type EnvioConClienteYAjustes = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'latitud' | 'longitud'> | null;
   tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; 
   tipos_servicio?: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
 };

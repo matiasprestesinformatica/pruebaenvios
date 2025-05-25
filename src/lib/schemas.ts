@@ -35,7 +35,6 @@ export const tipoPaqueteSchema = z.object({
 });
 export type TipoPaqueteFormData = z.infer<typeof tipoPaqueteSchema>;
 
-
 export const tipoServicioSchema = z.object({
   id: z.string().uuid().optional(),
   nombre: z.string().min(1, "El nombre del tipo de servicio es obligatorio."),
@@ -52,12 +51,12 @@ export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(),
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Made nullable to allow placeholder, but superRefine makes it mandatory
   package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
-  tipo_servicio_id: z.string().uuid().optional().nullable(),
+  tipo_servicio_id: z.string().uuid("ID de tipo de servicio inválido").optional().nullable(),
   precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
-  notas: z.string().optional().nullable(), // Added notas
+  notas: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
     if (!data.client_location || data.client_location.trim() === "") {
@@ -90,6 +89,14 @@ export const shipmentSchema = z.object({
       path: ["tipo_paquete_id"],
     });
   }
+  // Validation for service or manual price
+  if (!data.tipo_servicio_id && (data.precio_servicio_final === null || data.precio_servicio_final === undefined)) {
+    ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Debe seleccionar un tipo de servicio o ingresar un precio final para el servicio.",
+        path: ["tipo_servicio_id"], // Could also path to precio_servicio_final
+    });
+  }
 });
 export type ShipmentFormData = z.infer<typeof shipmentSchema>;
 
@@ -104,6 +111,9 @@ export type EstadoReparto = z.infer<typeof estadoRepartoEnum>;
 
 export const tipoRepartoEnum = z.enum(['individual', 'viaje_empresa', 'viaje_empresa_lote']);
 export type TipoReparto = z.infer<typeof tipoRepartoEnum>;
+
+export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const repartoCreationSchema = z.object({
   fecha_reparto: z.date({
@@ -129,7 +139,7 @@ export type RepartoCreationFormData = z.infer<typeof repartoCreationSchema>;
 
 export const clienteConServicioLoteSchema = z.object({
   cliente_id: z.string().uuid(),
-  tipo_servicio_id_lote: z.string().uuid().optional().nullable(),
+  tipo_servicio_id_lote: z.string().uuid("ID de tipo de servicio inválido").optional().nullable(),
   precio_manual_lote: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
 });
 export type ClienteConServicioLoteData = z.infer<typeof clienteConServicioLoteSchema>;
@@ -144,9 +154,6 @@ export const repartoLoteCreationSchema = z.object({
   clientes_con_servicio: z.array(clienteConServicioLoteSchema).min(1, "Debe seleccionar al menos un cliente y configurar su servicio."),
 });
 export type RepartoLoteCreationFormData = z.infer<typeof repartoLoteCreationSchema>;
-
-export const tipoParadaEnum = z.enum(['retiro_empresa', 'entrega_cliente']);
-export type TipoParada = z.infer<typeof tipoParadaEnum>;
 
 export const tipoCalculadoraServicioEnum = z.enum(['lowcost', 'express']);
 export type TipoCalculadoraServicioFormData = z.infer<typeof tipoCalculadoraServicioEnum>;
@@ -180,34 +187,22 @@ export const solicitudEnvioCalculadoraSchema = z.object({
 });
 export type SolicitudEnvioCalculadoraFormData = z.infer<typeof solicitudEnvioCalculadoraSchema>;
 
-// New Schema for SolicitarEnvioIndividualForm
 export const solicitudEnvioIndividualSchema = z.object({
-  // Solicitante
   nombre_cliente: z.string().min(1, "Su nombre es obligatorio."),
   email_cliente: z.string().email("Ingrese un email válido.").optional().nullable().or(z.literal('')),
   telefono_cliente: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
-  
-  // Retiro
   direccion_retiro: z.string().min(1, "La dirección de retiro es obligatoria."),
   latitud_retiro: z.coerce.number().optional().nullable(),
   longitud_retiro: z.coerce.number().optional().nullable(),
-  
-  // Entrega
   direccion_entrega: z.string().min(1, "La dirección de entrega es obligatoria."),
   latitud_entrega: z.coerce.number().optional().nullable(),
   longitud_entrega: z.coerce.number().optional().nullable(),
-  
-  // Paquete
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Nullable to allow placeholder
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
   descripcion_paquete: z.string().optional().nullable(),
   peso_paquete: z.coerce.number().min(0.01, "El peso debe ser positivo.").optional().nullable(),
   dimensiones_paquete: z.string().optional().nullable(),
-  
-  // Servicio y Precio
   tipo_servicio_id: z.string().uuid().optional().nullable(),
   precio_manual_servicio: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
-  
-  // Notas
   notas_cliente: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (!data.tipo_paquete_id) {
@@ -221,13 +216,8 @@ export const solicitudEnvioIndividualSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de servicio o ingresar un precio manual.",
-      path: ["tipo_servicio_id"], // Or point to both if desired
+      path: ["tipo_servicio_id"],
     });
-  }
-  if (data.tipo_servicio_id && data.precio_manual_servicio !== null && data.precio_manual_servicio !== undefined) {
-     // This logic is tricky. If a service is selected, its price should ideally be used.
-     // If manual price is also entered, which takes precedence? The form logic should handle this.
-     // For now, we allow both to be potentially set, action will decide.
   }
 });
 export type SolicitudEnvioIndividualFormData = z.infer<typeof solicitudEnvioIndividualSchema>;
