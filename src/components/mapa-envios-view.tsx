@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { EnvioMapa, TipoParadaEnum as TipoParadaEnumType } from '@/types/supabase';
 import { estadoEnvioEnum, tipoParadaEnum } from "@/lib/schemas";
 import { Loader2, AlertTriangle, Info as InfoIcon } from "lucide-react";
-import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; // Use shared loader
+import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; 
 
 interface MapaEnviosViewProps {
   envios: EnvioMapa[];
@@ -38,7 +38,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
   const [currentPolyline, setCurrentPolyline] = useState<google.maps.Polyline | null>(null);
   
   const [googleApiLoadedState, setGoogleApiLoadedState] = useState<boolean>(false);
-  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true); // Tracks script loading attempt
+  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true);
   const [errorLoadingApi, setErrorLoadingApi] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -60,15 +60,22 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
     if (!mapRef.current || !window.google?.maps?.Map || !window.google?.maps?.InfoWindow) {
       console.error("Map ref or core Google Maps services not available for initMap in MapaEnviosView.");
       setErrorLoadingApi("No se pudo inicializar el mapa. Intente recargar.");
+      setGoogleApiLoadedState(false);
       return;
     }
-    if (map) return; // Already initialized
+    if (map) return; 
 
-    const newMap = new window.google.maps.Map(mapRef.current, {
-      center: MAR_DEL_PLATA_CENTER, zoom: INITIAL_ZOOM, mapTypeControl: false, streetViewControl: false,
-    });
-    setMap(newMap);
-    setInfoWindow(new window.google.maps.InfoWindow());
+    try {
+        const newMap = new window.google.maps.Map(mapRef.current, {
+        center: MAR_DEL_PLATA_CENTER, zoom: INITIAL_ZOOM, mapTypeControl: false, streetViewControl: false,
+        });
+        setMap(newMap);
+        setInfoWindow(new window.google.maps.InfoWindow());
+    } catch(e) {
+        console.error("Error creating Google Maps instance in MapaEnviosView:", e);
+        setErrorLoadingApi("Error al crear la instancia del mapa.");
+        setGoogleApiLoadedState(false);
+    }
   }, [map]);
 
 
@@ -80,6 +87,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       return;
     }
     
+    setMapApiLoading(true);
     loadGoogleMapsApi()
       .then(() => {
         setGoogleApiLoadedState(true);
@@ -87,7 +95,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       })
       .catch((err: Error) => {
         console.error("Failed to load Google Maps API in MapaEnviosView:", err);
-        setErrorLoadingApi(err.message || "Error al cargar el servicio de mapas.");
+        setErrorLoadingApi(err.message || "Error al cargar el servicio de mapas. Verifique la API Key y la conexión.");
         setGoogleApiLoadedState(false);
       })
       .finally(() => {
@@ -103,7 +111,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
 
 
   useEffect(() => {
-    if (map && infoWindow && googleApiLoadedState) { // Ensure API is loaded
+    if (map && infoWindow && googleApiLoadedState && window.google?.maps?.Marker && window.google?.maps?.LatLngBounds && window.google?.maps?.Polyline && window.google?.maps?.SymbolPath) {
       markers.forEach(marker => marker.setMap(null)); 
       if (currentPolyline) {
         currentPolyline.setMap(null); 
@@ -115,7 +123,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       let hasValidPointsForRoute = false;
 
       envios.forEach(envio => {
-        if (envio.latitud != null && envio.longitud != null && window.google?.maps?.Marker) { // Check for Marker too
+        if (envio.latitud != null && envio.longitud != null) {
           hasValidPointsForRoute = true;
           const position = { lat: envio.latitud, lng: envio.longitud };
           bounds.extend(position);
@@ -188,6 +196,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
             map.fitBounds(bounds);
             const listener = window.google.maps.event.addListenerOnce(map, "idle", function() { 
               if (map.getZoom()! > 16) map.setZoom(16);
+              window.google.maps.event.removeListener(listener);
             });
         }
       } else if (envios.length === 0) {
@@ -195,7 +204,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
          map.setZoom(INITIAL_ZOOM);
       }
 
-      if (isFilteredByReparto && envios.length >= 2 && typeof window.google?.maps?.Polyline !== 'undefined') {
+      if (isFilteredByReparto && envios.length >= 2) {
         const routePath = envios
           .filter(envio => envio.latitud != null && envio.longitud != null)
           .sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity)) 
@@ -210,7 +219,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
             strokeWeight: 4,
             icons: [{
                 icon: {
-                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                    path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
                     scale: 3,
                     strokeColor: '#4285F4'
                 },
@@ -223,7 +232,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
         }
       }
     }
-  }, [map, infoWindow, envios, isFilteredByReparto, googleApiLoadedState]); // Added googleApiLoadedState
+  }, [map, infoWindow, envios, isFilteredByReparto, googleApiLoadedState]);
 
   if (mapApiLoading) {
     return (
@@ -245,7 +254,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
     );
   }
   
-  if(envios.length === 0 && !mapApiLoading && !errorLoadingApi){
+  if(envios.length === 0 && !mapApiLoading && !errorLoadingApi && googleApiLoadedState){
     return (
         <div className="flex flex-col items-center justify-center h-full border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
             <InfoIcon className="h-16 w-16 text-muted-foreground mb-4" />

@@ -14,8 +14,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Terminal, MapPinIcon, Calculator, Loader2, Edit } from "lucide-react";
 import type { TarifaDistanciaCalculadora, TipoPaquete, TipoServicio } from "@/types/supabase";
-import { useToast } from "@/hooks/use-toast";
-import { createEnvioIndividualAction } from "./actions";
 import { loadGoogleMapsApi } from '@/lib/google-maps-loader';
 
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
@@ -41,8 +39,6 @@ export default function SolicitarEnviosPage() {
   const [tiposPaqueteActivos, setTiposPaqueteActivos] = useState<Pick<TipoPaquete, 'id' | 'nombre'>[]>([]);
   const [tiposServicioActivos, setTiposServicioActivos] = useState<Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[]>([]);
   
-  const { toast } = useToast();
-
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
@@ -53,8 +49,8 @@ export default function SolicitarEnviosPage() {
   const initMap = useCallback(() => {
     if (!mapRef.current || !window.google?.maps?.DirectionsService || !window.google?.maps?.DirectionsRenderer) {
       console.error("Map ref or Google Maps services not available for initMap in SolicitarEnviosPage.");
-      setErrorCalculation("No se pudo inicializar el mapa para cálculo de ruta. Intente recargar.");
-      setGoogleApiLoadedState(false); // Mark as not ready if services are missing
+      setErrorCalculation("No se pudo inicializar el mapa. Intente recargar.");
+      setGoogleApiLoadedState(false); 
       return;
     }
     if (mapInstanceRef.current) return;
@@ -66,7 +62,7 @@ export default function SolicitarEnviosPage() {
       mapInstanceRef.current = map;
       directionsServiceRef.current = new window.google.maps.DirectionsService();
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
-      setErrorCalculation(null); // Clear previous errors
+      setErrorCalculation(null);
     } catch (error) {
       console.error("Error initializing Google Maps instance:", error);
       setErrorCalculation("Error al inicializar la instancia del mapa.");
@@ -83,19 +79,20 @@ export default function SolicitarEnviosPage() {
       })
       .catch((err: Error) => {
         console.error("Failed to load Google Maps API in SolicitarEnviosPage:", err);
-        setErrorCalculation(err.message || "Error al cargar el servicio de mapas.");
+        setErrorCalculation(err.message || "Error al cargar el servicio de mapas. Verifique la API Key y la conexión.");
         setGoogleApiLoadedState(false);
       })
       .finally(() => {
         setMapApiLoading(false);
       });
   }, []);
-
+  
   useEffect(() => {
     if (googleApiLoadedState && mapRef.current && !mapInstanceRef.current && step === 1) {
       initMap();
     }
   }, [googleApiLoadedState, step, initMap]);
+
 
   useEffect(() => {
     async function fetchInitialDataForForm() {
@@ -108,7 +105,7 @@ export default function SolicitarEnviosPage() {
           getTiposServicioActivosAction(),
         ]);
 
-        if (tarifasResult.error || !tarifasResult.data) {
+        if (tarifasResult.error || !tarifasResult.data || tarifasResult.data.length === 0) {
            const msg = tarifasResult.error || "No se encontraron tarifas Express para cotizar.";
            console.warn(msg);
            setErrorInitialData(prev => prev ? `${prev} ${msg}` : msg);
@@ -159,7 +156,7 @@ export default function SolicitarEnviosPage() {
     origenDir: string,
     destinoDir: string
   ) => {
-    if (!window.google?.maps || !mapInstanceRef.current) return;
+    if (!window.google?.maps?.Marker || !mapInstanceRef.current) return;
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
     
@@ -185,7 +182,7 @@ export default function SolicitarEnviosPage() {
     if (mapApiLoading || !googleApiLoadedState || !directionsServiceRef.current || !directionsRendererRef.current ) {
       setErrorCalculation("El servicio de mapas no está listo. Intente de nuevo o recargue la página."); return;
     }
-    if (tarifasExpress.length === 0 && !errorInitialData) {
+    if (tarifasExpress.length === 0 && !errorInitialData) { // Check errorInitialData to avoid showing this if data loading failed
         setErrorCalculation("Las tarifas para cotizar no están cargadas. Intente recargar la página o configure las tarifas."); return;
     }
     setLoadingCalculation(true); setErrorCalculation(null); setDistancia(null); setPrecioCotizado(null);
@@ -210,7 +207,7 @@ export default function SolicitarEnviosPage() {
         
         if (precioCalc !== null) {
           setStep(2); 
-        } else if (!errorCalculation) { // if calcularPrecioConTarifas returned null but didn't set an error itself
+        } else if (!errorCalculation) { 
             setErrorCalculation("No se pudo calcular un precio para la distancia. Verifique las tarifas o la distancia.");
         }
         
@@ -236,10 +233,7 @@ export default function SolicitarEnviosPage() {
   
   const handleModificarDirecciones = () => {
     setStep(1);
-    setErrorCalculation(null); // Clear previous calculation errors
-    // Optionally clear distancia and precioCotizado if you want the UI to reset completely
-    // setDistancia(null);
-    // setPrecioCotizado(null);
+    setErrorCalculation(null);
   };
 
   if (loadingInitialData) {
@@ -302,7 +296,7 @@ export default function SolicitarEnviosPage() {
               {loadingCalculation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Calculator className="mr-2 h-4 w-4" />}
               Calcular y Continuar Solicitud
             </Button>
-            {(mapApiLoading && !googleApiLoadedState) && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
+            {(mapApiLoading && !googleApiLoadedState && !errorCalculation) && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
             {errorCalculation && (
               <Alert variant="destructive">
                 <Terminal className="h-4 w-4" /> <AlertTitle>Error de Cálculo</AlertTitle>
@@ -329,15 +323,13 @@ export default function SolicitarEnviosPage() {
                 tiposPaquete={tiposPaqueteActivos}
                 tiposServicio={tiposServicioActivos}
                 createEnvioIndividualAction={createEnvioIndividualAction}
-                initialData={{
-                    direccion_retiro: origen,
-                    latitud_retiro: origenCoords?.lat || null,
-                    longitud_retiro: origenCoords?.lng || null,
-                    direccion_entrega: destino,
-                    latitud_entrega: destinoCoords?.lat || null,
-                    longitud_entrega: destinoCoords?.lng || null,
-                    precio_cotizado: precioCotizado,
-                }}
+                initialDireccionRetiro={origen}
+                initialLatitudRetiro={origenCoords?.lat || null}
+                initialLongitudRetiro={origenCoords?.lng || null}
+                initialDireccionEntrega={destino}
+                initialLatitudEntrega={destinoCoords?.lat || null}
+                initialLongitudEntrega={destinoCoords?.lng || null}
+                initialPrecioCotizado={precioCotizado}
                 onSuccess={handleSolicitudEnviada}
                 onBack={handleModificarDirecciones}
             />
@@ -358,4 +350,3 @@ export default function SolicitarEnviosPage() {
     </>
   );
 }
-

@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { TarifaDistanciaCalculadora } from '@/types/supabase';
 import { SolicitudEnvioForm } from '@/components/calculadora/solicitud-envio-form';
 import { createEnvioDesdeCalculadoraAction } from '@/app/calculadora/actions';
-import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; // Use shared loader
+import { loadGoogleMapsApi } from '@/lib/google-maps-loader';
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -33,7 +33,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
   const [precio, setPrecio] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [googleApiLoadedState, setGoogleApiLoadedState] = useState<boolean>(false);
-  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true); // Tracks script loading attempt
+  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showSolicitudForm, setShowSolicitudForm] = useState<boolean>(false);
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -50,19 +50,27 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     if (!mapRef.current || !window.google?.maps?.DirectionsService || !window.google?.maps?.DirectionsRenderer) {
       console.error("Map ref or Google Maps API not available for initMap in CotizadorExpress.");
       setError("No se pudo inicializar el mapa. Intente recargar.");
+      setGoogleApiLoadedState(false);
       return;
     }
     if (mapInstanceRef.current) return;
 
-    const map = new window.google.maps.Map(mapRef.current!, {
-      zoom: 12, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, zoomControl: true,
-    });
-    mapInstanceRef.current = map;
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
-    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+    try {
+        const map = new window.google.maps.Map(mapRef.current!, {
+        zoom: 12, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, zoomControl: true,
+        });
+        mapInstanceRef.current = map;
+        directionsServiceRef.current = new window.google.maps.DirectionsService();
+        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+    } catch (e) {
+        console.error("Error initializing Google Maps instance in CotizadorExpress:", e);
+        setError("Error al inicializar el mapa.");
+        setGoogleApiLoadedState(false);
+    }
   }, []);
 
   useEffect(() => {
+    setMapApiLoading(true);
     loadGoogleMapsApi()
       .then(() => {
         setGoogleApiLoadedState(true);
@@ -70,7 +78,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
       })
       .catch((err: Error) => {
         console.error("Failed to load Google Maps API in CotizadorExpress:", err);
-        setError(err.message || "Error al cargar el servicio de mapas.");
+        setError(err.message || "Error al cargar el servicio de mapas. Verifique la API Key y la conexión.");
         setGoogleApiLoadedState(false);
       })
       .finally(() => {
@@ -92,8 +100,11 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     return isNaN(parsed) ? null : parsed;
   };
 
-  const calcularPrecioConTarifas = (distanciaKm: number) => {
-    if (!tarifas || tarifas.length === 0) return "Tarifas no disponibles. Consulte por WhatsApp.";
+  const calcularPrecioConTarifas = useCallback((distanciaKm: number) => {
+    if (!tarifas || tarifas.length === 0) {
+        setError("Tarifas Express no disponibles. No se puede calcular el precio.");
+        return "Tarifas no disponibles. Consulte por WhatsApp.";
+    }
     for (const tarifa of tarifas) {
       if (distanciaKm <= tarifa.distancia_hasta_km) {
         return `$${tarifa.precio.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -102,14 +113,15 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     const lastTier = tarifas[tarifas.length - 1];
     if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km === 10.0 && tarifas.find(t => t.tipo_calculadora === 'express')) { 
         const kmExtra = Math.ceil(distanciaKm - 10);
-        const precioCalculado = lastTier.precio + (kmExtra * 750);
+        const precioCalculado = lastTier.precio + (kmExtra * 750); // Assuming 750 is the per_km_extra cost
         return `$${precioCalculado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
+    setError("Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.");
     return "Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.";
-  };
+  }, [tarifas]);
 
   const colocarMarcadores = useCallback((origenPos: google.maps.LatLng, destinoPos: google.maps.LatLng, origenDir: string, destinoDir: string) => {
-    if (!window.google?.maps || !mapInstanceRef.current) return;
+    if (!window.google?.maps?.Marker || !mapInstanceRef.current) return;
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
     marcadorOrigenRef.current = new window.google.maps.Marker({
@@ -132,6 +144,9 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); setShowSolicitudForm(false); return; }
     if (mapApiLoading || !googleApiLoadedState || !directionsServiceRef.current || !directionsRendererRef.current ) { 
         setError("El servicio de mapas no está listo. Intente de nuevo o recargue la página."); setShowSolicitudForm(false); return; 
+    }
+    if (tarifas.length === 0 && !error) {
+        setError("Las tarifas para cotizar no están cargadas. Intente recargar la página o configure las tarifas."); setShowSolicitudForm(false); return;
     }
     setLoading(true); setError(null); setDistancia(null); setPrecio(null); setShowSolicitudForm(false);
     setOrigenCoords(null); setDestinoCoords(null); 
@@ -163,6 +178,8 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
 
         if (parsePrecioToNumber(precioCalculado) !== null) {
             setShowSolicitudForm(true);
+        } else if (!error) { // If calcularPrecioConTarifas set its own error, don't override
+            setError("No se pudo calcular un precio para la distancia. Verifique las tarifas o la distancia.");
         }
         if (leg.start_location && leg.end_location && leg.start_address && leg.end_address) {
           colocarMarcadores(leg.start_location, leg.end_location, leg.start_address, leg.end_address);
@@ -170,7 +187,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
       } else { throw new Error("No se pudo obtener la información de la ruta."); }
     } catch (e) {
       console.error("Error al calcular la ruta:", e);
-      setError("No se pudo calcular la ruta. Asegúrese de que las direcciones sean válidas en Mar del Plata.");
+      setError(`No se pudo calcular la ruta. Asegúrese de que las direcciones sean válidas en Mar del Plata. Error: ${(e as Error).message}`);
       setShowSolicitudForm(false);
     } finally { setLoading(false); }
   };
@@ -184,12 +201,11 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     setOrigenCoords(null);
     setDestinoCoords(null);
     if (directionsRendererRef.current) {
-      directionsRendererRef.current.setDirections(null); 
+      directionsRendererRef.current.setDirections(null as any); 
     }
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
     if (mapInstanceRef.current) mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER);
-
   }
 
   return (
@@ -218,11 +234,11 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
             </div>
           </div>
           </TooltipProvider>
-          <Button onClick={calcularRuta} disabled={loading || mapApiLoading || !googleApiLoadedState} className="w-full bg-accent text-accent-foreground hover:bg-accent/90 py-3 text-base font-semibold transition-transform hover:scale-105 duration-200">
+          <Button onClick={calcularRuta} disabled={loading || mapApiLoading || !googleApiLoadedState || !directionsServiceRef.current || tarifas.length === 0} className="w-full bg-accent text-accent-foreground hover:bg-accent/90 py-3 text-base font-semibold transition-transform hover:scale-105 duration-200">
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
             Calcular Ruta y Precio Express
           </Button>
-          {mapApiLoading && !googleApiLoadedState && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
+          {(mapApiLoading && !googleApiLoadedState && !error) && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
           {error && ( <Alert variant="destructive" className="animate-fade-in"><Terminal className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> )}
           <div className="space-y-2 text-foreground/80 animate-fade-in animation-delay-200">
             {distancia && <p id="distancia-express" className="text-lg">Distancia: <span className="font-semibold text-primary">{distancia}</span></p>}
@@ -241,7 +257,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
           </p>
         </div>
         <div className="relative animate-fade-in h-full"> 
-          {(mapApiLoading && !googleApiLoadedState) && <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md"><p className="text-foreground">Cargando mapa...</p></div>}
+          {(mapApiLoading && !googleApiLoadedState && !error) && <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md"><p className="text-foreground">Cargando mapa...</p></div>}
           <div ref={mapRef} id="mapa-express" className="h-[400px] md:h-full w-full rounded-md shadow-md border border-border min-h-[300px]"></div>
         </div>
       </div>

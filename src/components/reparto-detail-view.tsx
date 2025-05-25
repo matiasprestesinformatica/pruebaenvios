@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, TipoParadaEnum as TipoParadaEnumType } from "@/types/supabase";
+import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, TipoParadaEnum as TipoParadaEnumTypeFromDB } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
 import { estadoRepartoEnum, tipoRepartoEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,11 +18,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useState, useEffect, useTransition, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useTransition, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle, CheckCircle, DollarSign, InfoIcon } from "lucide-react";
+import { User, CalendarDays, Truck, Building, Loader2, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle, CheckCircle, DollarSign, InfoIcon } from "lucide-react";
 import type { OptimizeRouteInput, OptimizeRouteOutput, OptimizeRouteStopInput } from "@/ai/flows/optimize-route-flow";
-import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; // Use shared loader
+import { loadGoogleMapsApi } from '@/lib/google-maps-loader';
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
 
 interface RepartoDetailViewProps {
   initialReparto: RepartoCompleto;
@@ -122,6 +124,7 @@ export function RepartoDetailView({
   const { toast } = useToast();
 
   useEffect(() => {
+    setMapApiLoading(true);
     loadGoogleMapsApi()
       .then(() => {
         setGoogleApiLoadedState(true);
@@ -129,7 +132,7 @@ export function RepartoDetailView({
       })
       .catch((err: Error) => {
         console.error("Failed to load Google Maps API in RepartoDetailView:", err);
-        setErrorLoadingMaps(err.message || "Error al cargar el servicio de mapas para cálculo de distancia.");
+        setErrorLoadingMaps(err.message || "Error al cargar el servicio de mapas para cálculo de distancia. Verifique la API Key.");
         setGoogleApiLoadedState(false);
       })
       .finally(() => {
@@ -224,7 +227,8 @@ export function RepartoDetailView({
     if (googleApiLoadedState) { 
         calculateAndSetCurrentRouteDistance();
     }
-  }, [reparto.paradas, reparto.empresas, googleApiLoadedState, calculateRouteDistance, getParadasMapaInfo]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reparto.paradas, reparto.empresas, googleApiLoadedState, calculateRouteDistance]); // getParadasMapaInfo removed as it's stable
 
   const geocodableParadasCount = useMemo(() => {
     let count = 0;
@@ -241,7 +245,7 @@ export function RepartoDetailView({
 
   const handleStatusChange = async () => {
     startUpdatingStatusTransition(async () => {
-        const envioIds = reparto.paradas.filter(p => !!p.envio_id).map(p => p.envio_id as string);
+        const envioIds = reparto.paradas.filter(p => !!p.envio_id && p.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente).map(p => p.envio_id as string);
         const result = await updateRepartoStatusAction(reparto.id, selectedStatus, envioIds);
 
         if (result.success) {
@@ -403,6 +407,7 @@ export function RepartoDetailView({
     if (result.success) {
       toast({ title: "Ruta Aplicada", description: "El orden de las paradas ha sido actualizado. La página se refrescará." });
       setSuggestedRoute(null); 
+      // Re-fetch reparto details or rely on revalidation (current approach)
     } else {
       toast({ title: "Error al Aplicar Ruta", description: result.error || "No se pudo aplicar el nuevo orden.", variant: "destructive" });
     }
@@ -437,13 +442,21 @@ export function RepartoDetailView({
 
   return (
     <div className="space-y-6">
-      {(!googleApiLoadedState || !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || errorLoadingMaps) && (
+      {(mapApiLoading && !googleApiLoadedState && !errorLoadingMaps) && (
+        <Alert variant="default" className="mt-4 bg-yellow-50 border-yellow-300 text-yellow-700">
+          <Loader2 className="h-4 w-4 animate-spin !text-yellow-700" />
+          <AlertTitle>Cargando Servicios de Mapa</AlertTitle>
+          <AlertDescription>
+            Los cálculos de distancia estarán disponibles en breve.
+          </AlertDescription>
+        </Alert>
+      )}
+      {errorLoadingMaps && (
         <Alert variant="destructive" className="mt-4">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Advertencia del Servicio de Mapas</AlertTitle>
+          <AlertTitle>Error al Cargar Servicio de Mapas</AlertTitle>
           <AlertDescription>
-            {errorLoadingMaps || (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? "La API Key de Google Maps no está configurada. " : "El servicio de mapas no está completamente cargado. ")}
-            El cálculo de distancia de ruta podría no funcionar.
+            {errorLoadingMaps} No se podrán calcular las distancias de las rutas.
           </AlertDescription>
         </Alert>
       )}
@@ -485,7 +498,7 @@ export function RepartoDetailView({
           )}
            {isViajeEmpresaType && reparto.empresas?.direccion && (
              <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-1 lg:col-span-2">
-                <MapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+                <Home className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
                 <div>
                 <p className="text-sm text-muted-foreground">Dirección Retiro Inicial</p>
                 <p className="font-medium">{reparto.empresas.direccion}</p>
@@ -541,7 +554,11 @@ export function RepartoDetailView({
             </CardTitle>
             <CardDescription>Secuencia de entrega planificada. Puede ajustar el orden o solicitar una optimización por IA.</CardDescription>
           </div>
-          <Button onClick={handleOptimizeRoute} disabled={isOptimizingRoute || geocodableParadasCount < 2 || mapApiLoading || !googleApiLoadedState} className="mt-2 md:mt-0">
+          <Button 
+            onClick={handleOptimizeRoute} 
+            disabled={isOptimizingRoute || geocodableParadasCount < 2 || mapApiLoading || !googleApiLoadedState} 
+            className="mt-2 md:mt-0"
+          >
             {isOptimizingRoute ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
             Optimizar Ruta (IA)
           </Button>
@@ -663,7 +680,7 @@ export function RepartoDetailView({
             {suggestedRoute.notes && (
                 <CardDescription>{suggestedRoute.notes}</CardDescription>
             )}
-            {suggestedRoute.estimated_total_distance_km === undefined && (
+            {suggestedRoute.estimated_total_distance_km === undefined && suggestedRoute.optimized_stop_ids.length > 0 && (
                  <Button 
                     onClick={() => handleCalculateAiRouteDistance(suggestedRoute, originalValidStopsForAISuggestion)} 
                     disabled={isLoadingAiRouteDistance || mapApiLoading || !googleApiLoadedState}

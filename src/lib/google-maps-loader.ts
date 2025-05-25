@@ -1,14 +1,14 @@
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script-global'; // Unique ID for the global script
-const GLOBAL_CALLBACK_NAME = 'initGoogleMapsApiGlobalCallback'; // Unique global callback name
+const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script-rumbos-global'; // Ensures a single ID for the global script
+const GLOBAL_CALLBACK_NAME = 'initGoogleMapsApiGlobalRumbosCallback'; // Ensures a single global callback
 
 // Define all libraries your application might need globally
 const REQUIRED_LIBRARIES = ['marker', 'geometry', 'directions'].join(',');
 
 let googleMapsPromise: Promise<void> | null = null;
-let resolveGoogleMapsPromise: () => void;
-let rejectGoogleMapsPromise: (reason?: any) => void;
+let resolveGoogleMapsPromise: (() => void) | null = null;
+let rejectGoogleMapsPromise: ((reason?: any) => void) | null = null;
 
 // Function to check if all essential parts of the API are loaded
 function isMapsApiFullyLoaded(win: Window & typeof globalThis): boolean {
@@ -28,7 +28,6 @@ function isMapsApiFullyLoaded(win: Window & typeof globalThis): boolean {
 
 export function loadGoogleMapsApi(): Promise<void> {
   if (typeof window === 'undefined') {
-    // Should not be called server-side, but as a safeguard
     return Promise.reject(new Error("Google Maps API cannot be loaded on the server."));
   }
 
@@ -47,7 +46,7 @@ export function loadGoogleMapsApi(): Promise<void> {
     if (!GOOGLE_MAPS_API_KEY) {
       console.error("Google Maps API key is missing. (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY)");
       reject(new Error("Google Maps API key is missing."));
-      googleMapsPromise = null; // Allow retry if key is set later
+      googleMapsPromise = null; 
       return;
     }
 
@@ -62,12 +61,14 @@ export function loadGoogleMapsApi(): Promise<void> {
     
     (window as any)[GLOBAL_CALLBACK_NAME] = () => {
       if (isMapsApiFullyLoaded(window)) {
-        resolveGoogleMapsPromise();
+        if (resolveGoogleMapsPromise) resolveGoogleMapsPromise();
       } else {
         console.error("Google Maps API loaded but not all required services (like DirectionsService) are available.");
-        rejectGoogleMapsPromise(new Error("Google Maps API loaded but not all required services are available."));
+        if (rejectGoogleMapsPromise) rejectGoogleMapsPromise(new Error("Google Maps API loaded but not all required services are available."));
       }
       delete (window as any)[GLOBAL_CALLBACK_NAME];
+      resolveGoogleMapsPromise = null;
+      rejectGoogleMapsPromise = null;
     };
 
     const script = document.createElement('script');
@@ -81,9 +82,11 @@ export function loadGoogleMapsApi(): Promise<void> {
       if (scriptTag) {
         scriptTag.remove();
       }
-      rejectGoogleMapsPromise(new Error("Failed to load Google Maps script."));
-      googleMapsPromise = null; // Allow retry
+      if (rejectGoogleMapsPromise) rejectGoogleMapsPromise(new Error("Failed to load Google Maps script."));
+      googleMapsPromise = null; 
       delete (window as any)[GLOBAL_CALLBACK_NAME];
+      resolveGoogleMapsPromise = null;
+      rejectGoogleMapsPromise = null;
     };
 
     document.head.appendChild(script);
