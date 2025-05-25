@@ -3,7 +3,7 @@
 
 import type { RepartoCompleto, ParadaConEnvioYCliente, Empresa, ParadaReparto, TipoParadaEnum as TipoParadaEnumType } from "@/types/supabase";
 import type { EstadoReparto } from "@/lib/schemas";
-import { estadoRepartoEnum, estadoEnvioEnum, tipoRepartoEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
+import { estadoRepartoEnum, tipoRepartoEnum, tipoParadaEnum as tipoParadaSchemaEnum } from "@/lib/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useState, useEffect, useTransition, useMemo, useCallback } from "react";
+import { useState, useEffect, useTransition, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { User, CalendarDays, Truck, Building, Loader2, MapPin, ArrowUp, ArrowDown, Home, Wand2, Brain, AlertTriangle, CheckCircle, DollarSign } from "lucide-react";
 import type { OptimizeRouteInput, OptimizeRouteOutput, OptimizeRouteStopInput } from "@/ai/flows/optimize-route-flow";
@@ -39,13 +39,18 @@ interface ParadaMapaInfo {
     type?: 'pickup' | 'delivery';
 }
 
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAPS_SCRIPT_ID_REPARTO_DETAIL = 'google-maps-api-script-reparto-detail';
+let loadGoogleMapsPromiseDetail: Promise<void> | null = null;
+
+
 function ClientSideFormattedDate({ dateString, formatString = "PPP" }: { dateString: string | null, formatString?: string }) {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!dateString) {
-      setFormattedDate('-');
-      return;
+        setFormattedDate('-');
+        return;
     }
     try {
       const dateObject = parseISO(dateString);
@@ -86,8 +91,6 @@ function getEstadoEnvioBadgeColor(estado?: string | null) {
   }
 }
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
 function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined) {
     return '-';
@@ -108,28 +111,91 @@ export function RepartoDetailView({
   const [isReordering, setIsReordering] = useState<string | null>(null);
   const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
   const [suggestedRoute, setSuggestedRoute] = useState<OptimizeRouteOutput | null>(null);
+  
   const [mapsApiReady, setMapsApiReady] = useState(false);
+  const [errorLoadingMaps, setErrorLoadingMaps] = useState<string | null>(null);
+
   const [currentRouteDistanceKm, setCurrentRouteDistanceKm] = useState<number | null>(null);
   const [isLoadingCurrentRouteDistance, setIsLoadingCurrentRouteDistance] = useState(false);
   const [aiCalculatedDistanceKm, setAiCalculatedDistanceKm] = useState<number | null>(null);
   const [isLoadingAiRouteDistance, setIsLoadingAiRouteDistance] = useState(false);
-  const [isApplyingRouteOrder, setIsApplyingRouteOrder] = useState(false);
   const [originalValidStopsForAISuggestion, setOriginalValidStopsForAISuggestion] = useState<ParadaMapaInfo[]>([]);
 
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.DirectionsService) {
+  const initMapServices = useCallback(() => {
+    if (typeof window.google !== 'undefined' && window.google.maps && window.google.maps.DirectionsService) {
       setMapsApiReady(true);
+      setErrorLoadingMaps(null);
+    } else {
+      setErrorLoadingMaps("Google Maps Directions Service no está disponible.");
     }
   }, []);
+
+  useEffect(() => {
+    const loadGoogleMaps = async () => {
+      if (typeof window.google?.maps?.DirectionsService === 'function') {
+        initMapServices();
+        return;
+      }
+
+      if (!GOOGLE_MAPS_API_KEY) {
+        setErrorLoadingMaps("La clave API de Google Maps no está configurada.");
+        return;
+      }
+
+      if (!loadGoogleMapsPromiseDetail) {
+        loadGoogleMapsPromiseDetail = new Promise<void>((resolve, reject) => {
+          const callbackName = 'initGoogleMapsApiForRepartoDetail';
+          (window as any)[callbackName] = () => {
+            delete (window as any)[callbackName];
+            if (typeof window.google?.maps?.DirectionsService === 'function') {
+              resolve();
+            } else {
+              reject(new Error("API de Google Maps cargada pero DirectionsService no está disponible."));
+            }
+          };
+
+          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_REPARTO_DETAIL)) {
+            if (typeof window.google?.maps?.DirectionsService === 'function') {
+              resolve();
+            }
+            return; 
+          }
+
+          const script = document.createElement('script');
+          script.id = GOOGLE_MAPS_SCRIPT_ID_REPARTO_DETAIL;
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=directions,geometry&callback=${callbackName}&loading=async`;
+          script.async = true;
+          script.defer = true;
+          script.onerror = () => {
+            delete (window as any)[callbackName];
+            document.getElementById(GOOGLE_MAPS_SCRIPT_ID_REPARTO_DETAIL)?.remove();
+            loadGoogleMapsPromiseDetail = null;
+            reject(new Error("No se pudo cargar el script de Google Maps."));
+          };
+          document.head.appendChild(script);
+        });
+      }
+
+      try {
+        await loadGoogleMapsPromiseDetail;
+        initMapServices();
+      } catch (error: any) {
+        setErrorLoadingMaps(error.message || "Error desconocido al cargar Google Maps API.");
+      }
+    };
+
+    loadGoogleMaps();
+  }, [initMapServices]);
+
 
   useEffect(() => {
     setReparto(initialReparto);
     setSelectedStatus(initialReparto.estado as EstadoReparto);
     setCurrentRouteDistanceKm(null); 
     setAiCalculatedDistanceKm(null); 
-    setSuggestedRoute(null); // Clear previous AI suggestion when reparto changes
+    setSuggestedRoute(null);
   }, [initialReparto]);
 
   const getParadasMapaInfo = useCallback((paradas: ParadaConEnvioYCliente[], empresa?: Empresa | null): ParadaMapaInfo[] => {
@@ -146,7 +212,7 @@ export function RepartoDetailView({
   }, []);
 
   const calculateRouteDistance = useCallback(async (paradasInfo: ParadaMapaInfo[]): Promise<number | null> => {
-    if (!mapsApiReady || paradasInfo.length < 2) return null;
+    if (!mapsApiReady || paradasInfo.length < 2) return paradasInfo.length <=1 ? 0 : null;
     if (!GOOGLE_MAPS_API_KEY) {
       console.warn("Google Maps API Key (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) is not set. Cannot calculate route distance.");
       return null;
@@ -176,12 +242,13 @@ export function RepartoDetailView({
             resolve(totalDistance / 1000); 
           } else {
             console.error(`Error fetching directions ${status}`, result);
+            toast({ title: "Error de Ruta", description: `Google Maps no pudo calcular la ruta: ${status}`, variant: "destructive" });
             resolve(null);
           }
         }
       );
     });
-  }, [mapsApiReady]);
+  }, [mapsApiReady, toast]);
 
   useEffect(() => {
     const calculateAndSetCurrentRouteDistance = async () => {
@@ -192,14 +259,16 @@ export function RepartoDetailView({
             const distance = await calculateRouteDistance(paradasInfo);
             setCurrentRouteDistanceKm(distance);
         } else {
-            setCurrentRouteDistanceKm(0); // Or null, if 0 is not appropriate for single stop
+            setCurrentRouteDistanceKm(0);
         }
         setIsLoadingCurrentRouteDistance(false);
       } else {
         setCurrentRouteDistanceKm(reparto.paradas && reparto.paradas.length <=1 ? 0 : null);
       }
     };
-    calculateAndSetCurrentRouteDistance();
+    if (mapsApiReady) { 
+        calculateAndSetCurrentRouteDistance();
+    }
   }, [reparto.paradas, reparto.empresas, mapsApiReady, calculateRouteDistance, getParadasMapaInfo]);
 
   const geocodableParadasCount = useMemo(() => {
@@ -282,7 +351,7 @@ export function RepartoDetailView({
         setIsReordering(null);
         return;
     }
-    newParadasOptimistic.sort((a,b) => a.orden - b.orden);
+    newParadasOptimistic.sort((a,b) => a.orden - b.orden); // Re-sort based on possibly swapped 'orden' values
     setReparto(prev => ({...prev, paradas: newParadasOptimistic}));
 
     const result = await reorderParadasAction(reparto.id, paradaId, direccion);
@@ -321,7 +390,7 @@ export function RepartoDetailView({
         return acc;
     }, [] as OptimizeRouteStopInput[]);
     
-    setOriginalValidStopsForAISuggestion(validStops); // Store for distance calculation
+    setOriginalValidStopsForAISuggestion(validStops); 
 
     if (validStops.length < 2) {
       toast({ title: "Optimización de Ruta", description: "Se necesitan al menos dos paradas con coordenadas válidas para optimizar.", variant: "destructive" });
@@ -333,8 +402,8 @@ export function RepartoDetailView({
     if (result.success && result.data) {
       setSuggestedRoute(result.data);
       toast({ title: "Ruta Optimizada Sugerida", description: result.data.notes || "La IA ha sugerido un nuevo orden para las paradas." });
-      if (result.data.estimated_total_distance_km === undefined) {
-         handleCalculateAiRouteDistance(result.data, validStops); // Pass validStops here
+      if (result.data.estimated_total_distance_km === undefined && result.data.optimized_stop_ids.length > 0) {
+         handleCalculateAiRouteDistance(result.data, validStops); 
       }
     } else {
       toast({ title: "Error de Optimización", description: result.error || "No se pudo obtener una ruta optimizada de la IA.", variant: "destructive" });
@@ -342,11 +411,11 @@ export function RepartoDetailView({
     setIsOptimizingRoute(false);
   };
   
-  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalStopsUsedForAISuggestion: ParadaMapaInfo[]) => {
+  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalStops: ParadaMapaInfo[]) => {
     if (!aiRoute || !aiRoute.optimized_stop_ids || !mapsApiReady) return;
     setIsLoadingAiRouteDistance(true);
 
-    const paradasInfoMap = new Map(originalStopsUsedForAISuggestion.map(p => [p.id, p]));
+    const paradasInfoMap = new Map(originalStops.map(p => [p.id, p]));
     
     const orderedStopsForAiRoute: ParadaMapaInfo[] = aiRoute.optimized_stop_ids
         .map(stopId => {
@@ -379,7 +448,7 @@ export function RepartoDetailView({
     if (result.success) {
       toast({ title: "Ruta Aplicada", description: "El orden de las paradas ha sido actualizado. La página se refrescará." });
       setSuggestedRoute(null); 
-      // Re-fetch or rely on revalidation
+      // Data will be re-fetched due to revalidatePath in action, updating `initialReparto`
     } else {
       toast({ title: "Error al Aplicar Ruta", description: result.error || "No se pudo aplicar el nuevo orden.", variant: "destructive" });
     }
@@ -420,6 +489,12 @@ export function RepartoDetailView({
             <span>Advertencia: La clave API de Google Maps (NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) no está configurada. El cálculo de distancia no funcionará.</span>
         </div>
       )}
+       {errorLoadingMaps && (
+        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-md text-destructive flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            <span>Error al cargar Google Maps: {errorLoadingMaps}. El cálculo de distancia puede no funcionar.</span>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Información General del Reparto</CardTitle>
@@ -457,7 +532,7 @@ export function RepartoDetailView({
             </div>
           )}
            {isViajeEmpresaType && reparto.empresas?.direccion && (
-             <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-1">
+             <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30 md:col-span-1 lg:col-span-2">
                 <MapPin className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
                 <div>
                 <p className="text-sm text-muted-foreground">Dirección Retiro Inicial</p>
@@ -514,7 +589,7 @@ export function RepartoDetailView({
             </CardTitle>
             <CardDescription>Secuencia de entrega planificada. Puede ajustar el orden o solicitar una optimización por IA.</CardDescription>
           </div>
-          <Button onClick={handleOptimizeRoute} disabled={isOptimizingRoute || geocodableParadasCount < 2} className="mt-2 md:mt-0">
+          <Button onClick={handleOptimizeRoute} disabled={isOptimizingRoute || geocodableParadasCount < 2 || !mapsApiReady} className="mt-2 md:mt-0">
             {isOptimizingRoute ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
             Optimizar Ruta (IA)
           </Button>
@@ -719,3 +794,4 @@ export function RepartoDetailView({
   );
 }
 
+    

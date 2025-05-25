@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { EnvioMapa, TipoParadaEnum as TipoParadaEnumType } from '@/types/supabase';
 import { estadoEnvioEnum, tipoParadaEnum } from "@/lib/schemas";
-import { Loader2, AlertTriangle, Info } from 'lucide-react';
+import { Loader2, AlertTriangle, Info as InfoIcon } from "lucide-react"; // Renamed Info to InfoIcon
 
 interface MapaEnviosViewProps {
   envios: EnvioMapa[];
@@ -14,9 +14,8 @@ interface MapaEnviosViewProps {
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 const INITIAL_ZOOM = 13;
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script-rumbos'; 
-
-let loadGoogleMapsPromise: Promise<void> | null = null;
+const GOOGLE_MAPS_SCRIPT_ID_RUMBOS = 'google-maps-api-script-rumbos'; 
+let loadGoogleMapsPromiseRumbos: Promise<void> | null = null;
 
 function getEnvioMarkerColorHex(status: string | null, tipoParada?: TipoParadaEnumType | null ): string {
   if (tipoParada === tipoParadaEnum.Values.retiro_empresa) return '#007bff'; // Blue for pickup
@@ -59,8 +58,15 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
 
   useEffect(() => {
     const loadMaps = async () => {
-      if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined' && typeof window.google.maps.DirectionsService !== 'undefined') {
+      if (typeof window.google?.maps?.DirectionsService === 'function') { // Check for a specific service too
         setIsLoadingApi(false);
+        if (!map && mapRef.current) { // Initialize map if not already
+            const newMap = new window.google.maps.Map(mapRef.current, {
+                center: MAR_DEL_PLATA_CENTER, zoom: INITIAL_ZOOM, mapTypeControl: false, streetViewControl: false,
+            });
+            setMap(newMap);
+            setInfoWindow(new window.google.maps.InfoWindow());
+        }
         return;
       }
 
@@ -78,34 +84,34 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       
       setIsLoadingApi(true); 
 
-      if (!loadGoogleMapsPromise) {
-        loadGoogleMapsPromise = new Promise((resolve, reject) => {
-          const callbackName = 'initGoogleMapsApiForRumbos';
+      if (!loadGoogleMapsPromiseRumbos) {
+        loadGoogleMapsPromiseRumbos = new Promise<void>((resolve, reject) => {
+          const callbackName = 'initGoogleMapsApiForRumbosView';
           (window as any)[callbackName] = () => {
             delete (window as any)[callbackName]; 
-            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined' && typeof window.google.maps.DirectionsService !== 'undefined') {
+            if (typeof window.google?.maps?.DirectionsService === 'function') {
               resolve();
             } else {
-              reject(new Error("Google Maps API cargada pero 'google.maps.DirectionsService' no está disponible."));
+              reject(new Error("Google Maps API cargada pero 'DirectionsService' no está disponible."));
             }
           };
 
-          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
-            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined' && typeof window.google.maps.DirectionsService !== 'undefined') {
+          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_RUMBOS)) {
+            if (typeof window.google?.maps?.DirectionsService === 'function') {
                 resolve(); 
             }
             return; 
           }
 
           const script = document.createElement('script');
-          script.id = GOOGLE_MAPS_SCRIPT_ID;          
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,directions&callback=${callbackName}&loading=async`;
+          script.id = GOOGLE_MAPS_SCRIPT_ID_RUMBOS;          
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,geometry,directions&callback=${callbackName}&loading=async`;
           script.async = true;
           script.defer = true;
           script.onerror = (err) => {
             delete (window as any)[callbackName];
-            document.getElementById(GOOGLE_MAPS_SCRIPT_ID)?.remove(); 
-            loadGoogleMapsPromise = null; 
+            document.getElementById(GOOGLE_MAPS_SCRIPT_ID_RUMBOS)?.remove(); 
+            loadGoogleMapsPromiseRumbos = null; 
             reject(new Error(`No se pudo cargar el script de Google Maps. Error: ${err ? (err as Event).type : 'desconocido'}`));
           };
           document.head.appendChild(script);
@@ -113,8 +119,15 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
       }
 
       try {
-        await loadGoogleMapsPromise;
+        await loadGoogleMapsPromiseRumbos;
         setIsLoadingApi(false);
+         if (!map && mapRef.current) { // Initialize map after successful load
+            const newMap = new window.google.maps.Map(mapRef.current, {
+                center: MAR_DEL_PLATA_CENTER, zoom: INITIAL_ZOOM, mapTypeControl: false, streetViewControl: false,
+            });
+            setMap(newMap);
+            setInfoWindow(new window.google.maps.InfoWindow());
+        }
       } catch (error: any) {
         setErrorLoadingApi(error.message || "Error desconocido al cargar Google Maps API.");
         setIsLoadingApi(false);
@@ -122,20 +135,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
     };
 
     loadMaps();
-  }, [isOnline]);
-
-  useEffect(() => {
-    if (!isLoadingApi && !errorLoadingApi && mapRef.current && !map && (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined')) {
-      const newMap = new google.maps.Map(mapRef.current, {
-        center: MAR_DEL_PLATA_CENTER,
-        zoom: INITIAL_ZOOM,
-        mapTypeControl: false,
-        streetViewControl: false,
-      });
-      setMap(newMap);
-      setInfoWindow(new google.maps.InfoWindow());
-    }
-  }, [isLoadingApi, errorLoadingApi, map]);
+  }, [isOnline, map]); 
 
   useEffect(() => {
     if (map && infoWindow && envios) {
@@ -170,11 +170,11 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
             iconScale = 9;
           }
 
-          const marker = new google.maps.Marker({
+          const marker = new window.google.maps.Marker({
             position,
             map,
             icon: {
-              path: google.maps.SymbolPath.CIRCLE,
+              path: window.google.maps.SymbolPath.CIRCLE,
               fillColor: markerColor,
               fillOpacity: 0.9,
               strokeColor: '#ffffff',
@@ -194,8 +194,8 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
             const packageInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente 
                 ? `<p style="margin: 2px 0;"><strong>Paquete:</strong> ${envio.tipo_paquete_nombre || '-'}, ${envio.package_weight || '-'}kg</p>`
                 : '';
-            const statusInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente
-                ? `<p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status ? envio.status.replace(/_/g, ' ') : 'Desconocido'}</span></p>`
+            const statusInfo = envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente && envio.status
+                ? `<p style="margin: 2px 0;"><strong>Estado:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">${envio.status.replace(/_/g, ' ')}</span></p>`
                 : `<p style="margin: 2px 0;"><strong>Tipo:</strong> <span style="color: ${markerColor}; text-transform: capitalize;">Retiro en Empresa</span></p>`;
 
             const content = `
@@ -221,9 +221,8 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
              map.setZoom(15);
         } else if (newMarkers.length > 1) { 
             map.fitBounds(bounds);
-            const listener = google.maps.event.addListener(map, "idle", function() {
+            const listener = google.maps.event.addListenerOnce(map, "idle", function() { // Use addListenerOnce
               if (map.getZoom()! > 16) map.setZoom(16);
-              google.maps.event.removeListener(listener);
             });
         }
       } else if (envios.length === 0) {
@@ -238,7 +237,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
           .map(envio => ({ lat: envio.latitud!, lng: envio.longitud! }));
 
         if (routePath.length >= 2) {
-          const poly = new google.maps.Polyline({
+          const poly = new window.google.maps.Polyline({
             path: routePath,
             geodesic: true,
             strokeColor: '#4285F4', 
@@ -285,7 +284,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
   if(envios.length === 0 && !isLoadingApi && !errorLoadingApi){
     return (
         <div className="flex flex-col items-center justify-center h-full border-2 border-dashed border-muted-foreground/30 bg-card p-8 rounded-lg shadow text-center">
-            <Info className="h-16 w-16 text-muted-foreground mb-4" />
+            <InfoIcon className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold text-muted-foreground mb-2">No hay Envíos para Mostrar</h3>
             <p className="text-muted-foreground max-w-md">Actualmente no hay envíos geolocalizados en Mar del Plata para mostrar en el mapa con el filtro actual.</p>
         </div>
@@ -295,3 +294,4 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
   return <div ref={mapRef} style={{ height: '100%', width: '100%' }} className="rounded-lg shadow-md border" />;
 }
 
+    

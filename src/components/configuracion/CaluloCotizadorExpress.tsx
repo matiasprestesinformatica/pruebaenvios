@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, Info, MapPinIcon, Rocket, Loader2, Calculator } from "lucide-react";
+import { Terminal, Info as InfoIcon, MapPinIcon, Rocket, Loader2, Calculator } from "lucide-react"; // Renamed Info to InfoIcon
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TarifaDistanciaCalculadora } from '@/types/supabase';
@@ -25,6 +25,7 @@ interface CaluloCotizadorExpressProps {
 
 const GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_EXPRESS = 'google-maps-api-script-cotizador-express';
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
+let loadGoogleMapsPromiseExpress: Promise<void> | null = null;
 
 
 const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas }) => {
@@ -47,12 +48,15 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
   const marcadorDestinoRef = useRef<google.maps.Marker | null>(null);
 
   const initMap = useCallback(() => {
-    if (!window.google || !window.google.maps || !mapRef.current || mapInstanceRef.current) {
+    if (!mapRef.current || !window.google || !window.google.maps) {
+      console.error("Map ref or Google Maps API not available for initMap.");
+      setError("No se pudo inicializar el mapa. Intente recargar.");
       setMapApiLoading(false);
-      if(!window.google?.maps?.DirectionsService) {
-        setError("Servicios del mapa (DirectionsService) no disponibles. Intente recargar.");
-      }
       return;
+    }
+    if (mapInstanceRef.current) { // Already initialized
+        setMapApiLoading(false);
+        return;
     }
     const map = new window.google.maps.Map(mapRef.current!, {
       zoom: 12, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, zoomControl: true,
@@ -69,37 +73,67 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
   }, []);
 
   useEffect(() => {
-    const loadGoogleMapsScript = () => {
-      const callbackName = 'initMapGloballyForCalculatorExpress';
-      if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_EXPRESS) || (window.google?.maps?.DirectionsService)) {
-         if (window.google?.maps?.DirectionsService && !mapInstanceRef.current) initMap();
-         else setMapApiLoading(false);
+    const loadGoogleMapsScript = async () => {
+      if (typeof window.google?.maps?.DirectionsService === 'function') {
+        initMap();
+        setMapApiLoading(false);
         return;
       }
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
       if (!apiKey) { setError("Falta la configuración del mapa (API Key). Contacta al administrador."); setMapApiLoading(false); return; }
       
-      (window as any)[callbackName] = () => {
+      setMapApiLoading(true);
+
+      if (!loadGoogleMapsPromiseExpress) {
+        loadGoogleMapsPromiseExpress = new Promise<void>((resolve, reject) => {
+          const callbackName = 'initMapGloballyForCalculatorExpress';
+          (window as any)[callbackName] = () => {
+            delete (window as any)[callbackName];
+            if (typeof window.google?.maps?.DirectionsService === 'function') {
+              resolve();
+            } else {
+              reject(new Error("API de Google Maps cargada pero DirectionsService no está disponible."));
+            }
+          };
+
+          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_EXPRESS)) {
+            if (typeof window.google?.maps?.DirectionsService === 'function') {
+                resolve();
+            }
+            return;
+          }
+          
+          const script = document.createElement('script');
+          script.id = GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_EXPRESS;
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=${callbackName}&libraries=marker,geometry,directions&loading=async`;
+          script.async = true; script.defer = true;
+          script.onerror = () => { 
+            delete (window as any)[callbackName];
+            document.getElementById(GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_EXPRESS)?.remove();
+            loadGoogleMapsPromiseExpress = null;
+            reject(new Error("Error al cargar el script del mapa.")); 
+          };
+          document.head.appendChild(script);
+        });
+      }
+
+      try {
+        await loadGoogleMapsPromiseExpress;
         initMap();
-        if (typeof (window as any)[callbackName] !== 'undefined') {
-          delete (window as any)[callbackName];
-        }
-      };
-      const script = document.createElement('script');
-      script.id = GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_EXPRESS;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=${callbackName}&libraries=marker,geometry,directions&loading=async`;
-      script.async = true; script.defer = true;
-      script.onerror = () => { 
-        setError("Error al cargar el script del mapa."); 
-        setMapApiLoading(false); 
-        if (typeof (window as any)[callbackName] !== 'undefined') {
-          delete (window as any)[callbackName];
-        }
-      };
-      document.head.appendChild(script);
+      } catch (err) {
+        const error = err as Error;
+        setError(error.message || "Error desconocido al cargar Google Maps API.");
+      } finally {
+        setMapApiLoading(false);
+      }
     };
     if (typeof window !== 'undefined') loadGoogleMapsScript();
-    return () => { if ((window as any).initMapGloballyForCalculatorExpress) delete (window as any).initMapGloballyForCalculatorExpress; };
+    
+    return () => { 
+        if (typeof (window as any).initMapGloballyForCalculatorExpress !== 'undefined') {
+          delete (window as any).initMapGloballyForCalculatorExpress;
+        }
+      };
   }, [initMap]);
 
   const parsePrecioToNumber = (precioString: string | null): number | null => {
@@ -125,7 +159,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     return "Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.";
   };
 
-  const colocarMarcadores = (origenPos: google.maps.LatLng, destinoPos: google.maps.LatLng, origenDir: string, destinoDir: string) => {
+  const colocarMarcadores = useCallback((origenPos: google.maps.LatLng, destinoPos: google.maps.LatLng, origenDir: string, destinoDir: string) => {
     if (!window.google?.maps || !mapInstanceRef.current) return;
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
@@ -143,7 +177,7 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     bounds.extend(origenPos); bounds.extend(destinoPos);
     mapInstanceRef.current.fitBounds(bounds);
     if (mapInstanceRef.current.getZoom()! > 15) mapInstanceRef.current.setZoom(15);
-  };
+  }, []);
 
   const calcularRuta = async () => {
     if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); setShowSolicitudForm(false); return; }
@@ -157,7 +191,9 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
         destination: `${destino}, Mar del Plata, Argentina`,
         travelMode: window.google.maps.TravelMode.DRIVING,
       });
-      directionsRendererRef.current.setDirections(response);
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setDirections(response);
+      }
       const route = response.routes[0];
       if (route?.legs?.[0]) {
         const leg = route.legs[0];
@@ -197,10 +233,12 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
     setOrigenCoords(null);
     setDestinoCoords(null);
     if (directionsRendererRef.current) {
-      directionsRendererRef.current.setDirections(null); 
+      directionsRendererRef.current.setDirections({routes: []} as any); // Correct way to clear
     }
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
+    if (mapInstanceRef.current) mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER);
+
   }
 
   return (
@@ -217,13 +255,13 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
         <div className="space-y-6 animate-fade-in">
         <TooltipProvider>
           <div>
-            <Label htmlFor="direccion-origen-express" className="block text-sm font-medium text-foreground mb-1">Dirección de Origen <Tooltip><TooltipTrigger asChild><Info className="inline-block ml-1 h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent><p>Ingresa la calle y altura donde se retira el paquete.</p></TooltipContent></Tooltip></Label>
+            <Label htmlFor="direccion-origen-express" className="block text-sm font-medium text-foreground mb-1">Dirección de Origen <Tooltip><TooltipTrigger asChild><InfoIcon className="inline-block ml-1 h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent><p>Ingresa la calle y altura donde se retira el paquete.</p></TooltipContent></Tooltip></Label>
             <div className="flex items-center gap-2 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
                 <MapPinIcon className="h-5 w-5 text-muted-foreground ml-3 flex-shrink-0" /><Input id="direccion-origen-express" type="text" value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Ej: Av. Colón 2000" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
             </div>
           </div>
           <div>
-            <Label htmlFor="direccion-destino-express" className="block text-sm font-medium text-foreground mb-1">Dirección de Destino <Tooltip><TooltipTrigger asChild><Info className="inline-block ml-1 h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent><p>Ingresa la calle y altura donde se entrega el paquete.</p></TooltipContent></Tooltip></Label>
+            <Label htmlFor="direccion-destino-express" className="block text-sm font-medium text-foreground mb-1">Dirección de Destino <Tooltip><TooltipTrigger asChild><InfoIcon className="inline-block ml-1 h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger><TooltipContent><p>Ingresa la calle y altura donde se entrega el paquete.</p></TooltipContent></Tooltip></Label>
             <div className="flex items-center gap-2 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
                 <MapPinIcon className="h-5 w-5 text-muted-foreground ml-3 flex-shrink-0" /><Input id="direccion-destino-express" type="text" value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Ej: Juan B. Justo 1500" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
             </div>
@@ -233,12 +271,13 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
             Calcular Ruta y Precio Express
           </Button>
+          {mapApiLoading && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
           {error && ( <Alert variant="destructive" className="animate-fade-in"><Terminal className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> )}
           <div className="space-y-2 text-foreground/80 animate-fade-in animation-delay-200">
             {distancia && <p id="distancia-express" className="text-lg">Distancia: <span className="font-semibold text-primary">{distancia}</span></p>}
             {precio && <p id="precio-express" className="text-lg">Precio Express estimado: <span className="font-semibold text-primary">{precio}</span></p>}
           </div>
-          <Alert className="mt-6 animate-fade-in animation-delay-400"><Info className="h-5 w-5 text-secondary" /><AlertTitle className="text-secondary font-semibold">Importante</AlertTitle><AlertDescription className="text-sm text-foreground/70">Los valores son aproximados. Pueden existir adicionales (Distancia retiro, bulto, demora, lluvia, etc). Para un valor exacto, comunícate por WhatsApp.</AlertDescription></Alert>
+          <Alert className="mt-6 animate-fade-in animation-delay-400"><InfoIcon className="h-5 w-5 text-secondary" /><AlertTitle className="text-secondary font-semibold">Importante</AlertTitle><AlertDescription className="text-sm text-foreground/70">Los valores son aproximados. Pueden existir adicionales (Distancia retiro, bulto, demora, lluvia, etc). Para un valor exacto, comunícate por WhatsApp.</AlertDescription></Alert>
           <div className="mt-4 text-center animate-fade-in animation-delay-400">
             <Button asChild variant="outline" className="border-green-600 text-green-700 hover:bg-green-50 hover:text-green-700 shadow-sm">
               <Link href="https://wa.me/+542236602699?text=Hola!%20Quisiera%20una%20cotización%20exacta%20para%20mi%20envío%20Express." target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
@@ -276,3 +315,5 @@ const CaluloCotizadorExpress: React.FC<CaluloCotizadorExpressProps> = ({ tarifas
 export default CaluloCotizadorExpress;
 
 declare global { interface Window { initMapGloballyForCalculatorExpress?: () => void; } }
+
+    
