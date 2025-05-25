@@ -165,16 +165,16 @@ export interface Database {
         Row: {
           id: string
           created_at: string
-          fecha_reparto: string // DATE
+          fecha_reparto: string
           repartidor_id: string | null
-          estado: string // TEXT -> Zod validated: 'asignado', 'en_curso', 'completado'
-          tipo_reparto: string // TEXT -> Zod validated: 'individual', 'viaje_empresa', 'viaje_empresa_lote'
+          estado: string 
+          tipo_reparto: string 
           empresa_id: string | null
         }
         Insert: {
           id?: string
           created_at?: string
-          fecha_reparto: string // DATE
+          fecha_reparto: string
           repartidor_id?: string | null
           estado?: string
           tipo_reparto: string
@@ -183,7 +183,7 @@ export interface Database {
         Update: {
           id?: string
           created_at?: string
-          fecha_reparto?: string // DATE
+          fecha_reparto?: string
           repartidor_id?: string | null
           estado?: string
           tipo_reparto?: string
@@ -199,14 +199,15 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null // FK a tipos_paquete
+          tipo_paquete_id: string | null // Changed from package_size
           package_weight: number
-          status: string // TEXT -> Zod validated
+          status: string
           suggested_options: Json | null
           reasoning: string | null
           reparto_id: string | null
-          tipo_servicio_id: string | null // FK a tipos_servicio
-          precio_servicio_final: number | null // NUMERIC(10, 2)
+          tipo_servicio_id: string | null
+          precio_servicio_final: number | null
+          notas: string | null
         }
         Insert: {
           id?: string
@@ -216,7 +217,7 @@ export interface Database {
           client_location: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null
+          tipo_paquete_id?: string | null // Changed from package_size
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -224,6 +225,7 @@ export interface Database {
           reparto_id?: string | null
           tipo_servicio_id?: string | null
           precio_servicio_final?: number | null
+          notas?: string | null
         }
         Update: {
           id?: string
@@ -233,7 +235,7 @@ export interface Database {
           client_location?: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null
+          tipo_paquete_id?: string | null // Changed from package_size
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -241,13 +243,14 @@ export interface Database {
           reparto_id?: string | null
           tipo_servicio_id?: string | null
           precio_servicio_final?: number | null
+          notas?: string | null
         }
       }
       paradas_reparto: {
         Row: {
           id: string
           reparto_id: string
-          envio_id: string | null // Nullable for 'retiro_empresa'
+          envio_id: string | null 
           tipo_parada: Enums<"tipoparadaenum"> | null
           orden: number
           created_at: string
@@ -275,7 +278,7 @@ export interface Database {
             tipo_calculadora: Enums<"tipocalculadoraservicioenum">
             distancia_hasta_km: number
             precio: number
-            fecha_vigencia_desde: string // DATE
+            fecha_vigencia_desde: string 
             created_at: string
         }
         Insert: {
@@ -283,7 +286,7 @@ export interface Database {
             tipo_calculadora: Enums<"tipocalculadoraservicioenum">
             distancia_hasta_km: number
             precio: number
-            fecha_vigencia_desde?: string // DATE
+            fecha_vigencia_desde?: string 
             created_at?: string
         }
         Update: {
@@ -291,8 +294,79 @@ export interface Database {
             tipo_calculadora?: Enums<"tipocalculadoraservicioenum">
             distancia_hasta_km?: number
             precio?: number
-            fecha_vigencia_desde?: string // DATE
+            fecha_vigencia_desde?: string 
             created_at?: string
+        }
+      }
+      envios_individuales: { // New table for client-requested shipments
+        Row: {
+          id: string
+          cliente_id: string | null
+          nombre_cliente: string
+          email_cliente: string | null
+          telefono_cliente: string | null
+          direccion_retiro: string
+          latitud_retiro: number | null
+          longitud_retiro: number | null
+          direccion_entrega: string
+          latitud_entrega: number | null
+          longitud_entrega: number | null
+          tipo_paquete_id: string | null
+          descripcion_paquete: string | null
+          peso_paquete: number | null
+          dimensiones_paquete: string | null
+          tipo_servicio_id: string | null
+          precio_manual_servicio: number | null
+          status: string
+          fecha_solicitud: string
+          notas_cliente: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cliente_id?: string | null
+          nombre_cliente: string
+          email_cliente?: string | null
+          telefono_cliente?: string | null
+          direccion_retiro: string
+          latitud_retiro?: number | null
+          longitud_retiro?: number | null
+          direccion_entrega: string
+          latitud_entrega?: number | null
+          longitud_entrega?: number | null
+          tipo_paquete_id?: string | null
+          descripcion_paquete?: string | null
+          peso_paquete?: number | null
+          dimensiones_paquete?: string | null
+          tipo_servicio_id?: string | null
+          precio_manual_servicio?: number | null
+          status?: string
+          fecha_solicitud?: string
+          notas_cliente?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cliente_id?: string | null
+          nombre_cliente?: string
+          email_cliente?: string | null
+          telefono_cliente?: string | null
+          direccion_retiro?: string
+          latitud_retiro?: number | null
+          longitud_retiro?: number | null
+          direccion_entrega?: string
+          latitud_entrega?: number | null
+          longitud_entrega?: number | null
+          tipo_paquete_id?: string | null
+          descripcion_paquete?: string | null
+          peso_paquete?: number | null
+          dimensiones_paquete?: string | null
+          tipo_servicio_id?: string | null
+          precio_manual_servicio?: number | null
+          status?: string
+          fecha_solicitud?: string
+          notas_cliente?: string | null
+          created_at?: string
         }
       }
     }
@@ -312,7 +386,6 @@ export interface Database {
   }
 }
 
-// Helper types
 export type Empresa = Database['public']['Tables']['empresas']['Row'];
 export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
 export type UpdateEmpresa = Database['public']['Tables']['empresas']['Update'];
@@ -348,17 +421,21 @@ export type UpdateEnvio = Database['public']['Tables']['envios']['Update'];
 export type ParadaReparto = Database['public']['Tables']['paradas_reparto']['Row'];
 export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']['Insert'];
 
+export type EnvioIndividual = Database['public']['Tables']['envios_individuales']['Row'];
+export type NuevoEnvioIndividual = Database['public']['Tables']['envios_individuales']['Insert'];
+export type UpdateEnvioIndividual = Database['public']['Tables']['envios_individuales']['Update'];
+
 
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
   repartidores: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null; // Added lat/lng
+  empresas: Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'> | null;
 };
 
 export type EnvioConClienteYAjustes = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email'> | null;
-  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null;
-  tipos_servicio?: Pick<TipoServicio, 'id' | 'nombre'> | null;
+  tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; 
+  tipos_servicio?: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
 };
 
 export type EnvioParaDetalleReparto = Envio & {
@@ -368,7 +445,7 @@ export type EnvioParaDetalleReparto = Envio & {
 };
 
 export type ParadaConEnvioYCliente = ParadaReparto & {
-  envio: EnvioParaDetalleReparto | null;
+  envio: EnvioParaDetalleReparto | null; 
 };
 
 export type RepartoCompleto = RepartoConDetalles & {
@@ -379,28 +456,12 @@ export type ClienteWithEmpresa = Cliente & {
   empresa: Pick<Empresa, 'id' | 'nombre'> | null;
 };
 
-export type EnvioMapa = Envio & {
-  id: string;
-  latitud: number | null; // Ensure it's number | null
-  longitud: number | null; // Ensure it's number | null
-  status: string | null; // Was Envio['status']
-  nombre_cliente: string | null; // From clientes or nombre_cliente_temporal
-  client_location: string;
+export type EnvioMapa = Pick<Envio, 'id' | 'client_location' | 'latitud' | 'longitud' | 'status' | 'package_weight' | 'nombre_cliente_temporal' | 'cliente_id' | 'created_at'> & {
+  nombre_cliente: string | null; 
   tipo_paquete_nombre?: string | null;
-  package_weight: number | null; // Was Envio['package_weight']
   orden?: number | null;
   tipo_parada?: Enums<"tipoparadaenum"> | null;
-  // ensure it includes all relevant fields from Envio
-  cliente_id: string | null;
-  nombre_cliente_temporal: string | null;
-  tipo_paquete_id: string | null;
-  suggested_options: Json | null;
-  reasoning: string | null;
-  reparto_id: string | null;
-  tipo_servicio_id: string | null;
-  precio_servicio_final: number | null;
 };
-
 
 export interface RepartoParaFiltro {
   id: string;

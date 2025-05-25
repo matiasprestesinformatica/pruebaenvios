@@ -27,11 +27,8 @@ export const clientSchema = z.object({
 });
 export type ClientFormData = z.infer<typeof clientSchema>;
 
-export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
-export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
-
-export const tipoPaqueteSchema = z.object({ // Renombrado desde packageSizeEnum a tipoPaqueteSchema para claridad
-  id: z.string().uuid().optional(), // ID es opcional ya que puede ser para creación o referencia
+export const tipoPaqueteSchema = z.object({
+  id: z.string().uuid().optional(),
   nombre: z.string().min(1, "El nombre del tipo de paquete es obligatorio."),
   descripcion: z.string().optional().nullable(),
   activo: z.boolean().default(true),
@@ -48,16 +45,19 @@ export const tipoServicioSchema = z.object({
 });
 export type TipoServicioFormData = z.infer<typeof tipoServicioSchema>;
 
+export const estadoEnvioEnum = z.enum(['pending', 'suggested', 'asignado_a_reparto', 'en_transito', 'entregado', 'cancelado', 'problema_entrega']);
+export type EstadoEnvio = z.infer<typeof estadoEnvioEnum>;
 
 export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
-  client_location: z.string().optional().nullable(), // Será obligatorio si no hay cliente_id
-  tipo_paquete_id: z.string().uuid().nullable(), // FK a tipos_paquete
+  client_location: z.string().optional().nullable(),
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
   package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
-  tipo_servicio_id: z.string().uuid().optional().nullable(), // FK a tipos_servicio
+  tipo_servicio_id: z.string().uuid().optional().nullable(),
   precio_servicio_final: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
+  notas: z.string().optional().nullable(), // Added notas
 }).superRefine((data, ctx) => {
   if (data.cliente_id) {
     if (!data.client_location || data.client_location.trim() === "") {
@@ -83,7 +83,7 @@ export const shipmentSchema = z.object({
       });
     }
   }
-   if (!data.tipo_paquete_id) { // Asegura que tipo_paquete_id sea seleccionado
+   if (!data.tipo_paquete_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de paquete.",
@@ -179,3 +179,55 @@ export const solicitudEnvioCalculadoraSchema = z.object({
   detallesAdicionales: z.string().optional().nullable(),
 });
 export type SolicitudEnvioCalculadoraFormData = z.infer<typeof solicitudEnvioCalculadoraSchema>;
+
+// New Schema for SolicitarEnvioIndividualForm
+export const solicitudEnvioIndividualSchema = z.object({
+  // Solicitante
+  nombre_cliente: z.string().min(1, "Su nombre es obligatorio."),
+  email_cliente: z.string().email("Ingrese un email válido.").optional().nullable().or(z.literal('')),
+  telefono_cliente: z.string().regex(/^\+?[0-9\s-()]{7,20}$/, "Formato de teléfono inválido.").optional().nullable().or(z.literal('')),
+  
+  // Retiro
+  direccion_retiro: z.string().min(1, "La dirección de retiro es obligatoria."),
+  latitud_retiro: z.coerce.number().optional().nullable(),
+  longitud_retiro: z.coerce.number().optional().nullable(),
+  
+  // Entrega
+  direccion_entrega: z.string().min(1, "La dirección de entrega es obligatoria."),
+  latitud_entrega: z.coerce.number().optional().nullable(),
+  longitud_entrega: z.coerce.number().optional().nullable(),
+  
+  // Paquete
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Nullable to allow placeholder
+  descripcion_paquete: z.string().optional().nullable(),
+  peso_paquete: z.coerce.number().min(0.01, "El peso debe ser positivo.").optional().nullable(),
+  dimensiones_paquete: z.string().optional().nullable(),
+  
+  // Servicio y Precio
+  tipo_servicio_id: z.string().uuid().optional().nullable(),
+  precio_manual_servicio: z.coerce.number().min(0, "El precio no puede ser negativo.").optional().nullable(),
+  
+  // Notas
+  notas_cliente: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (!data.tipo_paquete_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un tipo de paquete.",
+      path: ["tipo_paquete_id"],
+    });
+  }
+  if (!data.tipo_servicio_id && (data.precio_manual_servicio === null || data.precio_manual_servicio === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un tipo de servicio o ingresar un precio manual.",
+      path: ["tipo_servicio_id"], // Or point to both if desired
+    });
+  }
+  if (data.tipo_servicio_id && data.precio_manual_servicio !== null && data.precio_manual_servicio !== undefined) {
+     // This logic is tricky. If a service is selected, its price should ideally be used.
+     // If manual price is also entered, which takes precedence? The form logic should handle this.
+     // For now, we allow both to be potentially set, action will decide.
+  }
+});
+export type SolicitudEnvioIndividualFormData = z.infer<typeof solicitudEnvioIndividualSchema>;
