@@ -316,7 +316,7 @@ export interface Database {
           peso_paquete: number | null
           dimensiones_paquete: string | null
           tipo_servicio_id: string | null
-          precio_manual_servicio: number | null
+          precio_final_servicio: number | null
           status: string
           fecha_solicitud: string
           notas_cliente: string | null
@@ -339,7 +339,7 @@ export interface Database {
           peso_paquete?: number | null
           dimensiones_paquete?: string | null
           tipo_servicio_id?: string | null
-          precio_manual_servicio?: number | null
+          precio_final_servicio?: number | null
           status?: string
           fecha_solicitud?: string
           notas_cliente?: string | null
@@ -362,7 +362,7 @@ export interface Database {
           peso_paquete?: number | null
           dimensiones_paquete?: string | null
           tipo_servicio_id?: string | null
-          precio_manual_servicio?: number | null
+          precio_final_servicio?: number | null
           status?: string
           fecha_solicitud?: string
           notas_cliente?: string | null
@@ -386,6 +386,87 @@ export interface Database {
   }
 }
 
+export type Tables<
+  PublicTableNameOrOptions extends
+    | keyof (Database["public"]["Tables"] & Database["public"]["Views"])
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+        Database[PublicTableNameOrOptions["schema"]]["Views"])
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
+      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : PublicTableNameOrOptions extends keyof (Database["public"]["Tables"] &
+      Database["public"]["Views"])
+  ? (Database["public"]["Tables"] &
+      Database["public"]["Views"])[PublicTableNameOrOptions] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : never
+
+export type TablesInsert<
+  PublicTableNameOrOptions extends
+    | keyof Database["public"]["Tables"]
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : PublicTableNameOrOptions extends keyof Database["public"]["Tables"]
+  ? Database["public"]["Tables"][PublicTableNameOrOptions] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : never
+
+export type TablesUpdate<
+  PublicTableNameOrOptions extends
+    | keyof Database["public"]["Tables"]
+    | { schema: keyof Database },
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : PublicTableNameOrOptions extends keyof Database["public"]["Tables"]
+  ? Database["public"]["Tables"][PublicTableNameOrOptions] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : never
+
+export type Enums<
+  PublicEnumNameOrOptions extends
+    | keyof Database["public"]["Enums"]
+    | { schema: keyof Database },
+  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
+    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+    : never = never
+> = PublicEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : PublicEnumNameOrOptions extends keyof Database["public"]["Enums"]
+  ? Database["public"]["Enums"][PublicEnumNameOrOptions]
+  : never
+
+// Helper types based on the schema
 export type Empresa = Database['public']['Tables']['empresas']['Row'];
 export type NuevaEmpresa = Database['public']['Tables']['empresas']['Insert'];
 export type UpdateEmpresa = Database['public']['Tables']['empresas']['Update'];
@@ -409,6 +490,8 @@ export type UpdateTipoServicio = Database['public']['Tables']['tipos_servicio'][
 export type TarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Row'];
 export type NuevaTarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Insert'];
 export type UpdateTarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Update'];
+export type TipoCalculadoraServicioEnum = Database['public']['Enums']['tipocalculadoraservicioenum'];
+
 
 export type Reparto = Database['public']['Tables']['repartos']['Row'];
 export type NuevoReparto = Database['public']['Tables']['repartos']['Insert'];
@@ -420,10 +503,14 @@ export type UpdateEnvio = Database['public']['Tables']['envios']['Update'];
 
 export type ParadaReparto = Database['public']['Tables']['paradas_reparto']['Row'];
 export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']['Insert'];
+export type UpdateParadaReparto = Database['public']['Tables']['paradas_reparto']['Update'];
+export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
+
 
 export type EnvioIndividual = Database['public']['Tables']['envios_individuales']['Row'];
 export type NuevoEnvioIndividual = Database['public']['Tables']['envios_individuales']['Insert'];
 export type UpdateEnvioIndividual = Database['public']['Tables']['envios_individuales']['Update'];
+
 
 // Extended types for relations
 export type RepartoConDetalles = Reparto & {
@@ -459,7 +546,7 @@ export type EnvioMapa = Pick<Envio, 'id' | 'client_location' | 'latitud' | 'long
   nombre_cliente: string | null; 
   tipo_paquete_nombre?: string | null;
   orden?: number | null;
-  tipo_parada?: Enums<"tipoparadaenum"> | null;
+  tipo_parada?: TipoParadaEnum | null;
 };
 
 export interface RepartoParaFiltro {
@@ -469,9 +556,6 @@ export interface RepartoParaFiltro {
   empresa_nombre?: string | null;
   tipo_reparto?: string | null;
 }
-
-export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
-export type TipoCalculadoraServicioEnum = Database['public']['Enums']['tipocalculadoraservicioenum'];
 
 export type EnvioCompletoParaDialog = Envio & {
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'email' | 'telefono' | 'latitud' | 'longitud'> | null;

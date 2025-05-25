@@ -51,7 +51,7 @@ export const shipmentSchema = z.object({
   cliente_id: z.string().uuid("ID de cliente inválido.").optional().nullable(),
   nombre_cliente_temporal: z.string().optional().nullable(),
   client_location: z.string().optional().nullable(),
-  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(), // Made nullable to allow placeholder, but superRefine makes it mandatory
+  tipo_paquete_id: z.string().uuid("Debe seleccionar un tipo de paquete.").nullable(),
   package_weight: z.coerce.number().min(0.01, "El peso del paquete debe ser mayor a 0."),
   status: estadoEnvioEnum.optional(),
   tipo_servicio_id: z.string().uuid("ID de tipo de servicio inválido").optional().nullable(),
@@ -82,19 +82,18 @@ export const shipmentSchema = z.object({
       });
     }
   }
-   if (!data.tipo_paquete_id) {
+  if (!data.tipo_paquete_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de paquete.",
       path: ["tipo_paquete_id"],
     });
   }
-  // Validation for service or manual price
   if (!data.tipo_servicio_id && (data.precio_servicio_final === null || data.precio_servicio_final === undefined)) {
     ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Debe seleccionar un tipo de servicio o ingresar un precio final para el servicio.",
-        path: ["tipo_servicio_id"], // Could also path to precio_servicio_final
+        path: ["tipo_servicio_id"],
     });
   }
 });
@@ -216,7 +215,7 @@ export const solicitudEnvioIndividualSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un tipo de servicio o ingresar un precio manual.",
-      path: ["tipo_servicio_id"],
+      path: ["tipo_servicio_id"], // Could also be precio_manual_servicio
     });
   }
 });
