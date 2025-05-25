@@ -198,7 +198,7 @@ export interface Database {
           client_location: string
           latitud: number | null
           longitud: number | null
-          tipo_paquete_id: string | null // Changed from package_size
+          tipo_paquete_id: string | null
           package_weight: number
           status: string
           suggested_options: Json | null
@@ -216,7 +216,7 @@ export interface Database {
           client_location: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null // Changed
+          tipo_paquete_id?: string | null
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -234,7 +234,7 @@ export interface Database {
           client_location?: string
           latitud?: number | null
           longitud?: number | null
-          tipo_paquete_id?: string | null // Changed
+          tipo_paquete_id?: string | null
           package_weight?: number
           status?: string
           suggested_options?: Json | null
@@ -297,7 +297,7 @@ export interface Database {
             created_at?: string
         }
       }
-      envios_individuales: { // Nueva tabla
+      envios_individuales: {
         Row: {
           id: string
           cliente_id: string | null
@@ -491,7 +491,6 @@ export type NuevaTarifaDistanciaCalculadora = Database['public']['Tables']['tari
 export type UpdateTarifaDistanciaCalculadora = Database['public']['Tables']['tarifas_distancia_calculadora']['Update'];
 export type TipoCalculadoraServicioEnum = Database['public']['Enums']['tipocalculadoraservicioenum'];
 
-
 export type Reparto = Database['public']['Tables']['repartos']['Row'];
 export type NuevoReparto = Database['public']['Tables']['repartos']['Insert'];
 export type UpdateReparto = Database['public']['Tables']['repartos']['Update'];
@@ -505,7 +504,6 @@ export type NuevaParadaReparto = Database['public']['Tables']['paradas_reparto']
 export type UpdateParadaReparto = Database['public']['Tables']['paradas_reparto']['Update'];
 export type TipoParadaEnum = Database['public']['Enums']['tipoparadaenum'];
 
-// Nueva tabla para envios_individuales
 export type EnvioIndividual = Database['public']['Tables']['envios_individuales']['Row'];
 export type NuevoEnvioIndividual = Database['public']['Tables']['envios_individuales']['Insert'];
 export type UpdateEnvioIndividual = Database['public']['Tables']['envios_individuales']['Update'];
@@ -518,7 +516,7 @@ export type RepartoConDetalles = Reparto & {
 };
 
 export type EnvioConClienteYAjustes = Envio & {
-  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null; // direccion, email were removed for brevity here, add if needed
+  clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null;
   tipos_paquete: Pick<TipoPaquete, 'id' | 'nombre'> | null; 
   tipos_servicio?: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'> | null;
 };

@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import type { SolicitudEnvioIndividualFormData } from "@/lib/schemas";
-import { solicitudEnvioIndividualSchema } from "@/lib/schemas";
+import { solicitudEnvioIndividualSchema, estadoEnvioEnum } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Send, User, Mail, Phone, MapPin, Package, Edit, DollarSign, Settings2, InfoIcon, MessageSquare } from "lucide-react";
+import { Loader2, Send, User, Mail, Phone, MapPin, Package, DollarSign, MessageSquare, Edit, InfoIcon, Settings2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { TipoPaquete, TipoServicio } from "@/types/supabase";
@@ -93,37 +93,40 @@ export function SolicitarEnvioForm({
   const watchedTipoServicioId = form.watch("tipo_servicio_id");
 
   useEffect(() => {
-    // This effect reacts to changes in the selected service type ID
     const selectedService = tiposServicio.find(s => s.id === watchedTipoServicioId);
 
     if (watchedTipoServicioId === MANUAL_PRICE_PLACEHOLDER) {
       setShowManualPriceInput(true);
-      form.setValue("tipo_servicio_id", null); // Set actual service ID to null for manual price
+      form.setValue("tipo_servicio_id", null); 
     } else if (watchedTipoServicioId && watchedTipoServicioId !== NULL_OPTION_PLACEHOLDER) {
       form.setValue("precio_manual_servicio", selectedService?.precio_base ?? initialData.precio_cotizado);
       setShowManualPriceInput(false);
-    } else { // NULL_OPTION_PLACEHOLDER (Ninguno) or cleared
+    } else { 
       setShowManualPriceInput(false);
-      form.setValue("precio_manual_servicio", initialData.precio_cotizado); // Revert to original quoted price
+      form.setValue("precio_manual_servicio", initialData.precio_cotizado); 
     }
-  }, [watchedTipoServicioId, tiposServicio, form, initialData.precio_cotizado]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedTipoServicioId, tiposServicio, initialData.precio_cotizado]);
 
-  // Initialize showManualPriceInput based on initial data
   useEffect(() => {
     if (initialData.precio_cotizado !== null && 
         !tiposServicio.some(ts => ts.id === form.getValues('tipo_servicio_id') && ts.precio_base === initialData.precio_cotizado) &&
         form.getValues('tipo_servicio_id') !== MANUAL_PRICE_PLACEHOLDER
     ) {
-        // If there's an initial price, but no service matches it, and it's not set to manual yet, assume it's manual
-        // This case might be rare if a service with matching price_base is auto-selected
+       // This case implies initial price doesn't match any service, so should be manual
+       // or was pre-selected to manual. If tipo_servicio_id is not set to MANUAL_PRICE_PLACEHOLDER
+       // and price doesn't match a service, it suggests it should be manual.
+       const serviceMatchingPrice = tiposServicio.find(ts => ts.precio_base === initialData.precio_cotizado);
+       if(!serviceMatchingPrice && form.getValues('tipo_servicio_id') !== null) { // if a service was pre-selected that does not match price
+          setShowManualPriceInput(true); // Allow manual override
+       } else if (!serviceMatchingPrice && form.getValues('tipo_servicio_id') === null) {
+          setShowManualPriceInput(true);
+       }
     } else if (form.getValues('tipo_servicio_id') === null && initialData.precio_cotizado !== null) {
-        // If no service ID is set but there's a price, it's likely manual or pre-quoted
-        // If this price isn't from a service, enable manual.
         const serviceMatchingPrice = tiposServicio.find(ts => ts.precio_base === initialData.precio_cotizado);
         if (!serviceMatchingPrice) {
             setShowManualPriceInput(true);
         } else {
-            // Auto-select the service if one matches the initial quoted price
             form.setValue('tipo_servicio_id', serviceMatchingPrice.id);
             setShowManualPriceInput(false);
         }
@@ -131,8 +134,6 @@ export function SolicitarEnvioForm({
         setShowManualPriceInput(true);
         form.setValue("tipo_servicio_id", null);
     }
-
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData.precio_cotizado, tiposServicio, form.getValues('tipo_servicio_id')]);
 
@@ -149,7 +150,6 @@ export function SolicitarEnvioForm({
         peso_paquete: data.peso_paquete || null,
         dimensiones_paquete: data.dimensiones_paquete || null,
         tipo_servicio_id: data.tipo_servicio_id === MANUAL_PRICE_PLACEHOLDER || data.tipo_servicio_id === NULL_OPTION_PLACEHOLDER ? null : data.tipo_servicio_id,
-        // precio_manual_servicio will be taken directly from form state, which is updated by useEffect
         precio_manual_servicio: data.precio_manual_servicio, 
         notas_cliente: data.notas_cliente || null,
       };
@@ -191,7 +191,7 @@ export function SolicitarEnvioForm({
   return (
     <Card className="w-full max-w-3xl mx-auto shadow-lg">
       <CardHeader>
-         <CardTitle className="text-xl">Paso 2: Completar Detalles del Envío</CardTitle>
+         <CardTitle className="text-xl">Completar Detalles del Envío</CardTitle>
          <CardDescription>
           Las direcciones y el precio base cotizado se han pre-cargado. Complete la información restante.
         </CardDescription>
@@ -207,6 +207,13 @@ export function SolicitarEnvioForm({
                 <div><span className="font-medium">Entrega:</span> {initialData.direccion_entrega}</div>
                 <div><span className="font-medium">Precio Cotizado Base:</span> <span className="font-bold text-lg">{initialData.precio_cotizado !== null ? `$${initialData.precio_cotizado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}</span></div>
               </div>
+              {/* Hidden fields for pre-filled addresses and coordinates */}
+              <input type="hidden" {...form.register("direccion_retiro")} />
+              <input type="hidden" {...form.register("latitud_retiro")} />
+              <input type="hidden" {...form.register("longitud_retiro")} />
+              <input type="hidden" {...form.register("direccion_entrega")} />
+              <input type="hidden" {...form.register("latitud_entrega")} />
+              <input type="hidden" {...form.register("longitud_entrega")} />
             </section>
 
             <section className="space-y-4 p-4 border rounded-md shadow-sm">
@@ -218,14 +225,6 @@ export function SolicitarEnvioForm({
               </div>
             </section>
             
-            {/* Hidden fields for pre-filled addresses and coordinates */}
-            <input type="hidden" {...form.register("direccion_retiro")} />
-            <input type="hidden" {...form.register("latitud_retiro")} />
-            <input type="hidden" {...form.register("longitud_retiro")} />
-            <input type="hidden" {...form.register("direccion_entrega")} />
-            <input type="hidden" {...form.register("latitud_entrega")} />
-            <input type="hidden" {...form.register("longitud_entrega")} />
-
             <section className="space-y-4 p-4 border rounded-md shadow-sm">
               <h3 className="text-lg font-semibold flex items-center gap-2"><Package className="h-5 w-5 text-primary" />Detalles del Paquete</h3>
               <FormField control={form.control} name="tipo_paquete_id" render={({ field }) => (
@@ -250,7 +249,7 @@ export function SolicitarEnvioForm({
             </section>
             
             <section className="space-y-4 p-4 border rounded-md shadow-sm">
-                <h3 className="text-lg font-semibold flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Tipo de Servicio y Valor Final</h3>
+                <h3 className="text-lg font-semibold flex items-center gap-2"><Settings2 className="h-5 w-5 text-primary" />Tipo de Servicio y Valor Final</h3>
                  <FormField control={form.control} name="tipo_servicio_id" render={({ field }) => (
                     <FormItem>
                         <FormLabel>Tipo de Servicio</FormLabel>
@@ -269,7 +268,7 @@ export function SolicitarEnvioForm({
                                 ))}
                             </SelectContent>
                         </Select>
-                        <FormDescription>Si no selecciona uno, se usará el precio cotizado. Si elige un servicio, se usará su precio base.</FormDescription>
+                        <FormDescription>Si no selecciona, se usará el precio cotizado. Si elige un servicio, se usará su precio base.</FormDescription>
                         <FormMessage />
                     </FormItem>
                  )} />
@@ -302,7 +301,7 @@ export function SolicitarEnvioForm({
             <FormField control={form.control} name="notas_cliente" render={({ field }) => (<FormItem><FormLabel className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-primary"/>Notas Adicionales para el Envío (Opcional)</FormLabel><FormControl><Textarea placeholder="Ej: Frágil, entregar en recepción, llamar antes, etc." className="resize-y min-h-[100px]" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
             
             <div className="flex flex-col sm:flex-row gap-4">
-                 <Button type="button" variant="outline" onClick={onBack} className="w-full sm:w-auto flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={onBack} className="w-full sm:w-auto flex items-center gap-2">
                     <Edit className="h-4 w-4"/> Modificar Direcciones
                 </Button>
                 <Button type="submit" className="w-full sm:flex-1 bg-green-600 hover:bg-green-700 text-white py-3 text-base" disabled={isSubmitting}>

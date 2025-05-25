@@ -3,7 +3,7 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { SolicitudEnvioIndividualFormData } from "@/lib/schemas";
-import { estadoEnvioEnum } from "@/lib/schemas";
+import { estadoEnvioEnum, solicitudEnvioIndividualSchema } from "@/lib/schemas";
 import type { Database, NuevoEnvioIndividual, TipoServicio } from "@/types/supabase";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
@@ -44,15 +44,26 @@ export async function createEnvioIndividualAction(
   latitud_entrega_provista?: number | null,
   longitud_entrega_provista?: number | null
 ): Promise<{ success: boolean; error?: string | null; info?: string | null }> {
+  const supabase = createSupabaseServerClient();
+
+  const validatedFields = solicitudEnvioIndividualSchema.safeParse(formData);
+  if (!validatedFields.success) {
+    return {
+      success: false,
+      error: "Error de validación: " + JSON.stringify(validatedFields.error.flatten().fieldErrors),
+      info: null
+    };
+  }
+  const validData = validatedFields.data;
+
   try {
-    const supabase = createSupabaseServerClient();
     let geocodingInfo = "";
 
     let finalLatRetiro = latitud_retiro_provista ?? null;
     let finalLngRetiro = longitud_retiro_provista ?? null;
 
-    if ((finalLatRetiro === null || finalLngRetiro === null) && formData.direccion_retiro) {
-        const coordsRetiro = await geocodeAddressInMarDelPlata(formData.direccion_retiro);
+    if ((finalLatRetiro === null || finalLngRetiro === null) && validData.direccion_retiro) {
+        const coordsRetiro = await geocodeAddressInMarDelPlata(validData.direccion_retiro);
         if (coordsRetiro) {
             finalLatRetiro = coordsRetiro.lat;
             finalLngRetiro = coordsRetiro.lng;
@@ -61,14 +72,14 @@ export async function createEnvioIndividualAction(
             geocodingInfo += "No se pudo geocodificar dirección de retiro o está fuera de MDP. ";
         }
     } else if (finalLatRetiro !== null && finalLngRetiro !== null) {
-        geocodingInfo += "Coordenadas de retiro provistas por cotizador. ";
+        geocodingInfo += "Coordenadas de retiro provistas. ";
     }
 
 
     let finalLatEntrega = latitud_entrega_provista ?? null;
     let finalLngEntrega = longitud_entrega_provista ?? null;
-     if ((finalLatEntrega === null || finalLngEntrega === null) && formData.direccion_entrega) {
-        const coordsEntrega = await geocodeAddressInMarDelPlata(formData.direccion_entrega);
+     if ((finalLatEntrega === null || finalLngEntrega === null) && validData.direccion_entrega) {
+        const coordsEntrega = await geocodeAddressInMarDelPlata(validData.direccion_entrega);
         if (coordsEntrega) {
             finalLatEntrega = coordsEntrega.lat;
             finalLngEntrega = coordsEntrega.lng;
@@ -77,47 +88,45 @@ export async function createEnvioIndividualAction(
             geocodingInfo += "No se pudo geocodificar dirección de entrega o está fuera de MDP. ";
         }
     } else if (finalLatEntrega !== null && finalLngEntrega !== null) {
-        geocodingInfo += "Coordenadas de entrega provistas por cotizador. ";
+        geocodingInfo += "Coordenadas de entrega provistas. ";
     }
 
-    let precioFinalParaGuardar = formData.precio_manual_servicio;
+    let precioFinalParaGuardar = validData.precio_manual_servicio;
     
-    if (formData.tipo_servicio_id && (formData.precio_manual_servicio === null || formData.precio_manual_servicio === undefined)) {
+    if (validData.tipo_servicio_id && (validData.precio_manual_servicio === null || validData.precio_manual_servicio === undefined)) {
         const { data: servicioData, error: servicioError } = await supabase
             .from('tipos_servicio')
             .select('precio_base')
-            .eq('id', formData.tipo_servicio_id)
+            .eq('id', validData.tipo_servicio_id)
             .single();
         if (servicioError) {
             console.warn("Error fetching servicio base price for envios_individuales table:", servicioError);
-            // Keep precioFinalParaGuardar as is (which would be null from form default or cotizador)
         } else if (servicioData?.precio_base !== null && servicioData?.precio_base !== undefined) {
             precioFinalParaGuardar = servicioData.precio_base;
         }
     }
     
     const nuevoEnvioData: NuevoEnvioIndividual = {
-      nombre_cliente: formData.nombre_cliente,
-      email_cliente: formData.email_cliente || null,
-      telefono_cliente: formData.telefono_cliente || null,
-      direccion_retiro: formData.direccion_retiro,
+      nombre_cliente: validData.nombre_cliente,
+      email_cliente: validData.email_cliente || null,
+      telefono_cliente: validData.telefono_cliente || null,
+      direccion_retiro: validData.direccion_retiro,
       latitud_retiro: finalLatRetiro,
       longitud_retiro: finalLngRetiro,
-      direccion_entrega: formData.direccion_entrega,
+      direccion_entrega: validData.direccion_entrega,
       latitud_entrega: finalLatEntrega,
       longitud_entrega: finalLngEntrega,
-      tipo_paquete_id: formData.tipo_paquete_id,
-      descripcion_paquete: formData.descripcion_paquete || null,
-      peso_paquete: formData.peso_paquete || null,
-      dimensiones_paquete: formData.dimensiones_paquete || null,
-      tipo_servicio_id: formData.tipo_servicio_id || null,
+      tipo_paquete_id: validData.tipo_paquete_id,
+      descripcion_paquete: validData.descripcion_paquete || null,
+      peso_paquete: validData.peso_paquete || null,
+      dimensiones_paquete: validData.dimensiones_paquete || null,
+      tipo_servicio_id: validData.tipo_servicio_id || null,
       precio_final_servicio: precioFinalParaGuardar,
       status: estadoEnvioEnum.Values.pending, 
-      notas_cliente: formData.notas_cliente || null,
-      // cliente_id, fecha_solicitud, created_at will use defaults or are explicitly null
+      notas_cliente: validData.notas_cliente || null,
     };
 
-    const { data: envioCreado, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from("envios_individuales")
       .insert(nuevoEnvioData)
       .select()
@@ -128,8 +137,9 @@ export async function createEnvioIndividualAction(
       console.error("Error creating shipment in 'envios_individuales' table:", pgError);
       return { success: false, error: `No se pudo crear la solicitud de envío: ${pgError.message}`, info: geocodingInfo.trim() };
     }
-
-    revalidatePath("/envios"); // Consider if this or another path needs revalidation
+    
+    // No revalidamos /envios porque esta acción escribe en envios_individuales
+    // revalidatePath("/solicitar-envios"); // Podría ser útil para limpiar el formulario, pero el form lo hace
     
     return { success: true, error: null, info: `Solicitud de envío creada. ${geocodingInfo}`.trim() };
 
