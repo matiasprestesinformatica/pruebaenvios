@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, Info as InfoIcon, MapPinIcon, Calculator, Loader2 } from "lucide-react"; // Renamed Info to InfoIcon
+import { Terminal, Info as InfoIcon, MapPinIcon, Calculator, Loader2 } from "lucide-react";
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TarifaDistanciaCalculadora } from '@/types/supabase';
+import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; // Use shared loader
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -21,10 +22,7 @@ interface CaluloCotizadorLowCostProps {
   tarifas: TarifaDistanciaCalculadora[];
 }
 
-const GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_LOWCOST = 'google-maps-api-script-cotizador-lowcost';
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
-let loadGoogleMapsPromiseLowCost: Promise<void> | null = null;
-
 
 const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas }) => {
   const [origen, setOrigen] = useState<string>('');
@@ -32,7 +30,8 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
   const [distancia, setDistancia] = useState<string | null>(null);
   const [precio, setPrecio] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true);
+  const [googleApiLoadedState, setGoogleApiLoadedState] = useState<boolean>(false);
+  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true); // Tracks script loading attempt
   const [error, setError] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -48,16 +47,13 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
   const marcadorDestinoRef = useRef<google.maps.Marker | null>(null);
 
   const initMap = useCallback(() => {
-    if (!mapRef.current || !window.google || !window.google.maps ) {
-      console.error("Map ref or Google Maps API not available for initMap.");
+    if (!mapRef.current || !window.google?.maps?.DirectionsService || !window.google?.maps?.DirectionsRenderer) {
+      console.error("Map ref or Google Maps API not available for initMap in CotizadorLowCost.");
       setError("No se pudo inicializar el mapa. Intente recargar.");
-      setMapApiLoading(false);
       return;
     }
-     if (mapInstanceRef.current) { // Already initialized
-        setMapApiLoading(false);
-        return;
-    }
+     if (mapInstanceRef.current) return;
+     
     const map = new window.google.maps.Map(mapRef.current!, {
       zoom: 12,
       center: MAR_DEL_PLATA_CENTER,
@@ -67,85 +63,35 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
       zoomControl: true,
     });
     mapInstanceRef.current = map;
-    if (window.google.maps.DirectionsService && window.google.maps.DirectionsRenderer) {
-        directionsServiceRef.current = new window.google.maps.DirectionsService();
-        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-          map: map,
-          suppressMarkers: true,
-        });
-        setError(null);
-    } else {
-        setError("Librerías de Directions de Google Maps no cargadas. Por favor, recargue.");
-    }
-    setMapApiLoading(false);
+    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+      map: map,
+      suppressMarkers: true,
+    });
   }, []);
 
   useEffect(() => {
-    const loadGoogleMapsScript = async () => {
-      if (typeof window.google?.maps?.DirectionsService === 'function') {
-        initMap();
+    loadGoogleMapsApi()
+      .then(() => {
+        setGoogleApiLoadedState(true);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        console.error("Failed to load Google Maps API in CotizadorLowCost:", err);
+        setError(err.message || "Error al cargar el servicio de mapas.");
+        setGoogleApiLoadedState(false);
+      })
+      .finally(() => {
         setMapApiLoading(false);
-        return;
-      }
-      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      if (!apiKey) {
-        setError("Falta la configuración del mapa (API Key). Contacta al administrador.");
-        setMapApiLoading(false);
-        return;
-      }
-      setMapApiLoading(true);
+      });
+  }, []);
 
-      if (!loadGoogleMapsPromiseLowCost) {
-        loadGoogleMapsPromiseLowCost = new Promise<void>((resolve, reject) => {
-          const callbackName = 'initMapGloballyForCalculatorLowCost';
-          (window as any)[callbackName] = () => {
-            delete (window as any)[callbackName];
-            if (typeof window.google?.maps?.DirectionsService === 'function') {
-              resolve();
-            } else {
-              reject(new Error("API de Google Maps cargada pero DirectionsService no está disponible."));
-            }
-          };
+  useEffect(() => {
+    if (googleApiLoadedState && mapRef.current && !mapInstanceRef.current) {
+      initMap();
+    }
+  }, [googleApiLoadedState, initMap]);
 
-          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_LOWCOST)) {
-             if (typeof window.google?.maps?.DirectionsService === 'function') {
-                resolve();
-            }
-            return;
-          }
-          
-          const script = document.createElement('script');
-          script.id = GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_LOWCOST;
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=${callbackName}&libraries=marker,geometry,directions&loading=async`;
-          script.async = true; script.defer = true;
-          script.onerror = () => { 
-            delete (window as any)[callbackName];
-            document.getElementById(GOOGLE_MAPS_SCRIPT_ID_COTIZADOR_LOWCOST)?.remove();
-            loadGoogleMapsPromiseLowCost = null;
-            reject(new Error("Error al cargar el script del mapa.")); 
-          };
-          document.head.appendChild(script);
-        });
-      }
-
-      try {
-        await loadGoogleMapsPromiseLowCost;
-        initMap();
-      } catch (err) {
-        const error = err as Error;
-        setError(error.message || "Error desconocido al cargar Google Maps API.");
-      } finally {
-        setMapApiLoading(false);
-      }
-    };
-    if (typeof window !== 'undefined') loadGoogleMapsScript();
-    
-    return () => { 
-        if (typeof (window as any).initMapGloballyForCalculatorLowCost !== 'undefined') {
-          delete (window as any).initMapGloballyForCalculatorLowCost;
-        }
-      };
-  }, [initMap]);
 
   const calcularPrecioConTarifas = (distanciaKm: number) => {
     if (!tarifas || tarifas.length === 0) {
@@ -188,7 +134,9 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
 
   const calcularRuta = async () => {
     if (!origen || !destino) { setError("Por favor, ingrese tanto la dirección de origen como la de destino."); return; }
-    if (mapApiLoading || !directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps?.DirectionsService) { setError("El servicio de mapas no está listo. Intente de nuevo o recargue la página."); return; }
+    if (mapApiLoading || !googleApiLoadedState || !directionsServiceRef.current || !directionsRendererRef.current) { 
+        setError("El servicio de mapas no está listo. Intente de nuevo o recargue la página."); return; 
+    }
     setLoading(true); setError(null); setDistancia(null); setPrecio(null);
     setOrigenCoords(null); setDestinoCoords(null); 
 
@@ -254,11 +202,11 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
             </div>
           </div>
           </TooltipProvider>
-          <Button onClick={calcularRuta} disabled={loading || mapApiLoading} className="w-full bg-accent text-accent-foreground hover:bg-accent/90 py-3 text-base font-semibold transition-transform hover:scale-105 duration-200">
+          <Button onClick={calcularRuta} disabled={loading || mapApiLoading || !googleApiLoadedState} className="w-full bg-accent text-accent-foreground hover:bg-accent/90 py-3 text-base font-semibold transition-transform hover:scale-105 duration-200">
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
             Calcular Ruta y Precio
           </Button>
-          {mapApiLoading && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
+          {mapApiLoading && !googleApiLoadedState && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
           {error && ( <Alert variant="destructive" className="animate-fade-in"><Terminal className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> )}
           <div className="space-y-2 text-foreground/80 animate-fade-in animation-delay-200">
             {distancia && <p id="distancia-lowcost" className="text-lg">Distancia: <span className="font-semibold text-primary">{distancia}</span></p>}
@@ -280,7 +228,7 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
           </div>
         </div>
         <div className="relative animate-fade-in">
-          {mapApiLoading && ( <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md"><p className="text-foreground">Cargando mapa...</p></div> )}
+          {(mapApiLoading && !googleApiLoadedState) && ( <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md"><p className="text-foreground">Cargando mapa...</p></div> )}
           <div ref={mapRef} id="mapa-lowcost" className="h-[400px] md:h-full w-full rounded-md shadow-md border border-border min-h-[300px]"></div>
         </div>
       </div>
@@ -289,7 +237,3 @@ const CaluloCotizadorLowCost: React.FC<CaluloCotizadorLowCostProps> = ({ tarifas
 };
 
 export default CaluloCotizadorLowCost;
-
-declare global { interface Window { initMapGloballyForCalculatorLowCost?: () => void; } }
-
-    
