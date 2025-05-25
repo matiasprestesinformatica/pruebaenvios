@@ -100,8 +100,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
           }
 
           const script = document.createElement('script');
-          script.id = GOOGLE_MAPS_SCRIPT_ID;
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&callback=${callbackName}`;
+          script.id = GOOGLE_MAPS_SCRIPT_ID;          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&callback=${callbackName}&loading=async`;
           script.async = true;
           script.defer = true;
           script.onerror = (err) => {
