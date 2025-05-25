@@ -1,69 +1,294 @@
 
+"use client";
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PageHeader } from "@/components/page-header";
-import CaluloCotizadorExpress from "@/components/configuracion/CaluloCotizadorExpress";
+import { SolicitarEnvioForm } from "@/components/solicitar-envio-form";
 import { getTarifasCalculadoraAction } from "@/app/calculadora/actions";
-import { Suspense } from "react";
+import { getTiposPaqueteActivosAction, getTiposServicioActivosAction } from "@/app/configuracion/actions";
+import { createEnvioIndividualAction } from "./actions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal } from "lucide-react";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Terminal, Info, MapPinIcon, Calculator, Loader2, Edit } from "lucide-react";
+import type { TarifaDistanciaCalculadora, TipoPaquete, TipoServicio } from "@/types/supabase";
 
-async function CotizadorExpressData() {
-  const { data: tarifas, error } = await getTarifasCalculadoraAction('express');
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAPS_SCRIPT_ID_SOLICITAR = 'google-maps-api-script-solicitar';
 
-  if (error) {
-    return (
-      <Alert variant="destructive" className="mt-4">
-        <Terminal className="h-4 w-4" />
-        <AlertTitle>Error al Cargar Tarifas</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
+declare global {
+  interface Window {
+    initMapGloballyForSolicitarEnvio?: () => void;
   }
-   if (!tarifas || tarifas.length === 0) {
-     return (
-      <Alert variant="destructive" className="mt-4">
-        <Terminal className="h-4 w-4" />
-        <AlertTitle>Sin Tarifas</AlertTitle>
-        <AlertDescription>
-            No se encontraron tarifas configuradas para el servicio Express. Por favor, contacte al administrador.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-
-  return <CaluloCotizadorExpress tarifas={tarifas} />;
 }
 
-export default async function CotizadorEnviosExpressPage() {
+export default function SolicitarEnviosPage() {
+  const [step, setStep] = useState(1); // 1: Ingresar direcciones, 2: Completar formulario
+  const [origen, setOrigen] = useState<string>('');
+  const [destino, setDestino] = useState<string>('');
+  const [distancia, setDistancia] = useState<string | null>(null);
+  const [precioCotizado, setPrecioCotizado] = useState<number | null>(null);
+  const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
+  
+  const [loadingCalculation, setLoadingCalculation] = useState<boolean>(false);
+  const [errorCalculation, setErrorCalculation] = useState<string | null>(null);
+
+  const [loadingInitialData, setLoadingInitialData] = useState<boolean>(true);
+  const [errorInitialData, setErrorInitialData] = useState<string | null>(null);
+  const [tarifasExpress, setTarifasExpress] = useState<TarifaDistanciaCalculadora[]>([]);
+  const [tiposPaqueteActivos, setTiposPaqueteActivos] = useState<Pick<TipoPaquete, 'id' | 'nombre'>[]>([]);
+  const [tiposServicioActivos, setTiposServicioActivos] = useState<Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[]>([]);
+
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+
+  const initMap = useCallback(() => {
+    if (!window.google || !window.google.maps || !mapRef.current || mapInstanceRef.current) return;
+    const marDelPlata = { lat: -38.0055, lng: -57.5426 };
+    const map = new window.google.maps.Map(mapRef.current!, {
+      zoom: 12, center: marDelPlata, mapTypeControl: false, streetViewControl: false,
+    });
+    mapInstanceRef.current = map;
+    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+  }, []);
+
+  useEffect(() => {
+    const loadGoogleMaps = () => {
+      const scriptId = GOOGLE_MAPS_SCRIPT_ID_SOLICITAR;
+      if (document.getElementById(scriptId) || window.google?.maps) {
+        if (window.google?.maps && !mapInstanceRef.current) initMap();
+        return;
+      }
+      if (!GOOGLE_MAPS_API_KEY) {
+        setErrorCalculation("Falta la configuración del mapa. Contacta al administrador.");
+        return;
+      }
+      (window as any).initMapGloballyForSolicitarEnvio = initMap;
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMapGloballyForSolicitarEnvio&libraries=marker,geometry`;
+      script.async = true; script.defer = true;
+      script.onerror = () => setErrorCalculation("Error al cargar el script del mapa.");
+      document.head.appendChild(script);
+    };
+    if (typeof window !== 'undefined') loadGoogleMaps();
+    return () => { if ((window as any).initMapGloballyForSolicitarEnvio) delete (window as any).initMapGloballyForSolicitarEnvio; };
+  }, [initMap]);
+
+  useEffect(() => {
+    async function fetchInitialData() {
+      setLoadingInitialData(true);
+      setErrorInitialData(null);
+      try {
+        const [tarifasResult, paquetesResult, serviciosResult] = await Promise.all([
+          getTarifasCalculadoraAction('express'),
+          getTiposPaqueteActivosAction(),
+          getTiposServicioActivosAction(),
+        ]);
+
+        if (tarifasResult.error || !tarifasResult.data || tarifasResult.data.length === 0) {
+          throw new Error(tarifasResult.error || "No se encontraron tarifas Express para cotizar.");
+        }
+        setTarifasExpress(tarifasResult.data);
+
+        if (!paquetesResult || paquetesResult.length === 0) {
+            console.warn("No se encontraron tipos de paquete activos.");
+        }
+        setTiposPaqueteActivos(paquetesResult || []);
+        
+        if(!serviciosResult || serviciosResult.length === 0){
+            console.warn("No se encontraron tipos de servicio activos.");
+        }
+        setTiposServicioActivos(serviciosResult || []);
+
+      } catch (err) {
+        setErrorInitialData((err as Error).message || "Error al cargar datos de configuración.");
+      } finally {
+        setLoadingInitialData(false);
+      }
+    }
+    fetchInitialData();
+  }, []);
+
+  const calcularPrecioConTarifas = (distanciaKm: number) => {
+    if (!tarifasExpress || tarifasExpress.length === 0) return null;
+    for (const tarifa of tarifasExpress) {
+      if (distanciaKm <= tarifa.distancia_hasta_km) {
+        return tarifa.precio;
+      }
+    }
+     const lastTier = tarifasExpress[tarifasExpress.length - 1];
+    if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km === 10.0 && tarifasExpress.find(t => t.tipo_calculadora === 'express')) { 
+        const kmExtra = Math.ceil(distanciaKm - 10);
+        return lastTier.precio + (kmExtra * 750);
+    }
+    return null; // Indica que excede o requiere consulta
+  };
+
+  const handleCalcularYContinuar = async () => {
+    if (!origen || !destino) {
+      setErrorCalculation("Por favor, ingrese ambas direcciones.");
+      return;
+    }
+    if (!directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) {
+      setErrorCalculation("El servicio de mapas no está listo. Intente de nuevo.");
+      return;
+    }
+    setLoadingCalculation(true);
+    setErrorCalculation(null);
+    setDistancia(null);
+    setPrecioCotizado(null);
+    setOrigenCoords(null);
+    setDestinoCoords(null);
+
+    try {
+      const response = await directionsServiceRef.current.route({
+        origin: `${origen}, Mar del Plata, Argentina`,
+        destination: `${destino}, Mar del Plata, Argentina`,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      });
+      directionsRendererRef.current.setDirections(response);
+      const route = response.routes[0];
+      if (route?.legs?.[0]) {
+        const leg = route.legs[0];
+        const distanciaTexto = leg.distance?.text || "N/A";
+        const distanciaValorKm = (leg.distance?.value || 0) / 1000;
+        const precioCalc = calcularPrecioConTarifas(distanciaValorKm);
+
+        setDistancia(distanciaTexto);
+        setPrecioCotizado(precioCalc);
+
+        if (leg.start_location) setOrigenCoords({ lat: leg.start_location.lat(), lng: leg.start_location.lng() });
+        if (leg.end_location) setDestinoCoords({ lat: leg.end_location.lat(), lng: leg.end_location.lng() });
+        
+        if (precioCalc !== null) {
+          setStep(2);
+        } else {
+          setErrorCalculation("No se pudo calcular un precio para la distancia. Consulte por WhatsApp.");
+        }
+      } else {
+        throw new Error("No se pudo obtener la información de la ruta.");
+      }
+    } catch (e) {
+      console.error("Error al calcular la ruta:", e);
+      setErrorCalculation("No se pudo calcular la ruta. Asegúrese de que las direcciones sean válidas en Mar del Plata.");
+    } finally {
+      setLoadingCalculation(false);
+    }
+  };
+
+  if (loadingInitialData) {
+    return (
+        <>
+            <PageHeader title="Solicitar Envío" description="Calcule su envío e ingrese los detalles." />
+            <Skeleton className="h-32 w-full mb-6" />
+            <Skeleton className="h-12 w-1/2 mb-4" />
+            <Skeleton className="h-64 w-full" />
+        </>
+    );
+  }
+
+  if (errorInitialData) {
+    return (
+      <>
+        <PageHeader title="Solicitar Envío" description="Calcule su envío e ingrese los detalles." />
+        <Alert variant="destructive">
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>Error al Cargar Configuración</AlertTitle>
+          <AlertDescription>{errorInitialData} Por favor, intente recargar la página.</AlertDescription>
+        </Alert>
+      </>
+    );
+  }
+
   return (
     <>
-      <PageHeader
-        title="Cotizador de Envíos Express"
-        description="Calcule el costo estimado para sus envíos urgentes en Mar del Plata."
-      />
-      <Suspense fallback={<CotizadorSkeleton />}>
-        <CotizadorExpressData />
-      </Suspense>
+      <PageHeader title="Solicitar Envío" description="Ingrese los detalles de su envío." />
+      {step === 1 && (
+        <Card className="w-full max-w-2xl mx-auto animate-in fade-in-50">
+          <CardHeader>
+            <CardTitle className="text-xl">Paso 1: Calcular Ruta y Precio Base</CardTitle>
+            <CardDescription>Ingrese las direcciones de retiro y entrega para obtener una cotización.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <Label htmlFor="direccion-origen-solicitar" className="block text-sm font-medium mb-1">Dirección de Retiro</Label>
+               <div className="flex items-center gap-2 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                <MapPinIcon className="h-5 w-5 text-muted-foreground ml-3 flex-shrink-0" />
+                <Input id="direccion-origen-solicitar" type="text" value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Ej: Av. Colón 1234, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="direccion-destino-solicitar" className="block text-sm font-medium mb-1">Dirección de Entrega</Label>
+              <div className="flex items-center gap-2 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                <MapPinIcon className="h-5 w-5 text-muted-foreground ml-3 flex-shrink-0" />
+                <Input id="direccion-destino-solicitar" type="text" value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Ej: Juan B. Justo 1500, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
+              </div>
+            </div>
+            <Button onClick={handleCalcularYContinuar} disabled={loadingCalculation || !GOOGLE_MAPS_API_KEY} className="w-full">
+              {loadingCalculation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Calculator className="mr-2 h-4 w-4" />}
+              Calcular y Continuar Solicitud
+            </Button>
+            {errorCalculation && (
+              <Alert variant="destructive">
+                <Terminal className="h-4 w-4" />
+                <AlertTitle>Error de Cálculo</AlertTitle>
+                <AlertDescription>{errorCalculation}</AlertDescription>
+              </Alert>
+            )}
+            {!GOOGLE_MAPS_API_KEY && (
+                <Alert variant="destructive">
+                    <Terminal className="h-4 w-4" />
+                    <AlertTitle>Error de Configuración</AlertTitle>
+                    <AlertDescription>La funcionalidad de mapa no está disponible. Contacte al administrador.</AlertDescription>
+                </Alert>
+            )}
+            <div ref={mapRef} className="h-[250px] w-full rounded-md border bg-muted/30 mt-4"></div>
+          </CardContent>
+        </Card>
+      )}
+
+      {step === 2 && origen && destino && precioCotizado !== null && (
+        <div className="animate-in fade-in-50">
+            <div className="mb-4">
+                <Button variant="outline" onClick={() => { setStep(1); setErrorCalculation(null); }} className="flex items-center gap-2">
+                    <Edit className="h-4 w-4"/> Modificar Direcciones / Recalcular
+                </Button>
+            </div>
+            <SolicitarEnvioForm
+                tiposPaquete={tiposPaqueteActivos}
+                tiposServicio={tiposServicioActivos}
+                createEnvioIndividualAction={createEnvioIndividualAction}
+                initialData={{
+                    direccion_retiro: origen,
+                    latitud_retiro: origenCoords?.lat || null,
+                    longitud_retiro: origenCoords?.lng || null,
+                    direccion_entrega: destino,
+                    latitud_entrega: destinoCoords?.lat || null,
+                    longitud_entrega: destinoCoords?.lng || null,
+                    precio_cotizado: precioCotizado,
+                }}
+                onSuccess={() => {
+                    setStep(1);
+                    setOrigen('');
+                    setDestino('');
+                    setDistancia(null);
+                    setPrecioCotizado(null);
+                    setOrigenCoords(null);
+                    setDestinoCoords(null);
+                    if (directionsRendererRef.current) directionsRendererRef.current.setDirections({routes: []});
+                }}
+                onBack={() => setStep(1)} // Allow form to also trigger going back
+            />
+        </div>
+      )}
     </>
   );
 }
-
-function CotizadorSkeleton() {
- return (
-    <div className="w-full max-w-4xl mx-auto p-4 md:p-6 lg:p-8 bg-card shadow-xl rounded-lg space-y-6">
-      <div className="grid md:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-8 w-3/4" />
-          <Skeleton className="h-8 w-1/2" />
-        </div>
-        <Skeleton className="h-[400px] md:h-full w-full rounded-md" />
-      </div>
-    </div>
-  );
-}
-
-export const dynamic = 'force-dynamic';

@@ -2,7 +2,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import type { SolicitudEnvioIndividualFormData } from "@/lib/schemas";
 import { solicitudEnvioIndividualSchema } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
@@ -25,10 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Send, User, Mail, Phone, MapPin, Package, Edit, CircleDollarSign, Settings2, ArrowLeft } from "lucide-react";
+import { Loader2, Send, User, Mail, Phone, MapPin, Package, Edit, CircleDollarSign, Settings2, ArrowLeft, InfoIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { TipoPaquete, TipoServicio, NuevoEnvioIndividual } from "@/types/supabase";
+import type { TipoPaquete, TipoServicio } from "@/types/supabase";
 
 const NULL_OPTION_PLACEHOLDER = "_NULL_OPTION_";
 const MANUAL_PRICE_PLACEHOLDER = "_MANUAL_PRICE_";
@@ -38,22 +38,22 @@ interface SolicitarEnvioFormProps {
   tiposServicio: Pick<TipoServicio, 'id' | 'nombre' | 'precio_base'>[];
   createEnvioIndividualAction: (
     data: SolicitudEnvioIndividualFormData,
-    latRetiro?: number | null,
-    lngRetiro?: number | null,
-    latEntrega?: number | null,
-    lngEntrega?: number | null
+    latitud_retiro_provista?: number | null,
+    longitud_retiro_provista?: number | null,
+    latitud_entrega_provista?: number | null,
+    longitud_entrega_provista?: number | null
   ) => Promise<{ success: boolean; error?: string | null; info?: string | null }>;
   initialData: {
     direccion_retiro: string;
-    direccion_entrega: string;
-    precio_cotizado: number | null;
     latitud_retiro: number | null;
     longitud_retiro: number | null;
+    direccion_entrega: string;
     latitud_entrega: number | null;
     longitud_entrega: number | null;
+    precio_cotizado: number | null;
   };
-  onBack: () => void;
   onSuccess: () => void;
+  onBack: () => void; // To allow form to trigger going back to step 1
 }
 
 export function SolicitarEnvioForm({
@@ -61,11 +61,11 @@ export function SolicitarEnvioForm({
   tiposServicio,
   createEnvioIndividualAction,
   initialData,
-  onBack,
   onSuccess,
+  onBack,
 }: SolicitarEnvioFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showManualPriceInput, setShowManualPriceInput] = useState(false);
+  const [showManualPriceInput, setShowManualPriceInput] = useState(initialData.precio_cotizado !== null && !tiposServicio.some(ts => ts.precio_base === initialData.precio_cotizado));
   const { toast } = useToast();
 
   const form = useForm<SolicitudEnvioIndividualFormData>({
@@ -84,49 +84,30 @@ export function SolicitarEnvioForm({
       descripcion_paquete: "",
       peso_paquete: null,
       dimensiones_paquete: "",
-      tipo_servicio_id: null,
-      precio_manual_servicio: initialData.precio_cotizado, // Pre-fill with cotizado
+      tipo_servicio_id: tiposServicio.find(ts => ts.precio_base === initialData.precio_cotizado)?.id || null,
+      precio_manual_servicio: initialData.precio_cotizado,
       notas_cliente: "",
     },
   });
-
+  
   const watchedTipoServicioId = form.watch("tipo_servicio_id");
 
   useEffect(() => {
-    // If cotizado price exists, and no service is selected, assume manual mode initially
-    if (initialData.precio_cotizado !== null && !form.getValues("tipo_servicio_id")) {
-      setShowManualPriceInput(true);
-      form.setValue("precio_manual_servicio", initialData.precio_cotizado);
-    }
-  }, [initialData.precio_cotizado, form]);
-
-
-  useEffect(() => {
-    let newManualPriceInputState = showManualPriceInput;
-    let newPrecioManualServicio = form.getValues("precio_manual_servicio");
+    const selectedService = tiposServicio.find(s => s.id === watchedTipoServicioId);
 
     if (watchedTipoServicioId === MANUAL_PRICE_PLACEHOLDER) {
-      newManualPriceInputState = true;
-      // Keep existing manual price or let user input
+      setShowManualPriceInput(true);
+      // No cambiar precio manual, permitir al usuario ingresar
+      form.setValue("tipo_servicio_id", null); // Asegurar que el ID real sea null
     } else if (watchedTipoServicioId && watchedTipoServicioId !== NULL_OPTION_PLACEHOLDER) {
-      const selectedService = tiposServicio.find(s => s.id === watchedTipoServicioId);
-      newPrecioManualServicio = selectedService?.precio_base ?? null;
-      newManualPriceInputState = false;
+      form.setValue("precio_manual_servicio", selectedService?.precio_base ?? initialData.precio_cotizado);
+      setShowManualPriceInput(false);
     } else { // NULL_OPTION_PLACEHOLDER or cleared
-      newManualPriceInputState = false;
-      newPrecioManualServicio = initialData.precio_cotizado; // Revert to cotizado if "Ninguno"
+      setShowManualPriceInput(false);
+      form.setValue("precio_manual_servicio", initialData.precio_cotizado); // Revert to cotizado if "Ninguno"
     }
+  }, [watchedTipoServicioId, tiposServicio, form, initialData.precio_cotizado]);
 
-    if (newManualPriceInputState !== showManualPriceInput) {
-      setShowManualPriceInput(newManualPriceInputState);
-    }
-    
-    // Only update if not in manual mode or if type changes
-    if (!newManualPriceInputState || (watchedTipoServicioId && watchedTipoServicioId !== MANUAL_PRICE_PLACEHOLDER)) {
-        form.setValue("precio_manual_servicio", newPrecioManualServicio, { shouldValidate: true });
-    }
-    
-  }, [watchedTipoServicioId, tiposServicio, form, showManualPriceInput, initialData.precio_cotizado]);
 
   const handleFormSubmit = async (data: SolicitudEnvioIndividualFormData) => {
     setIsSubmitting(true);
@@ -140,7 +121,7 @@ export function SolicitarEnvioForm({
         peso_paquete: data.peso_paquete || null,
         dimensiones_paquete: data.dimensiones_paquete || null,
         tipo_servicio_id: data.tipo_servicio_id === MANUAL_PRICE_PLACEHOLDER || data.tipo_servicio_id === NULL_OPTION_PLACEHOLDER ? null : data.tipo_servicio_id,
-        // precio_manual_servicio is already correctly set by form.setValue via useEffect
+        precio_manual_servicio: showManualPriceInput ? data.precio_manual_servicio : (tiposServicio.find(s => s.id === data.tipo_servicio_id)?.precio_base ?? data.precio_manual_servicio),
         notas_cliente: data.notas_cliente || null,
       };
       
@@ -158,17 +139,7 @@ export function SolicitarEnvioForm({
           description: result.info || "Su solicitud de envío ha sido registrada. Nos pondremos en contacto pronto.",
           duration: 7000,
         });
-        form.reset({ // Reset with initial step 1 data for addresses, but clear other fields
-            nombre_cliente: "", email_cliente: "", telefono_cliente: "",
-            direccion_retiro: initialData.direccion_retiro,
-            latitud_retiro: initialData.latitud_retiro, longitud_retiro: initialData.longitud_retiro,
-            direccion_entrega: initialData.direccion_entrega,
-            latitud_entrega: initialData.latitud_entrega, longitud_entrega: initialData.longitud_entrega,
-            tipo_paquete_id: null, descripcion_paquete: "", peso_paquete: null, dimensiones_paquete: "",
-            tipo_servicio_id: null, precio_manual_servicio: initialData.precio_cotizado, notas_cliente: "",
-        });
-        setShowManualPriceInput(initialData.precio_cotizado !== null);
-        onSuccess(); // Callback to parent to reset step
+        onSuccess(); // Llama al callback de éxito
       } else {
         toast({
           title: "Error al Enviar Solicitud",
@@ -179,7 +150,7 @@ export function SolicitarEnvioForm({
     } catch (error) {
       toast({
         title: "Error Inesperado",
-        description: "Ocurrió un error al procesar la solicitud.",
+        description: (error as Error).message || "Ocurrió un error al procesar la solicitud.",
         variant: "destructive",
       });
       console.error("Error submitting new shipment request:", error);
@@ -189,14 +160,11 @@ export function SolicitarEnvioForm({
   };
 
   return (
-    <Card className="w-full max-w-3xl mx-auto shadow-lg animate-in fade-in-50">
+    <Card className="w-full max-w-3xl mx-auto shadow-lg">
       <CardHeader>
-        <div className="flex justify-between items-center">
-            <CardTitle className="text-xl">Paso 2: Complete los Detalles del Envío</CardTitle>
-            <Button variant="outline" size="sm" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4"/>Volver</Button>
-        </div>
-        <CardDescription>
-          Las direcciones y el precio cotizado se han pre-cargado. Complete la información restante.
+         <CardTitle className="text-xl">Paso 2: Complete los Detalles del Envío</CardTitle>
+         <CardDescription>
+          Las direcciones y el precio base cotizado se han pre-cargado. Complete la información restante.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -204,11 +172,11 @@ export function SolicitarEnvioForm({
           <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
             
             <section className="space-y-4 p-4 border rounded-md shadow-sm bg-muted/30">
-              <h3 className="text-lg font-semibold flex items-center gap-2"><Info className="h-5 w-5 text-primary" />Resumen de Cotización</h3>
+              <h3 className="text-lg font-semibold flex items-center gap-2"><InfoIcon className="h-5 w-5 text-primary" />Resumen de Cotización</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="font-medium">Retiro:</span> {initialData.direccion_retiro}</div>
                 <div><span className="font-medium">Entrega:</span> {initialData.direccion_entrega}</div>
-                <div><span className="font-medium">Precio Cotizado:</span> <span className="font-bold text-lg">{initialData.precio_cotizado !== null ? `$${initialData.precio_cotizado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}</span></div>
+                <div><span className="font-medium">Precio Cotizado Base:</span> <span className="font-bold text-lg">{initialData.precio_cotizado !== null ? `$${initialData.precio_cotizado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}</span></div>
               </div>
             </section>
 
@@ -255,7 +223,7 @@ export function SolicitarEnvioForm({
                         >
                             <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar o ingresar precio manual..." /></SelectTrigger></FormControl>
                             <SelectContent>
-                                <SelectItem value={NULL_OPTION_PLACEHOLDER}>Mantener Precio Cotizado / Ninguno</SelectItem>
+                                <SelectItem value={NULL_OPTION_PLACEHOLDER}>Usar Precio Cotizado / Ninguno</SelectItem>
                                 <SelectItem value={MANUAL_PRICE_PLACEHOLDER}>-- Ingresar Precio Manual Diferente --</SelectItem>
                                 {tiposServicio.map(servicio => (
                                     <SelectItem key={servicio.id} value={servicio.id}>
@@ -292,7 +260,7 @@ export function SolicitarEnvioForm({
 
             <FormField control={form.control} name="notas_cliente" render={({ field }) => (<FormItem><FormLabel>Notas Adicionales para el Envío (Opcional)</FormLabel><FormControl><Textarea placeholder="Ej: Frágil, entregar en recepción, llamar antes, etc." className="resize-y min-h-[100px]" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>)} />
             
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground py-3 text-base" disabled={isSubmitting}>
+            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-base" disabled={isSubmitting}>
               {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Solicitando Envío...</> : <><Send className="mr-2 h-4 w-4" /> Confirmar Solicitud de Envío</>}
             </Button>
           </form>
