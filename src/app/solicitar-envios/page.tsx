@@ -13,13 +13,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Terminal, Info, MapPinIcon, Calculator, Loader2, Edit, PackageSearch } from "lucide-react";
+import { Terminal, InfoIcon as Info, MapPinIcon, Calculator, Loader2, Edit, PackageSearch } from "lucide-react";
 import type { TarifaDistanciaCalculadora, TipoPaquete, TipoServicio } from "@/types/supabase";
 import { useToast } from "@/hooks/use-toast";
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_SCRIPT_ID_SOLICITAR = 'google-maps-api-script-solicitar-envio'; // More specific ID
-const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 }; // Center coordinates for Mar del Plata
+const GOOGLE_MAPS_SCRIPT_ID_SOLICITAR = 'google-maps-api-script-solicitar-envio-page'; // Unique ID
+const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 
 declare global {
   interface Window {
@@ -36,6 +36,7 @@ export default function SolicitarEnviosPage() {
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
 
+  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true);
   const [loadingCalculation, setLoadingCalculation] = useState<boolean>(false);
   const [errorCalculation, setErrorCalculation] = useState<string | null>(null);
 
@@ -54,40 +55,64 @@ export default function SolicitarEnviosPage() {
   const marcadorDestinoRef = useRef<google.maps.Marker | null>(null);
 
   const initMap = useCallback(() => {
-    if (!window.google || !window.google.maps || !mapRef.current || mapInstanceRef.current) return;
+    if (!window.google || !window.google.maps || !mapRef.current || mapInstanceRef.current) {
+      setMapApiLoading(false);
+      if (!window.google?.maps?.DirectionsService) { // Check specific service if main API loaded but services might not be
+          setErrorCalculation("Servicios del mapa (DirectionsService) no están disponibles. Intente recargar.");
+      }
+      return;
+    }
     const map = new window.google.maps.Map(mapRef.current!, {
-      zoom: 12, center: marDelPlata, mapTypeControl: false, streetViewControl: false,
+      zoom: 12, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false,
     });
     mapInstanceRef.current = map;
     directionsServiceRef.current = new window.google.maps.DirectionsService();
     directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+    setMapApiLoading(false);
+    setErrorCalculation(null); // Clear any previous map related errors
   }, []);
 
   useEffect(() => {
-    const loadGoogleMaps = () => {
-      if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_SOLICITAR) || window.google?.maps) {
-        if (window.google?.maps && !mapInstanceRef.current && step === 1) initMap(); // Init map only if on step 1
+    const loadGoogleMapsScript = () => {
+      if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_SOLICITAR) || (window.google?.maps && window.google.maps.DirectionsService)) {
+        if (window.google?.maps?.DirectionsService && !mapInstanceRef.current && step === 1) initMap();
+        else setMapApiLoading(false);
         return;
       }
       if (!GOOGLE_MAPS_API_KEY) {
-        setErrorCalculation("Falta la configuración del mapa. Contacta al administrador.");
+        setErrorCalculation("Falta la configuración del mapa (API Key). Contacta al administrador.");
+        setMapApiLoading(false);
         return;
       }
-      (window as any).initMapGloballyForSolicitarEnvioPage = initMap;
+
+      (window as any).initMapGloballyForSolicitarEnvioPage = () => {
+        initMap();
+        if (typeof (window as any).initMapGloballyForSolicitarEnvioPage !== 'undefined') {
+          delete (window as any).initMapGloballyForSolicitarEnvioPage;
+        }
+      };
+      
       const script = document.createElement('script');
       script.id = GOOGLE_MAPS_SCRIPT_ID_SOLICITAR;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMapGloballyForSolicitarEnvioPage&libraries=marker,geometry&loading=async`;
-      script.async = true; script.defer = true;
-      script.onerror = () => setErrorCalculation("Error al cargar el script del mapa.");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMapGloballyForSolicitarEnvioPage&libraries=marker,geometry,directions&loading=async`;
+      script.async = true; 
+      script.defer = true;
+      script.onerror = () => {
+        setErrorCalculation("Error al cargar el script del mapa. Verifique la conexión o la API Key.");
+        setMapApiLoading(false);
+        if (typeof (window as any).initMapGloballyForSolicitarEnvioPage !== 'undefined') {
+          delete (window as any).initMapGloballyForSolicitarEnvioPage;
+        }
+      };
       document.head.appendChild(script);
     };
 
-    if (typeof window !== 'undefined' && step === 1) { // Only load maps script if on step 1
-      loadGoogleMaps();
+    if (typeof window !== 'undefined' && step === 1) {
+      loadGoogleMapsScript();
     }
     
     return () => { 
-      if ((window as any).initMapGloballyForSolicitarEnvioPage) {
+      if (typeof (window as any).initMapGloballyForSolicitarEnvioPage !== 'undefined') {
         delete (window as any).initMapGloballyForSolicitarEnvioPage;
       }
     };
@@ -111,11 +136,13 @@ export default function SolicitarEnviosPage() {
 
         if (!paquetesResult || paquetesResult.length === 0) {
             console.warn("No se encontraron tipos de paquete activos.");
+            // Not throwing error, form can still be used without default package type selection
         }
         setTiposPaqueteActivos(paquetesResult || []);
         
         if(!serviciosResult || serviciosResult.length === 0){
             console.warn("No se encontraron tipos de servicio activos.");
+             // Not throwing error, form can still be used but service selection will be limited
         }
         setTiposServicioActivos(serviciosResult || []);
 
@@ -134,23 +161,30 @@ export default function SolicitarEnviosPage() {
     fetchInitialData();
   }, [toast]);
 
-  const calcularPrecioConTarifas = (distanciaKm: number) => {
-    if (!tarifasExpress || tarifasExpress.length === 0) return null;
+  const calcularPrecioConTarifas = useCallback((distanciaKm: number) => {
+    if (!tarifasExpress || tarifasExpress.length === 0) {
+        setErrorCalculation("Tarifas Express no disponibles. No se puede calcular el precio.");
+        return null;
+    }
     for (const tarifa of tarifasExpress) {
       if (distanciaKm <= tarifa.distancia_hasta_km) {
         return tarifa.precio;
       }
     }
+    // Handle cases beyond defined tiers (e.g., based on Rumbos Envíos' specific logic for longer distances)
+    // For now, if it exceeds the max defined tier, we'll indicate it needs special consultation.
+    // This logic should match CaluloCotizadorExpress.tsx
     const lastTier = tarifasExpress[tarifasExpress.length - 1];
     if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km >= 10.0) { 
-        const kmExtra = Math.ceil(distanciaKm - lastTier.distancia_hasta_km);
-        const precioPorKmExtra = tarifasExpress.find(t => t.distancia_hasta_km === -1)?.precio || 750; // Special tier or default
+        const kmExtra = Math.ceil(distanciaKm - 10); // Assuming 10km is the last explicit tier for this logic
+        const precioPorKmExtra = tarifasExpress.find(t => t.distancia_hasta_km === -1)?.precio || 750; // A placeholder for per-km extra if defined, or a default
         return lastTier.precio + (kmExtra * precioPorKmExtra);
     }
+    setErrorCalculation("Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.");
     return null;
-  };
+  }, [tarifasExpress]);
 
-  const colocarMarcadores = (
+  const colocarMarcadores = useCallback((
     origenPos: google.maps.LatLng,
     destinoPos: google.maps.LatLng,
     origenDir: string,
@@ -175,17 +209,22 @@ export default function SolicitarEnviosPage() {
     bounds.extend(origenPos); bounds.extend(destinoPos);
     mapInstanceRef.current.fitBounds(bounds);
     if (mapInstanceRef.current.getZoom()! > 15) mapInstanceRef.current.setZoom(15);
-  };
+  }, []);
 
   const handleCalcularYContinuar = async () => {
     if (!origen || !destino) {
       setErrorCalculation("Por favor, ingrese ambas direcciones.");
       return;
     }
-    if (!directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) {
-      setErrorCalculation("El servicio de mapas no está listo. Intente de nuevo.");
+    if (mapApiLoading || !directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) {
+      setErrorCalculation("El servicio de mapas no está listo. Intente de nuevo o recargue la página.");
       return;
     }
+    if (tarifasExpress.length === 0) {
+        setErrorCalculation("Las tarifas no están cargadas. No se puede cotizar. Intente recargar la página.");
+        return;
+    }
+
     setLoadingCalculation(true);
     setErrorCalculation(null);
     setDistancia(null);
@@ -217,14 +256,13 @@ export default function SolicitarEnviosPage() {
         
         if (precioCalc !== null) {
           setStep(2);
-        } else {
-          setErrorCalculation("No se pudo calcular un precio para la distancia. Consulte por WhatsApp.");
         }
+        // No mostrar error si precioCalc es null, porque calcularPrecioConTarifas ya lo setea
         if (leg.start_location && leg.end_location && leg.start_address && leg.end_address) {
             colocarMarcadores(leg.start_location, leg.end_location, leg.start_address, leg.end_address);
         }
       } else {
-        throw new Error("No se pudo obtener la información de la ruta.");
+        throw new Error("No se pudo obtener la información de la ruta desde Google Maps.");
       }
     } catch (e) {
       console.error("Error al calcular la ruta:", e);
@@ -242,22 +280,23 @@ export default function SolicitarEnviosPage() {
     setPrecioCotizado(null);
     setOrigenCoords(null);
     setDestinoCoords(null);
-    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null);
+    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null); // Clear route
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
     if (mapInstanceRef.current) mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER);
+    setErrorCalculation(null); // Clear previous calculation errors
   };
 
   if (loadingInitialData) {
     return (
         <>
             <PageHeader title="Solicitar Nuevo Envío" description="Calcule el costo de su envío y luego complete los detalles para la solicitud." />
-            <div className="space-y-6">
-                <Skeleton className="h-12 w-1/3" />
+            <div className="space-y-6 mt-4">
+                <Skeleton className="h-10 w-1/3" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-12 w-full mt-2" />
+                <Skeleton className="h-64 w-full mt-4 rounded-md" />
             </div>
         </>
     );
@@ -267,7 +306,7 @@ export default function SolicitarEnviosPage() {
     return (
       <>
         <PageHeader title="Solicitar Nuevo Envío" description="Calcule el costo de su envío y luego complete los detalles para la solicitud." />
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mt-4">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error al Cargar Configuración Inicial</AlertTitle>
           <AlertDescription>{errorInitialData}. Por favor, intente recargar la página o contacte al administrador.</AlertDescription>
@@ -278,33 +317,37 @@ export default function SolicitarEnviosPage() {
 
   return (
     <>
-      <PageHeader title={step === 1 ? "Paso 1: Calcular Envío" : "Paso 2: Completar Solicitud"} description={step === 1 ? "Ingrese origen y destino para cotizar." : "Complete los detalles de su envío."} />
+      <PageHeader 
+        title={step === 1 ? "Paso 1: Calcular Envío" : "Paso 2: Completar Solicitud de Envío"} 
+        description={step === 1 ? "Ingrese las direcciones de retiro y entrega para obtener una cotización base." : "Complete los detalles de su envío. Las direcciones y el precio base se han pre-cargado."} 
+      />
       
       {step === 1 && (
-        <Card className="w-full max-w-2xl mx-auto animate-in fade-in-50">
+        <Card className="w-full max-w-2xl mx-auto animate-in fade-in-50 mt-4">
           <CardHeader>
             <CardTitle className="text-xl">Calcular Ruta y Precio Base</CardTitle>
-            <CardDescription>Ingrese las direcciones de retiro y entrega para obtener una cotización.</CardDescription>
+            <CardDescription>Las direcciones deben ser dentro de Mar del Plata.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
-              <Label htmlFor="direccion-origen-solicitar" className="block text-sm font-medium mb-1">Dirección de Retiro</Label>
+              <Label htmlFor="direccion-retiro-solicitar" className="block text-sm font-medium mb-1">Dirección de Retiro</Label>
                <div className="flex items-center gap-2 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
                 <MapPinIcon className="h-5 w-5 text-muted-foreground ml-3 flex-shrink-0" />
-                <Input id="direccion-origen-solicitar" type="text" value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Ej: Av. Colón 1234, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
+                <Input id="direccion-retiro-solicitar" type="text" value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Ej: Av. Colón 1234, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
               </div>
             </div>
             <div>
-              <Label htmlFor="direccion-destino-solicitar" className="block text-sm font-medium mb-1">Dirección de Entrega</Label>
+              <Label htmlFor="direccion-entrega-solicitar" className="block text-sm font-medium mb-1">Dirección de Entrega</Label>
               <div className="flex items-center gap-2 rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
                 <MapPinIcon className="h-5 w-5 text-muted-foreground ml-3 flex-shrink-0" />
-                <Input id="direccion-destino-solicitar" type="text" value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Ej: Av. Libertad 4567, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
+                <Input id="direccion-entrega-solicitar" type="text" value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="Ej: Av. Libertad 4567, Mar del Plata" className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-grow p-3"/>
               </div>
             </div>
-            <Button onClick={handleCalcularYContinuar} disabled={loadingCalculation || !GOOGLE_MAPS_API_KEY} className="w-full">
+            <Button onClick={handleCalcularYContinuar} disabled={loadingCalculation || mapApiLoading || !GOOGLE_MAPS_API_KEY || tarifasExpress.length === 0} className="w-full">
               {loadingCalculation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Calculator className="mr-2 h-4 w-4" />}
               Calcular y Continuar Solicitud
             </Button>
+            {mapApiLoading && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
             {errorCalculation && (
               <Alert variant="destructive">
                 <Terminal className="h-4 w-4" />
@@ -322,14 +365,15 @@ export default function SolicitarEnviosPage() {
             {distancia && <p className="text-center text-sm text-muted-foreground">Distancia aproximada: {distancia}</p>}
             {precioCotizado !== null && <p className="text-center text-lg font-semibold">Precio cotizado base: ${precioCotizado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>}
             <div ref={mapRef} className="h-[250px] w-full rounded-md border bg-muted/30 mt-4">
-              {!GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-muted-foreground"><PackageSearch className="h-10 w-10 mr-2"/> Mapa no disponible.</div>}
+              {mapApiLoading && !errorCalculation && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 mr-2 animate-spin"/>Cargando mapa...</div>}
+              {!mapApiLoading && !errorCalculation && !GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-muted-foreground"><PackageSearch className="h-10 w-10 mr-2"/> Mapa no disponible.</div>}
             </div>
           </CardContent>
         </Card>
       )}
 
       {step === 2 && origen && destino && precioCotizado !== null && !loadingInitialData && !errorInitialData && (
-        <div className="animate-in fade-in-50">
+        <div className="animate-in fade-in-50 mt-6">
             <Button variant="outline" onClick={() => { setStep(1); setErrorCalculation(null); }} className="mb-4 flex items-center gap-2">
                 <Edit className="h-4 w-4"/> Modificar Direcciones / Recalcular
             </Button>
@@ -337,17 +381,15 @@ export default function SolicitarEnviosPage() {
                 tiposPaquete={tiposPaqueteActivos}
                 tiposServicio={tiposServicioActivos}
                 createEnvioIndividualAction={createEnvioIndividualAction}
-                initialData={{
-                    direccion_retiro: origen,
-                    latitud_retiro: origenCoords?.lat || null,
-                    longitud_retiro: origenCoords?.lng || null,
-                    direccion_entrega: destino,
-                    latitud_entrega: destinoCoords?.lat || null,
-                    longitud_entrega: destinoCoords?.lng || null,
-                    precio_cotizado: precioCotizado,
-                }}
+                initialDireccionRetiro={origen}
+                initialLatitudRetiro={origenCoords?.lat || null}
+                initialLongitudRetiro={origenCoords?.lng || null}
+                initialDireccionEntrega={destino}
+                initialLatitudEntrega={destinoCoords?.lat || null}
+                initialLongitudEntrega={destinoCoords?.lng || null}
+                initialPrecioCotizado={precioCotizado}
                 onSuccess={handleSolicitudEnviada}
-                onBack={() => setStep(1)}
+                onBack={() => setStep(1)} // Allow form to trigger going back
             />
         </div>
       )}
@@ -355,4 +397,3 @@ export default function SolicitarEnviosPage() {
   );
 }
 
-    
