@@ -13,6 +13,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription, // Added FormDescription
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -74,28 +75,41 @@ export function SolicitarEnvioForm({
   const watchedTipoServicioId = form.watch("tipo_servicio_id");
 
   useEffect(() => {
+    const currentManualPriceInputState = showManualPriceInput;
+    let newManualPriceInputState = currentManualPriceInputState;
+    let newPrecioManualServicio = form.getValues("precio_manual_servicio");
+
     if (watchedTipoServicioId === MANUAL_PRICE_PLACEHOLDER) {
-      setShowManualPriceInput(true);
-      form.setValue("tipo_servicio_id", null); // Clear actual service ID if manual price is chosen
+      newManualPriceInputState = true;
+      // No cambiamos el tipo_servicio_id aquí, la acción lo manejará.
+      // El precio manual lo ingresa el usuario.
     } else if (watchedTipoServicioId && watchedTipoServicioId !== NULL_OPTION_PLACEHOLDER) {
       const selectedService = tiposServicio.find(s => s.id === watchedTipoServicioId);
-      if (selectedService && selectedService.precio_base !== null) {
-        form.setValue("precio_manual_servicio", selectedService.precio_base);
-      } else {
-         // If service has no base price, allow manual input or keep it null
-         // form.setValue("precio_manual_servicio", null); // Optional: clear if service has no price
+      newPrecioManualServicio = selectedService?.precio_base ?? null;
+      newManualPriceInputState = false; // Ocultar si hay precio base
+      if (selectedService && selectedService.precio_base === null) {
+         // Si el servicio no tiene precio base, permitir entrada manual o considerarlo 0/nulo
+         // newManualPriceInputState = true; // Descomentar si queremos habilitar manual si no hay precio_base
       }
-      setShowManualPriceInput(false); // Hide manual input if a service with potential base price is selected
     } else { // NULL_OPTION_PLACEHOLDER or cleared
-      setShowManualPriceInput(false);
-      form.setValue("precio_manual_servicio", null);
+      newManualPriceInputState = false;
+      newPrecioManualServicio = null;
     }
-  }, [watchedTipoServicioId, tiposServicio, form]);
+
+    if (newManualPriceInputState !== currentManualPriceInputState) {
+      setShowManualPriceInput(newManualPriceInputState);
+    }
+    // Solo actualizamos el precio manual si no estamos en modo manual (para no sobreescribir la entrada del usuario)
+    // o si estamos cambiando a un servicio que sí tiene precio base.
+    if (!newManualPriceInputState || (watchedTipoServicioId && watchedTipoServicioId !== MANUAL_PRICE_PLACEHOLDER && watchedTipoServicioId !== NULL_OPTION_PLACEHOLDER)) {
+        form.setValue("precio_manual_servicio", newPrecioManualServicio, { shouldValidate: true });
+    }
+    
+  }, [watchedTipoServicioId, tiposServicio, form, showManualPriceInput]);
 
   const handleFormSubmit = async (data: SolicitudEnvioIndividualFormData) => {
     setIsSubmitting(true);
     try {
-      // Ensure nulls are passed correctly for optional fields not filled
       const payload: SolicitudEnvioIndividualFormData = {
         ...data,
         email_cliente: data.email_cliente || null,
@@ -104,11 +118,12 @@ export function SolicitarEnvioForm({
         longitud_retiro: data.longitud_retiro || null,
         latitud_entrega: data.latitud_entrega || null,
         longitud_entrega: data.longitud_entrega || null,
+        tipo_paquete_id: data.tipo_paquete_id === NULL_OPTION_PLACEHOLDER ? null : data.tipo_paquete_id,
         descripcion_paquete: data.descripcion_paquete || null,
         peso_paquete: data.peso_paquete || null,
         dimensiones_paquete: data.dimensiones_paquete || null,
         tipo_servicio_id: data.tipo_servicio_id === MANUAL_PRICE_PLACEHOLDER || data.tipo_servicio_id === NULL_OPTION_PLACEHOLDER ? null : data.tipo_servicio_id,
-        precio_manual_servicio: showManualPriceInput ? (data.precio_manual_servicio || null) : (watchedTipoServicioId && watchedTipoServicioId !== NULL_OPTION_PLACEHOLDER && watchedTipoServicioId !== MANUAL_PRICE_PLACEHOLDER ? tiposServicio.find(s=>s.id === watchedTipoServicioId)?.precio_base ?? null : null),
+        precio_manual_servicio: showManualPriceInput ? (data.precio_manual_servicio || null) : (data.tipo_servicio_id && data.tipo_servicio_id !== MANUAL_PRICE_PLACEHOLDER && data.tipo_servicio_id !== NULL_OPTION_PLACEHOLDER ? tiposServicio.find(s=>s.id === data.tipo_servicio_id)?.precio_base ?? null : null),
         notas_cliente: data.notas_cliente || null,
       };
       
@@ -209,18 +224,7 @@ export function SolicitarEnvioForm({
                         <FormLabel>Tipo de Servicio (Opcional)</FormLabel>
                         <Select 
                             onValueChange={(value) => {
-                                field.onChange(value === NULL_OPTION_PLACEHOLDER || value === MANUAL_PRICE_PLACEHOLDER ? null : value);
-                                if (value === MANUAL_PRICE_PLACEHOLDER) {
-                                    setShowManualPriceInput(true);
-                                    // form.setValue("precio_manual_servicio", null); // Keep existing if user toggles
-                                } else if (value && value !== NULL_OPTION_PLACEHOLDER) {
-                                    const servicio = tiposServicio.find(s => s.id === value);
-                                    form.setValue("precio_manual_servicio", servicio?.precio_base ?? null);
-                                    setShowManualPriceInput(false);
-                                } else {
-                                    setShowManualPriceInput(false);
-                                    form.setValue("precio_manual_servicio", null);
-                                }
+                                field.onChange(value); // Let useEffect handle the logic
                             }} 
                             value={field.value ? field.value : (showManualPriceInput ? MANUAL_PRICE_PLACEHOLDER : NULL_OPTION_PLACEHOLDER)}
                         >
