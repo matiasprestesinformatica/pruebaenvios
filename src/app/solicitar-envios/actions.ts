@@ -3,8 +3,8 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { SolicitudEnvioIndividualFormData } from "@/lib/schemas";
-import type { Database, NuevoEnvioIndividual, TipoServicio } from "@/types/supabase"; // Changed EnviosIndividuales to NuevoEnvioIndividual
-import { revalidatePath } from "next/cache"; // Added for potential revalidation
+import type { Database, NuevoEnvioIndividual, TipoServicio } from "@/types/supabase"; 
+import { revalidatePath } from "next/cache"; 
 
 // Re-use or adapt the geocoding function
 async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: number; lng: number } | null> {
@@ -43,19 +43,23 @@ async function geocodeAddressInMarDelPlata(address: string): Promise<{ lat: numb
 
 
 export async function createEnvioIndividualAction(
-  formData: SolicitudEnvioIndividualFormData
+  formData: SolicitudEnvioIndividualFormData,
+  latRetiroProvista?: number | null,
+  lngRetiroProvista?: number | null,
+  latEntregaProvista?: number | null,
+  lngEntregaProvista?: number | null
 ): Promise<{ success: boolean; error?: string | null; info?: string | null }> {
   const supabase = createSupabaseServerClient();
-  let geocodingInfoRetiro = "Geocodificación de retiro no realizada.";
-  let geocodingInfoEntrega = "Geocodificación de entrega no realizada.";
+  let geocodingInfoRetiro = "";
+  let geocodingInfoEntrega = "";
 
-  let latRetiro: number | null = formData.latitud_retiro ?? null;
-  let lngRetiro: number | null = formData.longitud_retiro ?? null;
-  let latEntrega: number | null = formData.latitud_entrega ?? null;
-  let lngEntrega: number | null = formData.longitud_entrega ?? null;
+  let latRetiro = latRetiroProvista ?? formData.latitud_retiro ?? null;
+  let lngRetiro = lngRetiroProvista ?? formData.longitud_retiro ?? null;
+  let latEntrega = latEntregaProvista ?? formData.latitud_entrega ?? null;
+  let lngEntrega = lngEntregaProvista ?? formData.longitud_entrega ?? null;
 
   try {
-    // Geocode Retiro Address if manual coords not provided
+    // Geocode Retiro Address if not provided by cotizador/form
     if (latRetiro === null || lngRetiro === null) {
       const retiroCoords = await geocodeAddressInMarDelPlata(formData.direccion_retiro);
       if (retiroCoords) {
@@ -66,10 +70,10 @@ export async function createEnvioIndividualAction(
         geocodingInfoRetiro = "No se pudo geocodificar la dirección de retiro o está fuera de MDP.";
       }
     } else {
-      geocodingInfoRetiro = "Coordenadas de retiro manuales utilizadas.";
+      geocodingInfoRetiro = "Coordenadas de retiro provistas utilizadas.";
     }
 
-    // Geocode Entrega Address if manual coords not provided
+    // Geocode Entrega Address if not provided by cotizador/form
     if (latEntrega === null || lngEntrega === null) {
       const entregaCoords = await geocodeAddressInMarDelPlata(formData.direccion_entrega);
       if (entregaCoords) {
@@ -80,11 +84,11 @@ export async function createEnvioIndividualAction(
         geocodingInfoEntrega = "No se pudo geocodificar la dirección de entrega o está fuera de MDP.";
       }
     } else {
-      geocodingInfoEntrega = "Coordenadas de entrega manuales utilizadas.";
+      geocodingInfoEntrega = "Coordenadas de entrega provistas utilizadas.";
     }
+    
+    let precioServicioFinalDeterminado: number | null = formData.precio_manual_servicio;
 
-    // Determine final service price
-    let precioServicio: number | null = formData.precio_manual_servicio ?? null;
     if (formData.tipo_servicio_id && formData.precio_manual_servicio === null) {
         const { data: servicioData, error: servicioError } = await supabase
             .from('tipos_servicio')
@@ -93,8 +97,8 @@ export async function createEnvioIndividualAction(
             .single();
         if (servicioError) {
             console.warn("Error fetching service price for envio individual:", servicioError.message);
-        } else if (servicioData?.precio_base !== null) {
-            precioServicio = servicioData.precio_base;
+        } else if (servicioData?.precio_base !== null && servicioData?.precio_base !== undefined) {
+            precioServicioFinalDeterminado = servicioData.precio_base;
         }
     }
     
@@ -108,22 +112,21 @@ export async function createEnvioIndividualAction(
       direccion_entrega: formData.direccion_entrega,
       latitud_entrega: latEntrega,
       longitud_entrega: lngEntrega,
-      tipo_paquete_id: formData.tipo_paquete_id,
+      tipo_paquete_id: formData.tipo_paquete_id === "_NULL_OPTION_" ? null : formData.tipo_paquete_id,
       descripcion_paquete: formData.descripcion_paquete || null,
       peso_paquete: formData.peso_paquete || null,
       dimensiones_paquete: formData.dimensiones_paquete || null,
-      tipo_servicio_id: formData.tipo_servicio_id || null,
-      precio_manual_servicio: precioServicio, // Store the determined price here. Or rename column to precio_final_servicio
-      status: 'pendiente', // Initial status
+      tipo_servicio_id: formData.tipo_servicio_id === "_MANUAL_PRICE_" || formData.tipo_servicio_id === "_NULL_OPTION_" ? null : formData.tipo_servicio_id,
+      precio_manual_servicio: precioServicioFinalDeterminado, 
+      status: 'pendiente', 
       fecha_solicitud: new Date().toISOString(),
       notas_cliente: formData.notas_cliente || null,
-      // cliente_id would be set if we implement client lookup/creation based on email/phone
     };
 
     const { data: nuevoEnvio, error } = await supabase
       .from("envios_individuales")
       .insert(envioData)
-      .select()
+      .select("id") 
       .single();
 
     if (error) {
@@ -131,12 +134,11 @@ export async function createEnvioIndividualAction(
       return { success: false, error: error.message, info: `${geocodingInfoRetiro} ${geocodingInfoEntrega}` };
     }
     
-    // Optional: Revalidate paths if these shipments are displayed elsewhere immediately
-    // revalidatePath("/admin/envios-solicitados"); // Example
+    revalidatePath("/solicitar-envios"); 
 
     return { 
         success: true, 
-        info: `Solicitud de envío creada (ID: ${nuevoEnvio?.id}). ${geocodingInfoRetiro} ${geocodingInfoEntrega}`, 
+        info: `Solicitud de envío (ID: ${nuevoEnvio?.id}) creada. ${geocodingInfoRetiro} ${geocodingInfoEntrega}`, 
         error: null 
     };
 
@@ -148,5 +150,49 @@ export async function createEnvioIndividualAction(
         error: err.message || "Error desconocido en el servidor.", 
         info: `${geocodingInfoRetiro} ${geocodingInfoEntrega}`
     };
+  }
+}
+
+export async function getTarifasCalculadoraAction(
+  tipoCalculadora: 'lowcost' | 'express'
+): Promise<{ data: TarifaDistanciaCalculadora[] | null; error: string | null }> {
+  try {
+    const supabase = createSupabaseServerClient();
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: distinctDates, error: dateError } = await supabase
+      .from('tarifas_distancia_calculadora')
+      .select('fecha_vigencia_desde')
+      .eq('tipo_calculadora', tipoCalculadora)
+      .lte('fecha_vigencia_desde', today)
+      .order('fecha_vigencia_desde', { ascending: false })
+      .limit(1);
+
+    if (dateError) {
+      console.error(`Error fetching distinct vigencia dates for ${tipoCalculadora}:`, dateError);
+      return { data: null, error: `Error al obtener fechas de vigencia: ${dateError.message}` };
+    }
+
+    if (!distinctDates || distinctDates.length === 0) {
+      return { data: null, error: `No se encontraron tarifas vigentes para el servicio ${tipoCalculadora}.` };
+    }
+    const latestValidDate = distinctDates[0].fecha_vigencia_desde;
+
+    const { data: tarifas, error: tarifasError } = await supabase
+      .from('tarifas_distancia_calculadora')
+      .select('*')
+      .eq('tipo_calculadora', tipoCalculadora)
+      .eq('fecha_vigencia_desde', latestValidDate)
+      .order('distancia_hasta_km', { ascending: true });
+
+    if (tarifasError) {
+      console.error(`Error fetching tariffs for ${tipoCalculadora} on ${latestValidDate}:`, tarifasError);
+      return { data: null, error: `Error al obtener tarifas: ${tarifasError.message}` };
+    }
+    return { data: tarifas || [], error: null };
+  } catch (e: unknown) {
+    const err = e as Error;
+    console.error(`Unexpected error in getTarifasCalculadoraAction for ${tipoCalculadora}:`, err);
+    return { data: null, error: err.message || "Error desconocido del servidor al obtener tarifas." };
   }
 }
