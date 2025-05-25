@@ -12,12 +12,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Terminal, MapPinIcon, Calculator, Loader2, Edit } from "lucide-react";
+import { Terminal, MapPinIcon, Calculator, Loader2, Edit, InfoIcon } from "lucide-react";
 import type { TarifaDistanciaCalculadora, TipoPaquete, TipoServicio } from "@/types/supabase";
-import { loadGoogleMapsApi } from '@/lib/google-maps-loader';
+import { loadGoogleMapsApi } from '@/lib/google-maps-loader'; // Using shared loader
+import { createEnvioIndividualAction } from './actions'; // Local action
 
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 const INITIAL_ZOOM = 12;
+
+const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 4.315 1.731 6.086l-.579 2.168 2.129-.565z" />
+  </svg>
+);
 
 export default function SolicitarEnviosPage() {
   const [step, setStep] = useState(1);
@@ -25,6 +33,7 @@ export default function SolicitarEnviosPage() {
   const [destino, setDestino] = useState<string>('');
   const [distancia, setDistancia] = useState<string | null>(null);
   const [precioCotizado, setPrecioCotizado] = useState<number | null>(null);
+  
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -47,13 +56,12 @@ export default function SolicitarEnviosPage() {
   const marcadorDestinoRef = useRef<google.maps.Marker | null>(null);
 
   const initMap = useCallback(() => {
-    if (!mapRef.current || !window.google?.maps?.DirectionsService || !window.google?.maps?.DirectionsRenderer) {
-      console.error("Map ref or Google Maps services not available for initMap in SolicitarEnviosPage.");
-      setErrorCalculation("No se pudo inicializar el mapa. Intente recargar.");
-      setGoogleApiLoadedState(false); 
+    if (!mapRef.current || !window.google?.maps?.Map || !window.google?.maps?.DirectionsService || !window.google?.maps?.DirectionsRenderer) {
+      console.error("SolicitarEnviosPage: initMap called but mapRef or Google Maps core services not available.");
+      setErrorCalculation("No se pudo inicializar el mapa correctamente. Intente recargar.");
       return;
     }
-    if (mapInstanceRef.current) return;
+    if (mapInstanceRef.current) return; // Prevent re-initialization
 
     try {
       const map = new window.google.maps.Map(mapRef.current!, {
@@ -62,37 +70,32 @@ export default function SolicitarEnviosPage() {
       mapInstanceRef.current = map;
       directionsServiceRef.current = new window.google.maps.DirectionsService();
       directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
-      setErrorCalculation(null);
+      setErrorCalculation(null); // Clear any previous map init error
     } catch (error) {
-      console.error("Error initializing Google Maps instance:", error);
+      console.error("Error initializing Google Maps instance in SolicitarEnviosPage:", error);
       setErrorCalculation("Error al inicializar la instancia del mapa.");
-      setGoogleApiLoadedState(false);
     }
-  }, []);
+  }, [setErrorCalculation]); // Added setErrorCalculation to dependencies
 
   useEffect(() => {
-    setMapApiLoading(true);
     loadGoogleMapsApi()
       .then(() => {
         setGoogleApiLoadedState(true);
-        setErrorCalculation(null);
+        setMapApiLoading(false);
       })
       .catch((err: Error) => {
         console.error("Failed to load Google Maps API in SolicitarEnviosPage:", err);
         setErrorCalculation(err.message || "Error al cargar el servicio de mapas. Verifique la API Key y la conexión.");
         setGoogleApiLoadedState(false);
-      })
-      .finally(() => {
         setMapApiLoading(false);
       });
   }, []);
   
   useEffect(() => {
-    if (googleApiLoadedState && mapRef.current && !mapInstanceRef.current && step === 1) {
+    if (googleApiLoadedState && step === 1 && mapRef.current && !mapInstanceRef.current) {
       initMap();
     }
   }, [googleApiLoadedState, step, initMap]);
-
 
   useEffect(() => {
     async function fetchInitialDataForForm() {
@@ -107,7 +110,7 @@ export default function SolicitarEnviosPage() {
 
         if (tarifasResult.error || !tarifasResult.data || tarifasResult.data.length === 0) {
            const msg = tarifasResult.error || "No se encontraron tarifas Express para cotizar.";
-           console.warn(msg);
+           console.warn("Tarifas Express:", msg);
            setErrorInitialData(prev => prev ? `${prev} ${msg}` : msg);
            setTarifasExpress([]);
         } else {
@@ -122,6 +125,7 @@ export default function SolicitarEnviosPage() {
 
       } catch (err) {
         const error = err as Error;
+        console.error("Error fetching initial data for SolicitarEnviosPage:", error);
         setErrorInitialData(prev => prev ? `${prev} ${error.message}` : error.message || "Error al cargar datos de configuración para la solicitud.");
       } finally {
         setLoadingInitialData(false);
@@ -140,14 +144,10 @@ export default function SolicitarEnviosPage() {
         return tarifa.precio;
       }
     }
-    const lastTier = tarifasExpress[tarifasExpress.length - 1];
-    if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km === 10.0 && tarifasExpress.find(t => t.tipo_calculadora === 'express')) { 
-        const kmExtra = Math.ceil(distanciaKm - 10); 
-        const precioPorKmExtra = 750; 
-        return lastTier.precio + (kmExtra * precioPorKmExtra);
-    }
-    setErrorCalculation("Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.");
-    return null;
+    // Handle cases beyond defined tiers - this might need adjustment based on business rules
+    // For now, if it exceeds all, it implies consultation
+    setErrorCalculation("Distancia excede rangos tarifarios. Consulte por WhatsApp para un precio personalizado.");
+    return null; 
   }, [tarifasExpress]);
 
   const colocarMarcadores = useCallback((
@@ -182,7 +182,7 @@ export default function SolicitarEnviosPage() {
     if (mapApiLoading || !googleApiLoadedState || !directionsServiceRef.current || !directionsRendererRef.current ) {
       setErrorCalculation("El servicio de mapas no está listo. Intente de nuevo o recargue la página."); return;
     }
-    if (tarifasExpress.length === 0 && !errorInitialData) { // Check errorInitialData to avoid showing this if data loading failed
+    if (tarifasExpress.length === 0 && !errorInitialData) {
         setErrorCalculation("Las tarifas para cotizar no están cargadas. Intente recargar la página o configure las tarifas."); return;
     }
     setLoadingCalculation(true); setErrorCalculation(null); setDistancia(null); setPrecioCotizado(null);
@@ -202,6 +202,7 @@ export default function SolicitarEnviosPage() {
         const distanciaValorKm = (leg.distance?.value || 0) / 1000;
         const precioCalc = calcularPrecioConTarifas(distanciaValorKm);
         setDistancia(distanciaTexto); setPrecioCotizado(precioCalc);
+        
         if (leg.start_location) setOrigenCoords({ lat: leg.start_location.lat(), lng: leg.start_location.lng() });
         if (leg.end_location) setDestinoCoords({ lat: leg.end_location.lat(), lng: leg.end_location.lng() });
         
@@ -223,8 +224,9 @@ export default function SolicitarEnviosPage() {
 
   const handleSolicitudEnviada = () => {
     setStep(1); setOrigen(''); setDestino(''); setDistancia(null); setPrecioCotizado(null);
-    setOrigenCoords(null); setDestinoCoords(null);
-    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null as any); 
+    // No es necesario limpiar origenCoords y destinoCoords aquí si se pasan al form y este no los modifica.
+    // setOrigenCoords(null); setDestinoCoords(null); 
+    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null as any); // Corrected way to clear
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
     if (mapInstanceRef.current) { mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER); mapInstanceRef.current.setZoom(INITIAL_ZOOM); }
@@ -304,9 +306,9 @@ export default function SolicitarEnviosPage() {
               </Alert>
             )}
              <div ref={mapRef} className="h-[250px] w-full rounded-md border bg-muted/30 mt-4">
-              {(mapApiLoading && !googleApiLoadedState) && !errorCalculation && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 mr-2 animate-spin"/>Cargando mapa...</div>}
+              {(mapApiLoading && !googleApiLoadedState) && !errorCalculation && GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 mr-2 animate-spin"/>Cargando mapa...</div>}
               {errorCalculation && googleApiLoadedState && <div className="flex items-center justify-center h-full text-destructive"><Terminal className="h-6 w-6 mr-2"/>Error al calcular ruta en mapa.</div>}
-              {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-destructive"><Terminal className="h-6 w-6 mr-2"/>API Key de Mapa no configurada.</div>}
+              {!GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-destructive"><Terminal className="h-6 w-6 mr-2"/>API Key de Mapa no configurada.</div>}
             </div>
             {distancia && <p className="text-center text-sm text-muted-foreground mt-2">Distancia aproximada: {distancia}</p>}
             {precioCotizado !== null && <p className="text-center text-lg font-semibold mt-1">Precio cotizado base: ${precioCotizado.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>}
@@ -350,3 +352,4 @@ export default function SolicitarEnviosPage() {
     </>
   );
 }
+
