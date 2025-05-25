@@ -18,7 +18,7 @@ import type { TarifaDistanciaCalculadora, TipoPaquete, TipoServicio } from "@/ty
 import { useToast } from "@/hooks/use-toast";
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_SCRIPT_ID_SOLICITAR = 'google-maps-api-script-solicitar-envio'; // Unique ID for this page
+const GOOGLE_MAPS_SCRIPT_ID_SOLICITAR = 'google-maps-api-script-solicitar-envio';
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 
 declare global {
@@ -66,15 +66,20 @@ export default function SolicitarEnviosPage() {
       zoom: 12, center: MAR_DEL_PLATA_CENTER, mapTypeControl: false, streetViewControl: false,
     });
     mapInstanceRef.current = map;
-    directionsServiceRef.current = new window.google.maps.DirectionsService();
-    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+    if (window.google.maps.DirectionsService && window.google.maps.DirectionsRenderer) {
+        directionsServiceRef.current = new window.google.maps.DirectionsService();
+        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+        setErrorCalculation(null); // Clear previous errors if services are now available
+    } else {
+        setErrorCalculation("Librerías de Directions de Google Maps no cargadas. Por favor, recargue.");
+    }
     setMapApiLoading(false);
-    setErrorCalculation(null);
   }, []);
 
   useEffect(() => {
     const loadGoogleMapsScript = () => {
-      if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_SOLICITAR) || (window.google?.maps && window.google.maps.DirectionsService)) {
+      const callbackName = 'initMapGloballyForSolicitarEnvioPage';
+      if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_SOLICITAR) || (window.google?.maps?.DirectionsService)) {
         if (window.google?.maps?.DirectionsService && !mapInstanceRef.current && step === 1) initMap();
         else setMapApiLoading(false);
         return;
@@ -85,23 +90,23 @@ export default function SolicitarEnviosPage() {
         return;
       }
 
-      (window as any).initMapGloballyForSolicitarEnvioPage = () => {
+      (window as any)[callbackName] = () => {
         initMap();
-        if (typeof (window as any).initMapGloballyForSolicitarEnvioPage !== 'undefined') {
-          delete (window as any).initMapGloballyForSolicitarEnvioPage;
+        if (typeof (window as any)[callbackName] !== 'undefined') {
+          delete (window as any)[callbackName];
         }
       };
       
       const script = document.createElement('script');
       script.id = GOOGLE_MAPS_SCRIPT_ID_SOLICITAR;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMapGloballyForSolicitarEnvioPage&libraries=marker,geometry,directions&loading=async`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=${callbackName}&libraries=marker,geometry,directions&loading=async`;
       script.async = true; 
       script.defer = true;
       script.onerror = () => {
         setErrorCalculation("Error al cargar el script del mapa. Verifique la conexión o la API Key.");
         setMapApiLoading(false);
-        if (typeof (window as any).initMapGloballyForSolicitarEnvioPage !== 'undefined') {
-          delete (window as any).initMapGloballyForSolicitarEnvioPage;
+        if (typeof (window as any)[callbackName] !== 'undefined') {
+          delete (window as any)[callbackName];
         }
       };
       document.head.appendChild(script);
@@ -119,7 +124,7 @@ export default function SolicitarEnviosPage() {
   }, [initMap, step]);
 
   useEffect(() => {
-    async function fetchInitialData() {
+    async function fetchInitialDataForForm() {
       setLoadingInitialData(true);
       setErrorInitialData(null);
       try {
@@ -156,10 +161,10 @@ export default function SolicitarEnviosPage() {
         setLoadingInitialData(false);
       }
     }
-    fetchInitialData();
+    fetchInitialDataForForm();
   }, [toast]);
 
-  const calcularPrecioConTarifas = useCallback((distanciaKm: number) => {
+  const calcularPrecioConTarifas = useCallback((distanciaKm: number): number | null => {
     if (!tarifasExpress || tarifasExpress.length === 0) {
         setErrorCalculation("Tarifas Express no disponibles. No se puede calcular el precio.");
         return null;
@@ -172,7 +177,7 @@ export default function SolicitarEnviosPage() {
     const lastTier = tarifasExpress[tarifasExpress.length - 1];
     if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km >= 10.0) { 
         const kmExtra = Math.ceil(distanciaKm - 10); 
-        const precioPorKmExtra = 750; // Asumiendo este valor como antes
+        const precioPorKmExtra = 750; 
         return lastTier.precio + (kmExtra * precioPorKmExtra);
     }
     setErrorCalculation("Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.");
@@ -211,11 +216,11 @@ export default function SolicitarEnviosPage() {
       setErrorCalculation("Por favor, ingrese ambas direcciones.");
       return;
     }
-    if (mapApiLoading || !directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps) {
+    if (mapApiLoading || !directionsServiceRef.current || !directionsRendererRef.current || !window.google?.maps?.DirectionsService) {
       setErrorCalculation("El servicio de mapas no está listo. Intente de nuevo o recargue la página.");
       return;
     }
-    if (tarifasExpress.length === 0 && !errorInitialData) { // Only show this if initial data didn't already show an error
+    if (tarifasExpress.length === 0 && !errorInitialData) {
         setErrorCalculation("Las tarifas no están cargadas. No se puede cotizar. Intente recargar la página.");
         return;
     }
@@ -393,3 +398,4 @@ export default function SolicitarEnviosPage() {
     </>
   );
 }
+

@@ -14,7 +14,7 @@ interface MapaEnviosViewProps {
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 const INITIAL_ZOOM = 13;
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script-rumbos'; // Made ID more unique
+const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-api-script-rumbos'; 
 
 let loadGoogleMapsPromise: Promise<void> | null = null;
 
@@ -59,7 +59,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
 
   useEffect(() => {
     const loadMaps = async () => {
-      if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
+      if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined' && typeof window.google.maps.DirectionsService !== 'undefined') {
         setIsLoadingApi(false);
         return;
       }
@@ -83,24 +83,23 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
           const callbackName = 'initGoogleMapsApiForRumbos';
           (window as any)[callbackName] = () => {
             delete (window as any)[callbackName]; 
-            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
+            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined' && typeof window.google.maps.DirectionsService !== 'undefined') {
               resolve();
             } else {
-              reject(new Error("Google Maps API cargada pero 'google.maps' no está disponible."));
+              reject(new Error("Google Maps API cargada pero 'google.maps.DirectionsService' no está disponible."));
             }
           };
 
           if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID)) {
-            // If script tag exists, and google.maps is available, resolve immediately.
-            // Otherwise, wait for the existing script's callback.
-            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined') {
+            if (typeof window.google !== 'undefined' && typeof window.google.maps !== 'undefined' && typeof window.google.maps.DirectionsService !== 'undefined') {
                 resolve(); 
             }
             return; 
           }
 
           const script = document.createElement('script');
-          script.id = GOOGLE_MAPS_SCRIPT_ID;          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&callback=${callbackName}&loading=async`;
+          script.id = GOOGLE_MAPS_SCRIPT_ID;          
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,directions&callback=${callbackName}&loading=async`;
           script.async = true;
           script.defer = true;
           script.onerror = (err) => {
@@ -232,7 +231,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
          map.setZoom(INITIAL_ZOOM);
       }
 
-      if (isFilteredByReparto && envios.length >= 2) {
+      if (isFilteredByReparto && envios.length >= 2 && typeof window.google?.maps?.Polyline !== 'undefined') {
         const routePath = envios
           .filter(envio => envio.latitud != null && envio.longitud != null)
           .sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity)) 
@@ -296,4 +295,3 @@ export function MapaEnviosView({ envios, isFilteredByReparto }: MapaEnviosViewPr
   return <div ref={mapRef} style={{ height: '100%', width: '100%' }} className="rounded-lg shadow-md border" />;
 }
 
-    

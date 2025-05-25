@@ -114,6 +114,7 @@ export function RepartoDetailView({
   const [aiCalculatedDistanceKm, setAiCalculatedDistanceKm] = useState<number | null>(null);
   const [isLoadingAiRouteDistance, setIsLoadingAiRouteDistance] = useState(false);
   const [isApplyingRouteOrder, setIsApplyingRouteOrder] = useState(false);
+  const [originalValidStopsForAISuggestion, setOriginalValidStopsForAISuggestion] = useState<ParadaMapaInfo[]>([]);
 
   const { toast } = useToast();
 
@@ -128,14 +129,15 @@ export function RepartoDetailView({
     setSelectedStatus(initialReparto.estado as EstadoReparto);
     setCurrentRouteDistanceKm(null); 
     setAiCalculatedDistanceKm(null); 
+    setSuggestedRoute(null); // Clear previous AI suggestion when reparto changes
   }, [initialReparto]);
 
   const getParadasMapaInfo = useCallback((paradas: ParadaConEnvioYCliente[], empresa?: Empresa | null): ParadaMapaInfo[] => {
     return paradas
       .map(parada => {
-        if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && empresa?.latitud && empresa?.longitud) {
+        if (parada.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa && empresa?.latitud != null && empresa?.longitud != null) {
           return { id: `empresa-${empresa.id}`, lat: empresa.latitud, lng: empresa.longitud, label: `Retiro en ${empresa.nombre || 'Empresa'}`, type: 'pickup' as const };
-        } else if (parada.envio?.latitud && parada.envio?.longitud) {
+        } else if (parada.envio?.latitud != null && parada.envio?.longitud != null) {
           return { id: parada.id, lat: parada.envio.latitud, lng: parada.envio.longitud, label: parada.envio.clientes?.nombre || parada.envio.nombre_cliente_temporal || 'Envío', type: 'delivery' as const };
         }
         return null;
@@ -186,11 +188,15 @@ export function RepartoDetailView({
       if (reparto.paradas && reparto.paradas.length > 1 && mapsApiReady) {
         setIsLoadingCurrentRouteDistance(true);
         const paradasInfo = getParadasMapaInfo(reparto.paradas, reparto.empresas);
-        const distance = await calculateRouteDistance(paradasInfo);
-        setCurrentRouteDistanceKm(distance);
+        if (paradasInfo.length > 1) {
+            const distance = await calculateRouteDistance(paradasInfo);
+            setCurrentRouteDistanceKm(distance);
+        } else {
+            setCurrentRouteDistanceKm(0); // Or null, if 0 is not appropriate for single stop
+        }
         setIsLoadingCurrentRouteDistance(false);
       } else {
-        setCurrentRouteDistanceKm(null);
+        setCurrentRouteDistanceKm(reparto.paradas && reparto.paradas.length <=1 ? 0 : null);
       }
     };
     calculateAndSetCurrentRouteDistance();
@@ -314,7 +320,8 @@ export function RepartoDetailView({
         }
         return acc;
     }, [] as OptimizeRouteStopInput[]);
-
+    
+    setOriginalValidStopsForAISuggestion(validStops); // Store for distance calculation
 
     if (validStops.length < 2) {
       toast({ title: "Optimización de Ruta", description: "Se necesitan al menos dos paradas con coordenadas válidas para optimizar.", variant: "destructive" });
@@ -325,9 +332,9 @@ export function RepartoDetailView({
     const result = await optimizeRouteAction({ stops: validStops });
     if (result.success && result.data) {
       setSuggestedRoute(result.data);
-      toast({ title: "Ruta Optimizada Sugerida", description: "La IA ha sugerido un nuevo orden para las paradas." });
+      toast({ title: "Ruta Optimizada Sugerida", description: result.data.notes || "La IA ha sugerido un nuevo orden para las paradas." });
       if (result.data.estimated_total_distance_km === undefined) {
-         handleCalculateAiRouteDistance(result.data, validStops);
+         handleCalculateAiRouteDistance(result.data, validStops); // Pass validStops here
       }
     } else {
       toast({ title: "Error de Optimización", description: result.error || "No se pudo obtener una ruta optimizada de la IA.", variant: "destructive" });
@@ -335,11 +342,11 @@ export function RepartoDetailView({
     setIsOptimizingRoute(false);
   };
   
-  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalValidStopsForCalculation: OptimizeRouteStopInput[]) => {
+  const handleCalculateAiRouteDistance = async (aiRoute: OptimizeRouteOutput, originalStopsUsedForAISuggestion: ParadaMapaInfo[]) => {
     if (!aiRoute || !aiRoute.optimized_stop_ids || !mapsApiReady) return;
     setIsLoadingAiRouteDistance(true);
 
-    const paradasInfoMap = new Map(originalValidStopsForCalculation.map(p => [p.id, p]));
+    const paradasInfoMap = new Map(originalStopsUsedForAISuggestion.map(p => [p.id, p]));
     
     const orderedStopsForAiRoute: ParadaMapaInfo[] = aiRoute.optimized_stop_ids
         .map(stopId => {
@@ -372,6 +379,7 @@ export function RepartoDetailView({
     if (result.success) {
       toast({ title: "Ruta Aplicada", description: "El orden de las paradas ha sido actualizado. La página se refrescará." });
       setSuggestedRoute(null); 
+      // Re-fetch or rely on revalidation
     } else {
       toast({ title: "Error al Aplicar Ruta", description: result.error || "No se pudo aplicar el nuevo orden.", variant: "destructive" });
     }
@@ -571,7 +579,7 @@ export function RepartoDetailView({
                         </TableCell>
                         <TableCell>
                             {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio
-                                ? `${parada.envio.package_size || '-'}, ${parada.envio.package_weight || '-'}kg`
+                                ? `${parada.envio.tipos_paquete?.nombre || '-'}, ${parada.envio.package_weight || '-'}kg`
                                 : <span className="text-muted-foreground">-</span>
                             }
                         </TableCell>
@@ -582,7 +590,7 @@ export function RepartoDetailView({
                                 </Badge>
                             ) : <span className="text-muted-foreground">-</span>}
                         </TableCell>
-                        <TableCell className="text-right">
+                         <TableCell className="text-right">
                             {parada.tipo_parada === tipoParadaSchemaEnum.Values.entrega_cliente && parada.envio
                                 ? (
                                     <>
@@ -630,19 +638,7 @@ export function RepartoDetailView({
             )}
             {suggestedRoute.estimated_total_distance_km === undefined && (
                  <Button 
-                    onClick={() => {
-                      const originalValidStopsForThisSuggestion: OptimizeRouteStopInput[] = reparto.paradas.reduce((acc, p) => {
-                          if (p.tipo_parada === tipoParadaSchemaEnum.Values.retiro_empresa) {
-                              if (reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
-                                  acc.push({ id: `empresa-${reparto.empresas.id}`, label: reparto.empresas.nombre || 'Punto de Retiro', lat: reparto.empresas.latitud, lng: reparto.empresas.longitud, type: 'pickup'});
-                              }
-                          } else if (p.envio?.latitud != null && p.envio?.longitud != null) {
-                              acc.push({ id: p.id, label: p.envio.clientes?.nombre || p.envio.nombre_cliente_temporal || 'Entrega Cliente', lat: p.envio.latitud, lng: p.envio.longitud, type: 'delivery' });
-                          }
-                          return acc;
-                      }, [] as OptimizeRouteStopInput[]);
-                      handleCalculateAiRouteDistance(suggestedRoute, originalValidStopsForThisSuggestion);
-                    }} 
+                    onClick={() => handleCalculateAiRouteDistance(suggestedRoute, originalValidStopsForAISuggestion)} 
                     disabled={isLoadingAiRouteDistance || !mapsApiReady || !GOOGLE_MAPS_API_KEY}
                     size="sm"
                     variant="outline"
@@ -722,3 +718,4 @@ export function RepartoDetailView({
     </div>
   );
 }
+
