@@ -3,7 +3,7 @@
 -- Drop tables in reverse order of dependency due to foreign keys
 DROP TABLE IF EXISTS "public"."paradas_reparto" CASCADE;
 DROP TABLE IF EXISTS "public"."envios" CASCADE;
--- DROP TABLE IF EXISTS "public"."envios_individuales" CASCADE; -- Commented out as it might be deprecated
+DROP TABLE IF EXISTS "public"."envios_individuales" CASCADE; -- Commented out as it might be deprecated
 DROP TABLE IF EXISTS "public"."repartos" CASCADE;
 DROP TABLE IF EXISTS "public"."clientes" CASCADE;
 DROP TABLE IF EXISTS "public"."empresas" CASCADE;
