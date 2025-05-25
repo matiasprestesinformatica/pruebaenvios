@@ -37,7 +37,8 @@ export default function SolicitarEnviosPage() {
   const [origenCoords, setOrigenCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destinoCoords, setDestinoCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true);
+  const [mapApiLoading, setMapApiLoading] = useState<boolean>(true); // Tracks script loading
+  const [googleApiLoadedState, setGoogleApiLoadedState] = useState<boolean>(false); // Tracks if Google Maps API is loaded
   const [loadingCalculation, setLoadingCalculation] = useState<boolean>(false);
   const [errorCalculation, setErrorCalculation] = useState<string | null>(null);
 
@@ -56,14 +57,14 @@ export default function SolicitarEnviosPage() {
   const marcadorDestinoRef = useRef<google.maps.Marker | null>(null);
 
   const initMap = useCallback(() => {
-    if (!mapRef.current || !window.google || !window.google.maps) {
-      console.error("Map ref or Google Maps API not available for initMap.");
-      setErrorCalculation("No se pudo inicializar el mapa. Intente recargar.");
-      setMapApiLoading(false);
+    if (!mapRef.current || !window.google?.maps?.DirectionsService) {
+      console.error("Pre-conditions for initMap not met (mapRef or DirectionsService missing). This shouldn't happen if googleApiLoadedState is true and mapRef.current is checked by the calling useEffect.");
+      setErrorCalculation("Error crítico al inicializar el mapa. Intente recargar.");
+      // setMapApiLoading(false); // Loading of API might be done, this is about map instance
       return;
     }
-    if (mapInstanceRef.current) { // Already initialized
-        setMapApiLoading(false);
+
+    if (mapInstanceRef.current) { // Prevent re-initialization
         return;
     }
 
@@ -72,87 +73,78 @@ export default function SolicitarEnviosPage() {
     });
     mapInstanceRef.current = map;
 
-    if (window.google.maps.DirectionsService && window.google.maps.DirectionsRenderer) {
-        directionsServiceRef.current = new window.google.maps.DirectionsService();
-        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
-        setErrorCalculation(null); 
-    } else {
-        setErrorCalculation("Librerías de Directions de Google Maps no cargadas. Por favor, recargue.");
-    }
-    setMapApiLoading(false);
+    directionsServiceRef.current = new window.google.maps.DirectionsService();
+    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
+    
+    setErrorCalculation(null); // Clear any previous map init error
+    console.log("Map initialized for Solicitar Envios page.");
   }, []);
 
+  // Effect for loading Google Maps API script
   useEffect(() => {
-    const loadGoogleMapsScript = async () => {
-      if (typeof window.google?.maps?.DirectionsService === 'function') {
-        initMap();
-        setMapApiLoading(false);
-        return;
-      }
-      
-      if (!GOOGLE_MAPS_API_KEY) {
-        setErrorCalculation("Falta la configuración del mapa (API Key). Contacta al administrador.");
-        setMapApiLoading(false);
-        return;
-      }
+    const scriptId = GOOGLE_MAPS_SCRIPT_ID_SOLICITAR;
+    const callbackName = 'initMapGloballyForSolicitarEnvioPage';
 
-      setMapApiLoading(true);
+    if (typeof window.google?.maps?.DirectionsService === 'function') {
+      setGoogleApiLoadedState(true);
+      setMapApiLoading(false);
+      return;
+    }
 
-      if (!loadGoogleMapsPromiseSolicitar) {
-        loadGoogleMapsPromiseSolicitar = new Promise<void>((resolve, reject) => {
-          const callbackName = 'initMapGloballyForSolicitarEnvioPage';
-          (window as any)[callbackName] = () => {
-            delete (window as any)[callbackName];
-            if (typeof window.google?.maps?.DirectionsService === 'function') {
-              resolve();
-            } else {
-              reject(new Error("API de Google Maps cargada pero DirectionsService no está disponible."));
-            }
-          };
-
-          if (document.getElementById(GOOGLE_MAPS_SCRIPT_ID_SOLICITAR)) {
-            if (typeof window.google?.maps?.DirectionsService === 'function') {
-                resolve();
-            }
-            return;
-          }
-          
-          const script = document.createElement('script');
-          script.id = GOOGLE_MAPS_SCRIPT_ID_SOLICITAR;
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=${callbackName}&libraries=marker,geometry,directions&loading=async`;
-          script.async = true; 
-          script.defer = true;
-          script.onerror = () => {
-            delete (window as any)[callbackName];
-            document.getElementById(GOOGLE_MAPS_SCRIPT_ID_SOLICITAR)?.remove();
-            loadGoogleMapsPromiseSolicitar = null;
-            reject(new Error("Error al cargar el script del mapa. Verifique la conexión o la API Key."));
-          };
-          document.head.appendChild(script);
-        });
-      }
-      
-      try {
-        await loadGoogleMapsPromiseSolicitar;
-        initMap();
-      } catch (err) {
-        const error = err as Error;
-        setErrorCalculation(error.message || "Error desconocido al cargar Google Maps API.");
-      } finally {
-        setMapApiLoading(false);
-      }
-    };
-
-    if (typeof window !== 'undefined' && step === 1) {
-      loadGoogleMapsScript();
+    if (document.getElementById(scriptId)) {
+      // Script tag already exists, assume it's loading or loaded.
+      // The callback or the already loaded state will handle setting googleApiLoadedState.
+      // If it's loaded but callback already fired, googleApiLoadedState might already be true.
+      return;
     }
     
-    return () => { 
-      if (typeof (window as any).initMapGloballyForSolicitarEnvioPage !== 'undefined') {
-        delete (window as any).initMapGloballyForSolicitarEnvioPage;
-      }
+    if (!GOOGLE_MAPS_API_KEY) {
+      setErrorCalculation("Falta la configuración del mapa (API Key). Contacta al administrador.");
+      setMapApiLoading(false);
+      setGoogleApiLoadedState(false); // Explicitly set to false
+      return;
+    }
+
+    setMapApiLoading(true); // Start loading API script
+
+    (window as any)[callbackName] = () => {
+      delete (window as any)[callbackName];
+      setGoogleApiLoadedState(true);
+      setMapApiLoading(false); // API script is now loaded
     };
-  }, [initMap, step]);
+    
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=${callbackName}&libraries=marker,geometry,directions&loading=async`;
+    script.async = true; 
+    script.defer = true;
+    script.onerror = () => {
+      delete (window as any)[callbackName];
+      document.getElementById(scriptId)?.remove();
+      loadGoogleMapsPromiseSolicitar = null; // Reset promise if used
+      setErrorCalculation("Error al cargar el script del mapa. Verifique la conexión o la API Key.");
+      setMapApiLoading(false);
+      setGoogleApiLoadedState(false);
+    };
+    document.head.appendChild(script);
+
+    return () => { // Cleanup function
+      if (typeof (window as any)[callbackName] !== 'undefined') {
+        delete (window as any)[callbackName];
+      }
+      // Optionally remove the script tag if the component unmounts before loading, though usually not critical
+      // const existingScript = document.getElementById(scriptId);
+      // if (existingScript) existingScript.remove();
+    };
+  }, []); // Run only once on mount
+
+  // Effect for initializing the map instance once API is loaded and DOM ref is available
+  useEffect(() => {
+    if (googleApiLoadedState && mapRef.current && !mapInstanceRef.current && step === 1) {
+      initMap();
+    }
+  }, [googleApiLoadedState, step, initMap]);
+
 
   useEffect(() => {
     async function fetchInitialDataForForm() {
@@ -166,9 +158,13 @@ export default function SolicitarEnviosPage() {
         ]);
 
         if (tarifasResult.error || !tarifasResult.data || tarifasResult.data.length === 0) {
-          throw new Error(tarifasResult.error || "No se encontraron tarifas Express para cotizar.");
+          //throw new Error(tarifasResult.error || "No se encontraron tarifas Express para cotizar.");
+           console.warn(tarifasResult.error || "No se encontraron tarifas Express para cotizar.");
+           setErrorInitialData(tarifasResult.error || "No se encontraron tarifas Express para cotizar.");
+           setTarifasExpress([]); // Set to empty array to avoid issues
+        } else {
+            setTarifasExpress(tarifasResult.data);
         }
-        setTarifasExpress(tarifasResult.data);
 
         if (!paquetesResult || paquetesResult.length === 0) {
             console.warn("No se encontraron tipos de paquete activos.");
@@ -208,7 +204,7 @@ export default function SolicitarEnviosPage() {
     const lastTier = tarifasExpress[tarifasExpress.length - 1];
     if (lastTier && distanciaKm > lastTier.distancia_hasta_km && lastTier.distancia_hasta_km >= 10.0) { 
         const kmExtra = Math.ceil(distanciaKm - 10); 
-        const precioPorKmExtra = 750; // Example, make configurable if needed
+        const precioPorKmExtra = 750; 
         return lastTier.precio + (kmExtra * precioPorKmExtra);
     }
     setErrorCalculation("Distancia excede tarifas o requiere cálculo especial. Consulte por WhatsApp.");
@@ -310,10 +306,13 @@ export default function SolicitarEnviosPage() {
     setPrecioCotizado(null);
     setOrigenCoords(null);
     setDestinoCoords(null);
-    if (directionsRendererRef.current) directionsRendererRef.current.setDirections({routes: []} as any);
+    if (directionsRendererRef.current) directionsRendererRef.current.setDirections(null);
     if (marcadorOrigenRef.current) marcadorOrigenRef.current.setMap(null);
     if (marcadorDestinoRef.current) marcadorDestinoRef.current.setMap(null);
-    if (mapInstanceRef.current) mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER);
+    if (mapInstanceRef.current) {
+        mapInstanceRef.current.setCenter(MAR_DEL_PLATA_CENTER);
+        mapInstanceRef.current.setZoom(12);
+    }
     setErrorCalculation(null);
   };
 
@@ -322,11 +321,11 @@ export default function SolicitarEnviosPage() {
         <>
             <PageHeader title="Solicitar Nuevo Envío" description="Calcule el costo de su envío y luego complete los detalles para la solicitud." />
             <div className="space-y-6 mt-4">
-                <Skeleton className="h-10 w-1/3" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-12 w-full mt-2" />
-                <Skeleton className="h-64 w-full mt-4 rounded-md" />
+                <Skeleton className="h-10 w-1/3" /> {/* Placeholder for title or first input label */}
+                <Skeleton className="h-10 w-full" /> {/* Placeholder for an input */}
+                <Skeleton className="h-10 w-full" /> {/* Placeholder for another input */}
+                <Skeleton className="h-12 w-full mt-2" /> {/* Placeholder for button */}
+                <Skeleton className="h-64 w-full mt-4 rounded-md" /> {/* Placeholder for map or results area */}
             </div>
         </>
     );
@@ -377,7 +376,7 @@ export default function SolicitarEnviosPage() {
               {loadingCalculation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Calculator className="mr-2 h-4 w-4" />}
               Calcular y Continuar Solicitud
             </Button>
-            {mapApiLoading && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
+            {mapApiLoading && !googleApiLoadedState && <p className="text-sm text-center text-muted-foreground">Cargando servicio de mapas...</p>}
             {errorCalculation && (
               <Alert variant="destructive">
                 <Terminal className="h-4 w-4" />
@@ -393,8 +392,8 @@ export default function SolicitarEnviosPage() {
                 </Alert>
             )}
              <div ref={mapRef} className="h-[250px] w-full rounded-md border bg-muted/30 mt-4">
-              {mapApiLoading && !errorCalculation && GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 mr-2 animate-spin"/>Cargando mapa...</div>}
-              {!mapApiLoading && errorCalculation && <div className="flex items-center justify-center h-full text-destructive"><Terminal className="h-6 w-6 mr-2"/>Error al cargar mapa.</div>}
+              {(mapApiLoading && !googleApiLoadedState) && !errorCalculation && GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 mr-2 animate-spin"/>Cargando mapa...</div>}
+              {errorCalculation && <div className="flex items-center justify-center h-full text-destructive"><Terminal className="h-6 w-6 mr-2"/>Error al cargar mapa.</div>}
               {!GOOGLE_MAPS_API_KEY && <div className="flex items-center justify-center h-full text-destructive"><Terminal className="h-6 w-6 mr-2"/>API Key de Mapa no configurada.</div>}
             </div>
             {distancia && <p className="text-center text-sm text-muted-foreground mt-2">Distancia aproximada: {distancia}</p>}
@@ -427,7 +426,7 @@ export default function SolicitarEnviosPage() {
       {step === 2 && (loadingInitialData || errorInitialData || tiposPaqueteActivos.length === 0 || tiposServicioActivos.length === 0) && !errorCalculation && (
         <div className="mt-6 text-center">
             {loadingInitialData && <p><Loader2 className="h-5 w-5 animate-spin inline mr-2"/>Cargando datos del formulario...</p>}
-            {errorInitialData && <Alert variant="destructive"><Terminal className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{errorInitialData}</AlertDescription></Alert>}
+            {errorInitialData && !loadingInitialData && <Alert variant="destructive"><Terminal className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{errorInitialData}</AlertDescription></Alert>}
             {(!loadingInitialData && !errorInitialData) && (tiposPaqueteActivos.length === 0 || tiposServicioActivos.length === 0) &&
               <Alert variant="destructive">
                 <Terminal className="h-4 w-4" />
@@ -440,5 +439,3 @@ export default function SolicitarEnviosPage() {
     </>
   );
 }
-
-    
